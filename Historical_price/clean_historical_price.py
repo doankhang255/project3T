@@ -6,7 +6,7 @@ from typing import Dict
 
 import pandas as pd
 
-HISTORICAL_PRICE_PATH = "historical_price_2894.parquet" 
+HISTORICAL_PRICE_PATH = "parquet_all.parquet" 
 
 FLOAT_COLUMNS = [
     "high_price",
@@ -40,6 +40,7 @@ CW_SYMBOL_PATTERN = re.compile(r"^C(?P<ticker>[A-Z]{2,})(?P<date_code>\d{2,})$")
 ALPHA_DIGIT_SYMBOL_PATTERN = re.compile(r"^(?P<ticker>[A-Z]{2,})(?P<date_code>\d{2,})$")
 THREE_CHAR_TICKER_PATTERN = re.compile(r"^(?P<ticker>[A-Z0-9]{3})$")
 PLAIN_TICKER_PATTERN = re.compile(r"^(?P<ticker>[A-Z]{2,10})$")
+SPECIAL_INDEX_TICKERS = {"HNX30", "HNX1000", "VN30", "VN100"}
 
 
 def load_tabular_data(path: str | Path) -> pd.DataFrame:
@@ -86,6 +87,15 @@ def parse_symbol_components(symbol: object) -> Dict[str, object]:
             "symbol_prefix": "C",
             "symbol_date_code": match.group("date_code"),
             "symbol_parse_rule": "C + ticker + date_code",
+        }
+
+    if raw_symbol in SPECIAL_INDEX_TICKERS:
+        return {
+            "ticker": raw_symbol,
+            "instrument_type": "special_index_ticker",
+            "symbol_prefix": pd.NA,
+            "symbol_date_code": pd.NA,
+            "symbol_parse_rule": "special_index_ticker",
         }
 
     match = THREE_CHAR_TICKER_PATTERN.match(raw_symbol)
@@ -358,21 +368,6 @@ def main() -> None:
         )
     if not zero_volume_but_ohlc_changed_rows.empty:
         print("\nRows with vol_total = 0 but OHLC changed:")
-        print(
-            zero_volume_but_ohlc_changed_rows[
-                [
-                    "symbol",
-                    "ticker",
-                    "date",
-                    "vol_total",
-                    "val_total",
-                    "open_price",
-                    "high_price",
-                    "low_price",
-                    "close_price",
-                ]
-            ].to_string(index=False)
-        )
     if not market_index_symbols.empty:
         print("\nMarket-index-like symbols/tickers:")
         print(market_index_symbols.to_string(index=False))

@@ -1,3 +1,5 @@
 __pycache__
 *.parquet
 *.csv 
+merge_file.py
+check.ipynb
