@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 
-HISTORICAL_PRICE_PATH = "historical_price_all.parquet" 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+HISTORICAL_PRICE_PATH = PROJECT_ROOT / "historical_price_all1.parquet"
+REQUIRED_SYMBOLS_PATH = PROJECT_ROOT / "symbols.csv"
 
 FLOAT_COLUMNS = [
     "high_price",
@@ -36,13 +37,6 @@ FLOAT_COLUMNS = [
     "prop_trading_net",
 ]
 
-CW_SYMBOL_PATTERN = re.compile(r"^C(?P<ticker>[A-Z]{2,})(?P<date_code>\d{2,})$")
-ALPHA_DIGIT_SYMBOL_PATTERN = re.compile(r"^(?P<ticker>[A-Z]{2,})(?P<date_code>\d{2,})$")
-THREE_CHAR_TICKER_PATTERN = re.compile(r"^(?P<ticker>[A-Z0-9]{3})$")
-PLAIN_TICKER_PATTERN = re.compile(r"^(?P<ticker>[A-Z]{2,10})$")
-SPECIAL_INDEX_TICKERS = {"HNX30", "HNX1000", "VN30", "VN100"}
-
-
 def load_tabular_data(path: str | Path) -> pd.DataFrame:
     source_path = Path(path)
     if not str(source_path).strip():
@@ -58,6 +52,34 @@ def load_tabular_data(path: str | Path) -> pd.DataFrame:
     return df
 
 
+def load_required_symbols(path: str | Path) -> pd.Index:
+    source_path = Path(path)
+    if not str(source_path).strip():
+        raise ValueError("Set REQUIRED_SYMBOLS_PATH before running clean_historical_price.py.")
+    if not source_path.exists():
+        raise FileNotFoundError(f"Symbols file not found: {source_path}")
+
+    symbols_df = pd.read_csv(
+        source_path,
+        header=None,
+        usecols=[0],
+        names=["symbol"],
+        dtype="string",
+    )
+    required_symbols = (
+        symbols_df["symbol"]
+        .fillna("")
+        .astype("string")
+        .str.strip()
+        .str.upper()
+    )
+    required_symbols = required_symbols[
+        required_symbols.ne("") & ~required_symbols.isin({"SYMBOL", "TICKER"})
+    ]
+    required_symbols = required_symbols.drop_duplicates().tolist()
+    return pd.Index(required_symbols, dtype="string", name="ticker")
+
+
 def standardize_types(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["symbol"] = out["symbol"].fillna("").astype("string").str.strip().str.upper()
@@ -68,90 +90,115 @@ def standardize_types(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def parse_symbol_components(symbol: object) -> Dict[str, object]:
-    raw_symbol = str(symbol).strip().upper()
-    if raw_symbol == "" or raw_symbol.lower() == "nan":
-        return {
-            "ticker": pd.NA,
-            "instrument_type": "unknown",
-            "symbol_prefix": pd.NA,
-            "symbol_date_code": pd.NA,
-            "symbol_parse_rule": "empty_symbol",
-        }
-
-    match = CW_SYMBOL_PATTERN.match(raw_symbol)
-    if match:
-        return {
-            "ticker": match.group("ticker"),
-            "instrument_type": "c_prefixed_symbol",
-            "symbol_prefix": "C",
-            "symbol_date_code": match.group("date_code"),
-            "symbol_parse_rule": "C + ticker + date_code",
-        }
-
-    if raw_symbol in SPECIAL_INDEX_TICKERS:
-        return {
-            "ticker": raw_symbol,
-            "instrument_type": "special_index_ticker",
-            "symbol_prefix": pd.NA,
-            "symbol_date_code": pd.NA,
-            "symbol_parse_rule": "special_index_ticker",
-        }
-
-    match = THREE_CHAR_TICKER_PATTERN.match(raw_symbol)
-    if match:
-        return {
-            "ticker": match.group("ticker"),
-            "instrument_type": "three_char_ticker",
-            "symbol_prefix": pd.NA,
-            "symbol_date_code": pd.NA,
-            "symbol_parse_rule": "three_char_alphanumeric_ticker",
-        }
-
-    match = ALPHA_DIGIT_SYMBOL_PATTERN.match(raw_symbol)
-    if match:
-        return {
-            "ticker": match.group("ticker"),
-            "instrument_type": "alpha_digit_symbol",
-            "symbol_prefix": pd.NA,
-            "symbol_date_code": match.group("date_code"),
-            "symbol_parse_rule": "ticker + date_code",
-        }
-
-    match = PLAIN_TICKER_PATTERN.match(raw_symbol)
-    if match:
-        return {
-            "ticker": match.group("ticker"),
-            "instrument_type": "plain_ticker",
-            "symbol_prefix": pd.NA,
-            "symbol_date_code": pd.NA,
-            "symbol_parse_rule": "plain_ticker",
-        }
-
-    alpha_chunks = re.findall(r"[A-Z]+", raw_symbol)
-    if alpha_chunks:
-        return {
-            "ticker": alpha_chunks[-1],
-            "instrument_type": "fallback_alpha_extract",
-            "symbol_prefix": raw_symbol[:1],
-            "symbol_date_code": pd.NA,
-            "symbol_parse_rule": "fallback_last_alpha_chunk",
-        }
-
-    return {
-        "ticker": pd.NA,
-        "instrument_type": "unknown",
-        "symbol_prefix": pd.NA,
-        "symbol_date_code": pd.NA,
-        "symbol_parse_rule": "unparsed",
-    }
+def normalize_required_tickers(required_tickers: pd.Index) -> list[str]:
+    normalized_tickers = (
+        pd.Series(required_tickers, dtype="string")
+        .fillna("")
+        .astype("string")
+        .str.strip()
+        .str.upper()
+    )
+    normalized_tickers = normalized_tickers[normalized_tickers.ne("")].drop_duplicates().tolist()
+    if not normalized_tickers:
+        raise ValueError("symbols.csv does not contain any valid ticker.")
+    return sorted(normalized_tickers, key=lambda ticker: (-len(ticker), ticker))
 
 
-def add_symbol_features(df: pd.DataFrame) -> pd.DataFrame:
-    parsed_symbol = df["symbol"].apply(parse_symbol_components).apply(pd.Series)
-    out = pd.concat([df.copy(), parsed_symbol], axis=1)
+def build_required_ticker_pattern(required_tickers: pd.Index) -> re.Pattern[str]:
+    normalized_tickers = normalize_required_tickers(required_tickers)
+    escaped_tickers = [re.escape(ticker) for ticker in normalized_tickers]
+    return re.compile(f"({'|'.join(escaped_tickers)})")
+
+
+def build_symbol_match_lookup(
+    symbols: pd.Series,
+    required_tickers: pd.Index,
+) -> pd.DataFrame:
+    normalized_tickers = normalize_required_tickers(required_tickers)
+    unique_symbols = (
+        symbols.fillna("")
+        .astype("string")
+        .str.strip()
+        .str.upper()
+        .drop_duplicates()
+        .tolist()
+    )
+
+    lookup_rows = []
+    for symbol in unique_symbols:
+        matches = [ticker for ticker in normalized_tickers if ticker in symbol]
+        primary_ticker = matches[0] if matches else pd.NA
+        lookup_rows.append(
+            {
+                "symbol": symbol,
+                "ticker": primary_ticker,
+                "ticker_extracted": primary_ticker,
+                "matched_ticker_substrings": ",".join(matches) if matches else pd.NA,
+                "ticker_match_count": len(matches),
+            }
+        )
+
+    match_lookup = pd.DataFrame(lookup_rows)
+    match_lookup["ticker"] = match_lookup["ticker"].astype("string").str.strip().str.upper()
+    match_lookup["ticker_extracted"] = (
+        match_lookup["ticker_extracted"].astype("string").str.strip().str.upper()
+    )
+    match_lookup["matched_ticker_substrings"] = (
+        match_lookup["matched_ticker_substrings"].astype("string").str.strip().str.upper()
+    )
+    match_lookup["ticker_match_count"] = (
+        pd.to_numeric(match_lookup["ticker_match_count"], errors="coerce")
+        .fillna(0)
+        .astype("Int64")
+    )
+    match_lookup["ticker_multi_match_flag"] = match_lookup["ticker_match_count"].ge(2)
+    return match_lookup
+
+
+def add_symbol_features(
+    df: pd.DataFrame,
+    required_tickers: pd.Index,
+) -> pd.DataFrame:
+    out = df.copy()
+    symbol_match_lookup = build_symbol_match_lookup(out["symbol"], required_tickers)
+    out = out.merge(
+        symbol_match_lookup,
+        on="symbol",
+        how="left",
+        validate="many_to_one",
+    )
     out["ticker"] = out["ticker"].astype("string").str.strip().str.upper()
+    out["ticker_extracted"] = out["ticker_extracted"].astype("string").str.strip().str.upper()
+    out["matched_ticker_substrings"] = (
+        out["matched_ticker_substrings"].astype("string").str.strip().str.upper()
+    )
+    out["ticker_match_count"] = (
+        pd.to_numeric(out["ticker_match_count"], errors="coerce")
+        .fillna(0)
+        .astype("Int64")
+    )
+    out["ticker_multi_match_flag"] = out["ticker_match_count"].ge(2)
     return out
+
+
+def filter_required_tickers(
+    df: pd.DataFrame,
+    required_tickers: pd.Index,
+) -> tuple[pd.DataFrame, pd.Index]:
+    out = df.copy()
+    required_ticker_set = set(required_tickers.astype(str).tolist())
+    out["ticker_in_symbols_flag"] = out["ticker"].isin(required_ticker_set)
+    filtered_df = out.loc[out["ticker_in_symbols_flag"]].copy()
+    matched_tickers = (
+        filtered_df["ticker"]
+        .dropna()
+        .astype("string")
+        .str.strip()
+        .str.upper()
+    )
+    matched_tickers = matched_tickers[matched_tickers.ne("")]
+    matched_tickers = matched_tickers.drop_duplicates().sort_values().tolist()
+    return filtered_df, pd.Index(matched_tickers, dtype="string", name="ticker")
 
 
 def reconcile_year_from_date(df: pd.DataFrame) -> pd.DataFrame:
@@ -248,38 +295,29 @@ def add_quality_flags(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def prepare_historical_price_data(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_historical_price_data(
+    df: pd.DataFrame,
+    required_tickers: pd.Index | None = None,
+) -> pd.DataFrame:
     out = df.copy()
     out = standardize_types(out)
-    out = add_symbol_features(out)
+    if required_tickers is None:
+        required_tickers = load_required_symbols(REQUIRED_SYMBOLS_PATH)
+    out = add_symbol_features(out, required_tickers)
     out = reconcile_year_from_date(out)
     return out
 
 
-def find_market_index_rows(df: pd.DataFrame) -> pd.DataFrame:
-    known_market_symbols = {
-        "VNINDEX",
-        "HNXINDEX",
-        "UPCOMINDEX",
-        "VN30",
-        "HNX30",
-        "VN100",
-        "VNALLSHARE",
-    }
-    symbol_text = df["symbol"].fillna("").astype("string").str.upper()
-    ticker_text = df["ticker"].fillna("").astype("string").str.upper()
-    market_index_mask = (
-        symbol_text.isin(known_market_symbols)
-        | ticker_text.isin(known_market_symbols)
-        | symbol_text.str.contains("INDEX", na=False)
-        | ticker_text.str.contains("INDEX", na=False)
+def clean_historical_price_dataset(
+    df: pd.DataFrame,
+    required_tickers: pd.Index,
+) -> Dict[str, pd.DataFrame]:
+    prepared_df = prepare_historical_price_data(df, required_tickers=required_tickers)
+    filtered_prepared_df, matched_tickers = filter_required_tickers(
+        prepared_df,
+        required_tickers,
     )
-    return df.loc[market_index_mask].copy()
-
-
-def clean_historical_price_dataset(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-    prepared_df = prepare_historical_price_data(df)
-    deduplicated_df, duplicate_rows = mark_duplicate_symbol_date(prepared_df)
+    deduplicated_df, duplicate_rows = mark_duplicate_symbol_date(filtered_prepared_df)
     deduplicated_df, negative_price_rows = remove_negative_ohlc_rows(deduplicated_df)
     deduplicated_df = add_quality_flags(deduplicated_df)
 
@@ -297,42 +335,64 @@ def clean_historical_price_dataset(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
     return {
         "prepared_data": prepared_df,
+        "filtered_prepared_data": filtered_prepared_df,
         "deduplicated_data": deduplicated_df,
         "clean_data": clean_df,
         "review_rows": review_df,
         "duplicate_rows": duplicate_rows,
         "negative_price_rows": negative_price_rows,
+        "matched_tickers": pd.DataFrame({"ticker": matched_tickers}),
     }
 
 
+def count_ticker_records(df: pd.DataFrame) -> int:
+    ticker_present = df["ticker"].notna() & df["ticker"].ne("")
+    return int(ticker_present.sum())
+
+
+def count_unique_tickers(df: pd.DataFrame) -> int:
+    return int(df["ticker"].replace("", pd.NA).nunique(dropna=True))
+
+
+def count_unmatched_symbol_records(df: pd.DataFrame) -> int:
+    ticker_missing = df["ticker"].isna() | df["ticker"].eq("")
+    return int(ticker_missing.sum())
+
+
 def main() -> None:
+    required_tickers = load_required_symbols(REQUIRED_SYMBOLS_PATH)
     raw_df = load_tabular_data(HISTORICAL_PRICE_PATH)
-    result = clean_historical_price_dataset(raw_df)
+    result = clean_historical_price_dataset(raw_df, required_tickers)
     prepared_df = result["prepared_data"]
+    filtered_prepared_df = result["filtered_prepared_data"]
     deduplicated_df = result["deduplicated_data"]
     negative_price_rows = result["negative_price_rows"]
-    market_index_rows = find_market_index_rows(deduplicated_df)
-    market_index_symbols = (
-        market_index_rows[["symbol", "ticker"]]
-        .drop_duplicates()
-        .sort_values(["symbol", "ticker"], kind="mergesort")
-        .reset_index(drop=True)
-    )
+    matched_tickers = result["matched_tickers"]
     zero_volume_but_ohlc_changed_rows = deduplicated_df.loc[
         deduplicated_df["zero_volume_but_ohlc_changed_flag"]
     ].copy()
     parsed_dates = pd.to_datetime(deduplicated_df["date"], errors="coerce")
+    unique_symbols_in_dataset = prepared_df["symbol"].replace("", pd.NA).nunique(dropna=True)
+    ticker_record_count = count_ticker_records(prepared_df)
+    records_with_multi_ticker_match = int(prepared_df["ticker_multi_match_flag"].sum())
 
     print("Input rows:", len(raw_df))
+    print("Symbols required from symbols.csv:", len(required_tickers))
+    print("Unique symbols in dataset:", unique_symbols_in_dataset)
+    print("Matched tickers:", len(matched_tickers))
+    print("Ticker records in column ticker:", ticker_record_count)
+    print(
+        "Rows with symbols matching >= 2 ticker substrings:",
+        records_with_multi_ticker_match,
+    )
+    print("Rows after required ticker filter:", len(filtered_prepared_df))
     print("Duplicate symbol-date rows:", len(result["duplicate_rows"]))
     print("Rows with negative OHLC price (< 0):", len(negative_price_rows))
     print("Rows after symbol-date dedup:", len(deduplicated_df))
     print("Clean rows:", len(result["clean_data"]))
     print("Review rows:", len(result["review_rows"]))
-    print("Rows with market-index-like symbols/tickers:", len(market_index_rows))
-    print("Unique market-index-like symbols:", len(market_index_symbols))
-    print("Unique symbols:", deduplicated_df["symbol"].nunique(dropna=True))
-    print("Unique tickers:", deduplicated_df["ticker"].nunique(dropna=True))
+    print("Unique symbols after filter:", deduplicated_df["symbol"].replace("", pd.NA).nunique(dropna=True))
+    print("Unique tickers after filter:", deduplicated_df["ticker"].replace("", pd.NA).nunique(dropna=True))
     print("Min date:", parsed_dates.min())
     print("Max date:", parsed_dates.max())
     print("Rows with year mismatch:", int(deduplicated_df["year_mismatch_flag"].sum()))
@@ -343,34 +403,31 @@ def main() -> None:
     print("Rows with invalid OHLC:", int(deduplicated_df["invalid_ohlc_flag"].sum()))
     print("Rows with zero volume/value:", int(deduplicated_df["zero_volume_flag"].sum()))
     print("Rows with adj_ratio != 1:", int(deduplicated_df["adj_ratio_not_one_flag"].sum()))
-    print(
-        "Rows with vol_total != vol_deal + vol_putth:",
-        int(deduplicated_df["vol_total_components_mismatch_flag"].sum()),
-    )
-    print(
-        "Rows with vol_total = 0 but OHLC changed:",
-        int(deduplicated_df["zero_volume_but_ohlc_changed_flag"].sum()),
-    )
-    print(
-        "Rows with all foreign flow fields missing:",
-        int(deduplicated_df["foreign_flow_all_missing_flag"].sum()),
-    )
-    print(
-        "Rows with all proprietary trading fields missing:",
-        int(deduplicated_df["prop_trading_all_missing_flag"].sum()),
-    )
-    if not negative_price_rows.empty:
-        print("\nRows with negative OHLC price that were removed:")
-        print(
-            negative_price_rows[
-                ["symbol", "ticker", "date", "open_price", "high_price", "low_price", "close_price"]
-            ].to_string(index=False)
-        )
-    if not zero_volume_but_ohlc_changed_rows.empty:
-        print("\nRows with vol_total = 0 but OHLC changed:")
-    if not market_index_symbols.empty:
-        print("\nMarket-index-like symbols/tickers:")
-        print(market_index_symbols.to_string(index=False))
+    # print(
+    #     "Rows with vol_total != vol_deal + vol_putth:",
+    #     int(deduplicated_df["vol_total_components_mismatch_flag"].sum()),
+    # )
+    # print(
+    #     "Rows with vol_total = 0 but OHLC changed:",
+    #     int(deduplicated_df["zero_volume_but_ohlc_changed_flag"].sum()),
+    # )
+    # print(
+    #     "Rows with all foreign flow fields missing:",
+    #     int(deduplicated_df["foreign_flow_all_missing_flag"].sum()),
+    # )
+    # print(
+    #     "Rows with all proprietary trading fields missing:",
+    #     int(deduplicated_df["prop_trading_all_missing_flag"].sum()),
+    # )
+    # if not negative_price_rows.empty:
+    #     print("\nRows with negative OHLC price that were removed:")
+    #     print(
+    #         negative_price_rows[
+    #             ["symbol", "ticker", "date", "open_price", "high_price", "low_price", "close_price"]
+    #         ].to_string(index=False)
+    #     )
+    # if not zero_volume_but_ohlc_changed_rows.empty:
+    #     print("\nRows with vol_total = 0 but OHLC changed:")
 
 if __name__ == "__main__":
     main()

@@ -7,7 +7,7 @@ import pandas as pd
 
 from clean_historical_price import load_tabular_data, prepare_historical_price_data
 
-PRICE_DATA_PATH = "historical_price_all.parquet"
+PRICE_DATA_PATH = "historical_price_merged.parquet"
 
 
 def load_price_data_for_eda(path: str | Path) -> pd.DataFrame:
