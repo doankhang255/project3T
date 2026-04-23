@@ -6,7 +6,7 @@ from typing import Dict
 
 import pandas as pd
 
-HISTORICAL_PRICE_PATH = "parquet_all.parquet" 
+HISTORICAL_PRICE_PATH = "historical_price_all.parquet" 
 
 FLOAT_COLUMNS = [
     "high_price",

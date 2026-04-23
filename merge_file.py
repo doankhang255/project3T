@@ -1,8 +1,8 @@
 import pandas as pd
 
-file1 = "historical_price_6298.parquet"
-file2 = "parquet_all1.parquet"
-output_file = "parquet_all.parquet"
+file1 = "historical_price_12756.parquet"
+file2 = "historical_price_all.parquet"
+output_file = "historical_price_merged.parquet"
 
 df1 = pd.read_parquet(file1)
 df2 = pd.read_parquet(file2)
