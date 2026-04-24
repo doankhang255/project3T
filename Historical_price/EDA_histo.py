@@ -10,11 +10,7 @@ from clean_EDA import build_clean_eda_data
 FEATURE_DATA_PATH = Path("historical_price_feature.parquet")
 
 
-def add_rolling_return_volatility(
-    df: pd.DataFrame,
-    window: int = 20,
-    min_periods: int = 10,
-) -> pd.DataFrame:
+def add_rolling_return_volatility(df: pd.DataFrame, window: int = 20, min_periods: int = 10) -> pd.DataFrame:
     out = df.copy()
     out["rolling_std_ret_20"] = (
         out.groupby("ticker", dropna=False)["ret_0"]
@@ -49,17 +45,13 @@ def build_feature(df: pd.DataFrame) -> pd.DataFrame:
     out["ret_5"] = np.log(next_close_5 / out["close_price"])
 
     out["log_vol_total"] = np.log1p(out["vol_total"].clip(lower=0))
-    rolling_log_vol_mean = ticker_group["log_vol_total"].transform(
-        lambda s: s.shift(1).rolling(20, min_periods=10).mean()
-    )
+    rolling_log_vol_mean = ticker_group["log_vol_total"].transform(lambda s: s.shift(1).rolling(20, min_periods=10).mean())
     out["abn_vol"] = out["log_vol_total"] - rolling_log_vol_mean
     out["intraday_range_ratio"] = (out["high_price"] - out["low_price"]) / out["close_price"]
+
     out = add_rolling_return_volatility(out, window=20, min_periods=10)
-    out = add_lag_features(
-        out,
-        lag_columns=["ret_0", "log_vol_total", "rolling_std_ret_20"],
-        max_lag=5,
-    )
+    out = add_lag_features(out, lag_columns=["ret_0", "log_vol_total", "rolling_std_ret_20"], max_lag=5)
+
     return out[
         [
             "ticker",
