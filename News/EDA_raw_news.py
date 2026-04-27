@@ -127,6 +127,13 @@ def build_year_record_counts(df: pd.DataFrame) -> pd.DataFrame:
     return year_record_counts
 
 
+def build_year_before_2005_rows(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["year"] = pd.to_numeric(out["year"], errors="coerce").astype("Int64")
+    year_before_2005_rows = out.loc[out["year"].notna() & out["year"].le(2005)].copy()
+    return year_before_2005_rows
+
+
 def build_unique_value_counts(df: pd.DataFrame, column: str) -> pd.DataFrame:
     series = df[column]
     if pd.api.types.is_string_dtype(series) or str(series.dtype) in {"object", "string"}:
@@ -156,6 +163,13 @@ def build_unique_domains(df: pd.DataFrame) -> pd.DataFrame:
     return unique_domains
 
 
+def build_unique_categories(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["category"] = out["category"].astype("string").str.strip().str.lower()
+    unique_categories = build_unique_value_counts(out, "category")[["category"]].copy()
+    return unique_categories
+
+
 def build_domain_record_counts(df: pd.DataFrame) -> pd.DataFrame:
     domain_series = df["domain"].astype("string").str.strip().str.lower()
     valid_domain_mask = ~(domain_series.isna() | domain_series.fillna("").isin(NULL_LIKE_VALUES))
@@ -179,21 +193,30 @@ def main() -> None:
     year_record_counts = build_year_record_counts(normal_text)
     unique_domains = build_unique_domains(normal_text)
     description_word_count_percentiles = calculate_description_word_count_percentiles(has_description_df)
+    build_domain_record_counts_df = build_domain_record_counts(normal_text)
+    unique_categories = build_unique_categories(normal_text)
+    year_before_2005_rows = build_year_before_2005_rows(normal_text)
+
 
     print("Input records:", len(raw_df))
     print("Unique domains:", len(unique_domains))
     print("Duplicate rows by link + publication_date:", len(duplicate_rows))
+    print("Unique categories:", len(unique_categories))
+    print("Rows with year < 2005:", len(year_before_2005_rows))
     print(f"Maximum description word count: {has_description_df['description_word_count'].max()}")
     print(f"Minimum description word count: {has_description_df['description_word_count'].min()}")
     print(f"Average description word count: {has_description_df['description_word_count'].mean():.2f}")
     print(f"Description word count p50: {description_word_count_percentiles['p50']}")
     print(f"Description word count p90: {description_word_count_percentiles['p90']}")
+    
     # for _, row in year_record_counts.iterrows():
     #     print(f"number of records in year {int(row['year'])}: {row['number_of_records']}")
 
     # for _, row in missing_records.iterrows():
     #     print(f"number of missing rows in {row['column']}: {row['number_of_missing_rows']}")
 
+    # for _, row in build_domain_record_counts_df.iterrows():
+    #     print(f"number of records per domain: {row['domain']} - {row['number_of_records']}")
 
 if __name__ == "__main__":
     main()
