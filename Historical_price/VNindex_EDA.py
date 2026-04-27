@@ -102,14 +102,10 @@ def main() -> None:
     print("Duplicate records by symbol-date:", len(duplicate_rows))
     print("Rows with year mismatch:", len(year_mismatch_rows))
     print("Rows with invalid OHLC:", len(invalid_ohlc_rows))
-    print(
-        "Rows with vol_total = 0 but OHLC changed:",
-        len(zero_vol_total_but_ohlc_changed_rows),
-    )
+    print("Rows with vol_total = 0 but OHLC changed:", len(zero_vol_total_but_ohlc_changed_rows))
     print("Rows with vol_total = 0:", len(zero_vol_total_rows))
     print("Rows with adj_ratio != 1:", len(adj_ratio_not_one_rows))
     print("Rows with adj_ratio = 1:", len(adj_ratio_equal_one_rows))
-
 
 if __name__ == "__main__":
     main()
