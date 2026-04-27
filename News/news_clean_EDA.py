@@ -1,13 +1,25 @@
 from __future__ import annotations
 import ast
 import pandas as pd
-from EDA_raw_news import build_year_before_2005_rows
-from EDA_raw_news import build_unique_value_counts
-from EDA_raw_news import INPUT_PATH
-from EDA_raw_news import load_input_data
-from EDA_raw_news import NULL_LIKE_VALUES
-from EDA_raw_news import normalize_text_columns
-from EDA_raw_news import TEXT_COLUMNS
+
+try:
+    from News.EDA_raw_news import add_description_word_count
+    from News.EDA_raw_news import build_year_before_2010_rows
+    from News.EDA_raw_news import INPUT_PATH
+    from News.EDA_raw_news import load_input_data
+    from News.EDA_raw_news import NULL_LIKE_VALUES
+    from News.EDA_raw_news import normalize_text_columns
+    from News.EDA_raw_news import parse_publication_date_series
+    from News.EDA_raw_news import TEXT_COLUMNS
+except ImportError:
+    from EDA_raw_news import add_description_word_count
+    from EDA_raw_news import build_year_before_2010_rows
+    from EDA_raw_news import INPUT_PATH
+    from EDA_raw_news import load_input_data
+    from EDA_raw_news import NULL_LIKE_VALUES
+    from EDA_raw_news import normalize_text_columns
+    from EDA_raw_news import parse_publication_date_series
+    from EDA_raw_news import TEXT_COLUMNS
 
 
 def normalize_domain_column(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -24,8 +36,9 @@ def normalize_domain_column(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFram
     return out, normalize_domain
 
 
-def parse_dict_like_keywords(df: pd.DataFrame) -> pd.DataFrame:
+def parse_dict_like_keywords(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     out = df.copy()
+    original_keywords = out["keywords"].astype("string")
 
     def parse_keyword_value(raw: object) -> object:
         if pd.isna(raw):
@@ -52,19 +65,36 @@ def parse_dict_like_keywords(df: pd.DataFrame) -> pd.DataFrame:
         return text
 
     out["keywords"] = out["keywords"].apply(parse_keyword_value).astype("string")
-    return out
+    parsed_mask = original_keywords.ne(out["keywords"].astype("string"))
+    parsed_keyword_rows = out.loc[parsed_mask].copy().reset_index(drop=True)
+    return out, parsed_keyword_rows
 
 
 def build_clean_news(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    out = out.loc[out["publication_date"].notna()].copy()
-    year_before_2005_rows = build_year_before_2005_rows(out)
-    out = out.drop(index=year_before_2005_rows.index).copy()
+    raw_publication_date = out["publication_date"].astype("string").str.strip()
+    raw_publication_date = raw_publication_date.str.replace(r"\s*\(GMT[+-]\d+\)\s*$", "", regex=True)
+    publication_date_digits = raw_publication_date.fillna("").str.replace(r"\D", "", regex=True)
+    zero_publication_date_mask = (
+        publication_date_digits.ne("")
+        & publication_date_digits.str.fullmatch(r"0+", na=False)
+    )
+    invalid_publication_date_mask = (
+        raw_publication_date.isna()
+        | raw_publication_date.fillna("").str.lower().isin(NULL_LIKE_VALUES)
+        | zero_publication_date_mask
+    )
+    out["publication_date"] = parse_publication_date_series(out["publication_date"])
+    out = out.loc[~invalid_publication_date_mask & out["publication_date"].notna()].copy()
+    year_before_2010_rows = build_year_before_2010_rows(out)
+    out = out.drop(index=year_before_2010_rows.index).copy()
+    out = add_description_word_count(out)
+    out = out.loc[out["description_word_count"].ge(5)].copy()
     out = out.drop_duplicates(subset=["link", "publication_date"], keep="first").copy()
     out = out.sort_values(["publication_date", "link"], kind="mergesort").reset_index(drop=True)
 
     _, normalize_domain = normalize_domain_column(out)
-    normalized_keywords = parse_dict_like_keywords(out)
+    normalized_keywords, parsed_keyword_rows = parse_dict_like_keywords(out)
 
     clean_news = pd.DataFrame(
         {
@@ -84,10 +114,7 @@ def main() -> None:
     raw_df = load_input_data(INPUT_PATH)
     normalized_df = normalize_text_columns(raw_df, TEXT_COLUMNS)
     input_rows = len(raw_df)
-    prepared_df = normalized_df.copy()
-    category_counts = build_unique_value_counts(prepared_df, "category")
-    domain_counts = build_unique_value_counts(prepared_df, "domain")
-    clean_news_df = build_clean_news(prepared_df)
+    clean_news_df = build_clean_news(normalized_df)
 
     print("Input rows:", input_rows)
     print("Clean news rows:", len(clean_news_df))

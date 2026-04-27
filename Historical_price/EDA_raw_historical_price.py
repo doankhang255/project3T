@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-HISTORICAL_PRICE_PATH = "historical_price_all1.parquet"
+HISTORICAL_PRICE_PATH = "price_all.parquet"
 REQUIRED_SYMBOLS_PATH = "symbols.csv"
 
 FLOAT_COLUMNS = [
