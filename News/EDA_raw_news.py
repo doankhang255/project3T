@@ -3,7 +3,10 @@ from pathlib import Path
 import re
 from typing import Iterable
 import pandas as pd
-INPUT_PATH = "dataset_news.parquet"
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+INPUT_PATH = PROJECT_ROOT / "dataset_news.parquet"
+
 TEXT_COLUMNS = [
     "link",
     "domain",
@@ -40,7 +43,9 @@ def build_missing_records(df: pd.DataFrame) -> pd.DataFrame:
     records = []
     for column in df.columns:
         series = df[column]
-        if pd.api.types.is_string_dtype(series) or str(series.dtype) in {"object", "string"}:
+        if column == "description":
+            missing_mask = series.apply(count_words_in_text).eq(0)
+        elif pd.api.types.is_string_dtype(series) or str(series.dtype) in {"object", "string"}:
             text_series = series.astype("string").str.strip()
             missing_value_mask = text_series.isna()
             null_like_mask = text_series.fillna("").str.lower().isin(NULL_LIKE_VALUES)
