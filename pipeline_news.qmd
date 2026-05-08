@@ -1,0 +1,449 @@
+---
+title: "Pipeline xây dựng Financial Dictionary và chuẩn bị dữ liệu fine-tune PhoBERT"
+lang: vi
+format:
+  pdf:
+    number-sections: true
+    toc: false
+---
+
+# Mục tiêu
+
+Tài liệu này mô tả toàn bộ pipeline từ thời điểm đã có **equity news sạch** và đã xây được **document-term matrix dạng CSR** cho tới bước chuẩn bị dữ liệu để **fine-tune PhoBERT** cho bài toán phân loại sentiment tin tức cổ phiếu.
+
+Pipeline này bám theo tinh thần của:
+
+- **Loughran & McDonald (2011)**: bag-of-words, TF/DF, xây từ điển tài chính riêng theo ngữ cảnh domain.
+- Hướng triển khai thực tế cho project hiện tại: tạo **financial dictionary / equity dictionary**, sinh **sentiment feature**, tạo **label**, rồi đưa vào mô hình **PhoBERT fine-tune**.
+
+# Điểm xuất phát hiện tại
+
+Hiện tại đã có:
+
+- `equity_news_df`: tập tin equity news đã được làm sạch.
+- Cột text chính để phân tích:
+  - `title`
+  - `description`
+  - hoặc cột ghép như `des-title`
+- Dữ liệu đã được tokenize tiếng Việt.
+- Đã xây được:
+  - `CountVectorizer`
+  - **document-term matrix** dạng **CSR sparse matrix**
+
+Điều này có nghĩa là phần **bag-of-words nền tảng** đã hoàn thành.
+
+# Tổng quan pipeline từ đây đến PhoBERT
+
+Pipeline tổng quát:
+
+1. Xây **TF / DF statistics** từ CSR matrix  
+2. Chọn **candidate terms**  
+3. Review thủ công để xây **Financial Dictionary v1**  
+4. Tính **lexicon-based features** cho từng bài báo  
+5. Tạo **sentiment label / sentiment score sơ bộ**  
+6. Rà soát và làm sạch bộ nhãn  
+7. Chuẩn bị tập dữ liệu huấn luyện cho **PhoBERT**  
+8. Fine-tune PhoBERT cho bài toán sentiment classification  
+9. Xuất xác suất lớp và suy ra `sentiment_score` cuối cùng  
+10. Gộp lên `ticker-date` để phục vụ firm-day analysis
+
+# Bước 1 - Tính TF và DF từ CSR matrix
+
+Sau khi có document-term matrix, bước tiếp theo là xây thống kê từ vựng cho toàn bộ corpus equity news.
+
+## TF là gì
+
+**TF (Term Frequency)** là tổng số lần một từ xuất hiện trong toàn bộ corpus hoặc trong từng document.
+
+Ví dụ:
+
+- từ `lỗ` xuất hiện 2,000 lần trong toàn bộ equity news  
+=> `TF = 2000`
+
+## DF là gì
+
+**DF (Document Frequency)** là số lượng document có chứa từ đó ít nhất một lần.
+
+Ví dụ:
+
+- từ `lỗ` xuất hiện trong 800 bài báo  
+=> `DF = 800`
+
+## Vai trò của TF/DF
+
+TF và DF giúp trả lời:
+
+- Từ nào xuất hiện nhiều?
+- Từ nào phủ rộng trên nhiều bài?
+- Từ nào quá hiếm để đưa vào dictionary?
+- Từ nào quá phổ biến nhưng có thể không mang sentiment?
+
+## Output của bước này
+
+Tạo một bảng thống kê dạng:
+
+- `term`
+- `tf`
+- `df`
+- `df_ratio`
+- `avg_tf_per_doc`
+
+Bảng này là đầu vào chính để xây **financial dictionary**.
+
+# Bước 2 - Chọn candidate terms
+
+Không nên review toàn bộ vocabulary thô vì số lượng token thường rất lớn và nhiều token không có giá trị.
+
+## Quy tắc lọc sơ bộ
+
+Có thể áp dụng một số rule như:
+
+- Chỉ giữ các từ có `df >= ngưỡng tối thiểu`
+- Loại các từ quá hiếm
+- Loại token lỗi, token rác
+- Loại số thuần túy
+- Loại stopwords quá chung nếu cần
+- Loại các token không phản ánh nội dung tài chính
+
+## Mục tiêu của bước này
+
+Mục tiêu là tạo ra một danh sách **candidate terms** đủ gọn để có thể:
+
+- đọc thủ công
+- gán nhóm sentiment
+- xây dictionary v1
+
+# Bước 3 - Xây Financial Dictionary v1
+
+Đây là bước quan trọng nhất theo tinh thần Loughran & McDonald (2011).
+
+## Ý tưởng chính
+
+Không dùng sentiment dictionary chung một cách máy móc.  
+Thay vào đó, xây một **từ điển riêng cho equity news** dựa trên chính corpus của mình.
+
+## Cách gán nhóm từ
+
+Review thủ công danh sách candidate terms và gán mỗi từ vào một nhóm như:
+
+- `positive`
+- `negative`
+- `uncertainty`
+- `litigious`
+- `neutral/remove`
+
+Có thể thêm:
+
+- `strong_modal`
+- `weak_modal`
+
+nếu muốn bám sát hơn với hướng mở rộng của Loughran & McDonald.
+
+## Ví dụ
+
+### Negative
+
+- `thua_lỗ`
+- `suy_giảm`
+- `đình_chỉ`
+- `xử_phạt`
+- `vi_phạm`
+
+### Positive
+
+- `tăng_trưởng`
+- `khởi_sắc`
+- `hồi_phục`
+- `mở_rộng`
+- `cải_thiện`
+
+### Uncertainty
+
+- `rủi_ro`
+- `có_thể`
+- `dự_kiến`
+- `khả_năng`
+- `biến_động`
+
+### Litigious
+
+- `khởi_kiện`
+- `tranh_chấp`
+- `xử_phạt`
+- `điều_tra`
+- `vi_phạm_pháp_lý`
+
+## Output của bước này
+
+Một bảng dictionary dạng:
+
+- `term`
+- `category`
+- `keep_flag`
+- `note`
+
+Ví dụ:
+
+| term | category | keep_flag | note |
+|---|---|---:|---|
+| thua_lỗ | negative | 1 | tone tiêu cực rõ |
+| tăng_trưởng | positive | 1 | tone tích cực rõ |
+| cổ_phiếu | neutral | 0 | từ chủ đề, không phải sentiment |
+| doanh_nghiệp | neutral | 0 | từ quá chung |
+
+# Bước 4 - Mở rộng dictionary
+
+Sau khi có dictionary v1, nên mở rộng thêm bằng:
+
+- biến thể từ
+- cụm từ gần nghĩa
+- cách viết khác nhau
+- cụm từ chuyên ngành equity
+
+Ví dụ:
+
+- `lỗ`, `thua_lỗ`, `lỗ_ròng`
+- `tăng`, `tăng_mạnh`, `tăng_trưởng`
+- `điều_tra`, `thanh_tra`, `xử_phạt`
+
+Mục tiêu là tăng khả năng bao phủ của dictionary nhưng vẫn giữ đúng ngữ cảnh tài chính.
+
+# Bước 5 - Tính lexicon-based features cho từng bài báo
+
+Sau khi đã có financial dictionary, áp dictionary lên từng bài báo trong `equity_news_df`.
+
+## Các biến nên tính
+
+Cho mỗi bài báo, tính:
+
+- `pos_count`
+- `neg_count`
+- `uncertainty_count`
+- `litigious_count`
+
+Ngoài ra có thể tính thêm:
+
+- `title_length`
+- `description_length`
+- `total_token_count`
+
+## Các chỉ số chuẩn hóa
+
+Có thể tạo thêm:
+
+- `pos_ratio = pos_count / total_token_count`
+- `neg_ratio = neg_count / total_token_count`
+- `unc_ratio = uncertainty_count / total_token_count`
+- `lit_ratio = litigious_count / total_token_count`
+
+## Sentiment score sơ bộ
+
+Một công thức đơn giản, dễ diễn giải:
+
+$$
+\text{sentiment\_score}
+=
+\frac{
+\text{pos\_count} - \text{neg\_count}
+}{
+\text{pos\_count} + \text{neg\_count}
+}
+$$
+
+Quy ước:
+
+- nếu mẫu số bằng 0 thì `sentiment_score = 0`
+
+Ý nghĩa:
+
+- gần `1` -> rất positive
+- gần `-1` -> rất negative
+- gần `0` -> neutral hoặc tín hiệu yếu
+
+# Bước 6 - Sinh label sentiment sơ bộ
+
+Từ `sentiment_score`, có thể tạo `sentiment_label` sơ bộ:
+
+- `positive` nếu `sentiment_score > ngưỡng dương`
+- `negative` nếu `sentiment_score < ngưỡng âm`
+- `neutral` nếu nằm giữa hai ngưỡng
+
+Ví dụ:
+
+- `positive` nếu `score > 0.1`
+- `negative` nếu `score < -0.1`
+- `neutral` nếu `-0.1 <= score <= 0.1`
+
+## Lưu ý quan trọng
+
+Label sinh từ dictionary chỉ nên được xem là:
+
+- **weak label**
+- hoặc **pseudo-label**
+
+Không nên coi đây là ground truth cuối cùng nếu muốn fine-tune model mạnh như PhoBERT.
+
+# Bước 7 - Làm sạch bộ nhãn trước khi train
+
+Để mô hình học đúng, cần rà soát bộ nhãn trước khi fine-tune.
+
+## Cách làm thực tế
+
+- Lấy mẫu ngẫu nhiên các bài đã gán `positive`
+- Lấy mẫu ngẫu nhiên các bài đã gán `negative`
+- Lấy mẫu ngẫu nhiên các bài đã gán `neutral`
+- Đọc thủ công và kiểm tra mức độ hợp lý
+
+## Mục tiêu
+
+- loại các bài bị gán sai rõ ràng
+- chỉnh lại dictionary nếu cần
+- tăng chất lượng nhãn
+
+## Kết quả mong muốn
+
+Sau bước này, có một tập dữ liệu **semi-clean labels** đủ tốt để dùng cho supervised training.
+
+# Bước 8 - Chuẩn bị dữ liệu cho PhoBERT
+
+Sau khi có `sentiment_label`, chuẩn bị dữ liệu huấn luyện cho mô hình PhoBERT.
+
+## Input text
+
+Input nên dùng:
+
+- `title + description`
+
+Lý do:
+
+- `title` thường chứa tín hiệu sentiment mạnh
+- `description` bổ sung ngữ cảnh
+- dùng cả hai thường tốt hơn chỉ dùng một trường
+
+Có thể ghép theo dạng:
+
+`title [SEP] description`
+
+hoặc chỉ cần nối chuỗi thông thường.
+
+## Label huấn luyện
+
+Sử dụng:
+
+- `negative`
+- `neutral`
+- `positive`
+
+Đây là bài toán **3-class classification**.
+
+## Chia tập dữ liệu
+
+Nên chia thành:
+
+- `train`
+- `validation`
+- `test`
+
+Khuyến nghị:
+
+- chia theo **thời gian** nếu muốn tránh look-ahead bias
+- hoặc chia stratified nếu trước mắt mới cần baseline classification
+
+# Bước 9 - Fine-tune PhoBERT
+
+## PhoBERT là gì
+
+PhoBERT là một mô hình Transformer tiền huấn luyện cho tiếng Việt, phù hợp cho các bài toán NLP như:
+
+- phân loại văn bản
+- sentiment analysis
+- sequence classification
+
+## Đầu vào và đầu ra
+
+### Input
+
+- text = `title + description`
+
+### Output
+
+Với mỗi bài báo, PhoBERT sẽ trả ra 3 xác suất:
+
+- `p_negative`
+- `p_neutral`
+- `p_positive`
+
+Từ đó:
+
+- lớp có xác suất lớn nhất = `sentiment_label_pred`
+
+## Suy ra sentiment score từ PhoBERT
+
+Có thể định nghĩa:
+
+$$
+\text{sentiment\_score\_model}
+=
+p(\text{positive}) - p(\text{negative})
+$$
+
+Ý nghĩa:
+
+- dương -> thiên positive
+- âm -> thiên negative
+- gần 0 -> neutral
+
+# Bước 10 - Đánh giá mô hình
+
+Các chỉ số nên dùng:
+
+- `accuracy`
+- `macro F1`
+- `precision`
+- `recall`
+- `confusion matrix`
+
+Nếu mục tiêu internship là accuracy >= 80%, thì vẫn nên báo thêm macro F1 để tránh trường hợp accuracy cao nhưng model thiên lệch vào lớp lớn.
+
+# Bước 11 - Tạo output cuối cùng cho từng bài báo
+
+Sau khi infer bằng PhoBERT, mỗi bài báo nên có:
+
+- `publication_date`
+- `title`
+- `description`
+- `keywords_norm`
+- `domain_norm`
+- `sentiment_label_pred`
+- `p_negative`
+- `p_neutral`
+- `p_positive`
+- `sentiment_score_model`
+
+# Bước 12 - Gộp lên firm-day
+
+Sau khi có sentiment của từng bài, bước tiếp theo là map bài báo về `ticker` rồi gộp theo `ticker + date`.
+
+Các biến firm-day nên tính:
+
+- `news_count`
+- `mean_sentiment`
+- `weighted_sentiment`
+- `abs_sentiment`
+
+Sau đó merge với **historical_price features** để kiểm tra:
+
+- `ret_1`
+- `ret_3`
+- `ret_5`
+- `abn_vol`
+- `rolling_std_ret_20`
+- `intraday_range_ratio`
+
+# Flow ngắn gọn để đưa vào report
+
+**Equity news sạch -> tokenize -> CSR document-term matrix -> TF/DF statistics -> candidate term selection -> Financial Dictionary v1 -> lexicon-based sentiment features -> weak labels -> review and refinement -> PhoBERT fine-tuning -> predicted sentiment probabilities -> article-level sentiment score -> firm-day aggregation**
+
+# Kết luận
+
+Trong pipeline này, phần **bag-of-words + TF/DF + financial dictionary** đóng vai trò tạo nền tảng domain knowledge cho equity news tiếng Việt. Sau đó, dictionary-based sentiment được dùng để sinh weak labels và hỗ trợ hiểu dữ liệu. Cuối cùng, PhoBERT được fine-tune trên bộ dữ liệu đã được chuẩn bị để học ngữ cảnh tốt hơn và tạo ra sentiment predictions mạnh hơn so với phương pháp từ điển thuần túy.
