@@ -27,13 +27,7 @@ def build_tf_df_dataframe(term_document_matrix: csr_matrix, terms: list[str],) -
     tf = term_document_matrix.sum(axis=0).A1
     df = term_document_matrix.astype(bool).sum(axis=0).A1
 
-    tf_df_dataframe = pd.DataFrame(
-        {
-            "term": terms,
-            "tf": tf,
-            "df": df,
-        }
-    )
+    tf_df_dataframe = pd.DataFrame({"term": terms, "tf": tf, "df": df})
 
     tf_df_dataframe = tf_df_dataframe.sort_values(
         by=["tf", "df", "term"],
