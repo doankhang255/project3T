@@ -45,7 +45,7 @@ Pipeline tổng quát:
 7. Chuẩn bị tập dữ liệu huấn luyện cho **PhoBERT**  
 8. Fine-tune PhoBERT cho bài toán sentiment classification  
 9. Xuất xác suất lớp và suy ra `sentiment_score` cuối cùng  
-10. Gộp lên `ticker-date` để phục vụ firm-day analysis
+10. Gộp lên `ticker-date` để phục vụ firm-day analysis  
 
 # Bước 1 - Tính TF và DF từ CSR matrix
 

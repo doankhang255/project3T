@@ -1,0 +1,32 @@
+project:
+  output-dir: _output
+
+execute:
+  echo: false
+  warning: false
+  message: false
+
+format:
+  pdf:
+    pdf-engine: xelatex
+    documentclass: report
+    classoption: oneside
+    papersize: a4
+    fontsize: 12pt
+    number-sections: true
+    toc: false
+    top-level-division: chapter
+    colorlinks: true
+    linkcolor: black
+    urlcolor: blue
+    citecolor: black
+    geometry:
+      - top=2.5cm
+      - bottom=2.5cm
+      - left=3cm
+      - right=2cm
+    include-in-header:
+      - styles.tex
+
+bibliography: references.bib
+link-citations: true

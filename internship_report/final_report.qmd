@@ -1,0 +1,391 @@
+---
+date: "2026-05-15"
+---
+
+```{=latex}
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+{\bfseries\Large [TÊN TRƯỜNG ĐẠI HỌC]}\\[0.3cm]
+{\bfseries\large [KHOA / VIỆN / BỘ MÔN]}\\[2.2cm]
+
+{\bfseries\Large BÁO CÁO CUỐI KỲ THỰC TẬP}\\[0.4cm]
+{\bfseries\large INTERNSHIP SEMESTER FINAL REPORT}\\[1.6cm]
+
+{\bfseries\Large XÂY DỰNG PIPELINE XỬ LÝ TIN TỨC TÀI CHÍNH\\
+VÀ PHÂN TÍCH SENTIMENT CHO THỊ TRƯỜNG CỔ PHIẾU}\\[2.0cm]
+\end{center}
+
+\begin{flushleft}
+\hspace{1.5cm}\textbf{Sinh viên thực hiện:} [Họ và tên sinh viên]\\[0.25cm]
+\hspace{1.5cm}\textbf{Mã số sinh viên:} [MSSV]\\[0.25cm]
+\hspace{1.5cm}\textbf{Lớp/Ngành:} [Lớp - Ngành học]\\[0.25cm]
+\hspace{1.5cm}\textbf{Đơn vị thực tập:} [Tên công ty / phòng ban]\\[0.25cm]
+\hspace{1.5cm}\textbf{Giảng viên hướng dẫn:} [Tên giảng viên]\\[0.25cm]
+\hspace{1.5cm}\textbf{Người hướng dẫn tại đơn vị:} [Tên mentor]\\[0.25cm]
+\hspace{1.5cm}\textbf{Thời gian thực tập:} [Từ ngày] -- [Đến ngày]
+\end{flushleft}
+
+\vfill
+\begin{center}
+{\bfseries TP. Hồ Chí Minh, 2026}
+\end{center}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+```
+
+# Lời cảm ơn {-}
+
+Em xin gửi lời cảm ơn đến [Tên công ty/đơn vị thực tập] đã tạo điều kiện để em tham gia vào môi trường làm việc thực tế, tiếp cận quy trình xử lý dữ liệu và phát triển sản phẩm phân tích trong lĩnh vực tài chính. Em cũng xin cảm ơn [Tên mentor] đã hướng dẫn, góp ý và hỗ trợ em trong suốt quá trình thực tập.
+
+Em xin chân thành cảm ơn [Tên giảng viên hướng dẫn] đã theo dõi, định hướng và góp ý để em hoàn thiện báo cáo này. Những kinh nghiệm thu được trong học kỳ thực tập giúp em hiểu rõ hơn cách kết nối kiến thức về dữ liệu, lập trình, xử lý ngôn ngữ tự nhiên và tài chính định lượng vào một bài toán thực tế.
+
+# Tóm tắt {-}
+
+Báo cáo trình bày quá trình thực tập với trọng tâm là xây dựng pipeline xử lý dữ liệu phục vụ phân tích sentiment của tin tức tài chính trên thị trường cổ phiếu. Nội dung công việc bao gồm thu thập và làm sạch dữ liệu tin tức, chuẩn hóa dữ liệu giá lịch sử, phân tích dữ liệu sự kiện cổ phiếu, xây dựng ma trận từ vựng, lựa chọn candidate terms, phát triển financial dictionary theo ngữ cảnh tiếng Việt và chuẩn bị dữ liệu cho hướng fine-tune mô hình PhoBERT.
+
+Kết quả chính của kỳ thực tập là một pipeline dữ liệu có khả năng chuyển đổi dữ liệu tin tức thô thành các đặc trưng có thể sử dụng trong mô hình phân tích sentiment và nghiên cứu phản ứng thị trường. Báo cáo cũng thảo luận các khó khăn trong xử lý tiếng Việt, vấn đề nhiễu dữ liệu, cách đánh giá chất lượng dictionary và các hướng phát triển tiếp theo.
+
+\clearpage
+
+# Giới thiệu
+
+## Bối cảnh thực tập
+
+Trong thị trường chứng khoán, thông tin từ truyền thông và tin tức doanh nghiệp có thể ảnh hưởng đến kỳ vọng của nhà đầu tư, thanh khoản và biến động giá cổ phiếu. Các nghiên cứu về textual analysis trong tài chính cho thấy nội dung văn bản có thể chứa tín hiệu về sentiment, rủi ro, mức độ bất định và kỳ vọng thị trường [@tetlock2007; @loughran2011].
+
+Trong kỳ thực tập, em tham gia vào bài toán xây dựng pipeline xử lý dữ liệu tin tức tài chính tiếng Việt nhằm hỗ trợ phân tích sentiment cho cổ phiếu. Bài toán này kết hợp nhiều nhóm kỹ năng: tiền xử lý dữ liệu, xử lý ngôn ngữ tự nhiên tiếng Việt, biểu diễn văn bản dạng bag-of-words, xây dựng dictionary theo domain tài chính và chuẩn bị dữ liệu cho mô hình học sâu.
+
+## Mục tiêu báo cáo
+
+Báo cáo này có các mục tiêu chính:
+
+- Mô tả bối cảnh, nhiệm vụ và phạm vi công việc trong học kỳ thực tập.
+- Trình bày quy trình xây dựng dữ liệu từ tin tức, giá lịch sử và sự kiện cổ phiếu.
+- Giải thích pipeline xử lý văn bản, xây dựng financial dictionary và chuẩn bị nhãn sentiment.
+- Tổng kết kết quả đạt được, kỹ năng học được và các hạn chế còn tồn tại.
+- Đề xuất hướng phát triển tiếp theo cho hệ thống phân tích sentiment tài chính.
+
+## Phạm vi công việc
+
+Phạm vi thực hiện tập trung vào giai đoạn nền tảng của pipeline dữ liệu. Báo cáo không đặt mục tiêu xây dựng một hệ thống giao dịch hoàn chỉnh, mà tập trung vào việc tạo dữ liệu đầu vào có chất lượng cho các bước phân tích sau này.
+
+Các thành phần chính gồm:
+
+- Dữ liệu tin tức cổ phiếu và thông tin mô tả bài viết.
+- Dữ liệu giá lịch sử phục vụ phân tích theo thời gian.
+- Dữ liệu sự kiện cổ phiếu phục vụ đối chiếu với biến động thị trường.
+- Pipeline tokenization, làm sạch văn bản và xây dựng ma trận term-document.
+- Quy trình chọn candidate terms và xây dựng dictionary tài chính tiếng Việt.
+- Định hướng tạo sentiment features và chuẩn bị dữ liệu fine-tune PhoBERT [@nguyen2020phobert].
+
+# Tổng quan đơn vị thực tập và nhiệm vụ
+
+## Giới thiệu đơn vị thực tập
+
+[Viết ngắn gọn 1--2 trang về công ty, phòng ban, lĩnh vực hoạt động, sản phẩm/dịch vụ chính, vị trí thực tập và vai trò của nhóm dữ liệu.]
+
+Trong thời gian thực tập, em được phân công tham gia nhóm [Tên nhóm/phòng ban], với trọng tâm là xử lý và phân tích dữ liệu phục vụ các bài toán liên quan đến thị trường tài chính. Môi trường thực tập giúp em tiếp cận quy trình làm việc thực tế, bao gồm đọc yêu cầu, phân tích dữ liệu, viết script xử lý, kiểm tra kết quả và trình bày tiến độ.
+
+## Nhiệm vụ được giao
+
+Các nhiệm vụ chính trong kỳ thực tập bao gồm:
+
+| Nhóm nhiệm vụ | Nội dung thực hiện | Kết quả đầu ra |
+|---|---|---|
+| Khảo sát dữ liệu | Kiểm tra cấu trúc dữ liệu tin tức, giá lịch sử và sự kiện cổ phiếu | Hiểu nguồn dữ liệu, cột dữ liệu, vấn đề thiếu hoặc nhiễu |
+| Làm sạch dữ liệu | Chuẩn hóa text, xử lý missing values, lọc bản ghi không phù hợp | Dữ liệu đầu vào sạch hơn cho phân tích |
+| Xử lý tiếng Việt | Tokenize văn bản, chuẩn hóa token, chuẩn bị corpus | Corpus phục vụ vectorization |
+| Biểu diễn văn bản | Xây dựng CountVectorizer, TF/DF, TF-IDF hoặc CSR matrix | Ma trận đặc trưng văn bản |
+| Xây dựng dictionary | Lọc candidate terms và gán nhóm sentiment | Financial dictionary phiên bản đầu |
+| Chuẩn bị mô hình | Đề xuất hướng tạo nhãn và fine-tune PhoBERT | Dữ liệu sẵn sàng cho bước mô hình hóa |
+
+## Công cụ và môi trường làm việc
+
+Các công cụ được sử dụng trong quá trình thực tập:
+
+- Python cho xử lý dữ liệu, EDA và xây dựng pipeline.
+- pandas, NumPy, scikit-learn cho xử lý bảng dữ liệu và biểu diễn văn bản.
+- Các thư viện xử lý tiếng Việt cho tokenization và chuẩn hóa văn bản.
+- Quarto để ghi chép pipeline và biên soạn báo cáo.
+- Git để quản lý phiên bản mã nguồn.
+
+# Cơ sở lý thuyết
+
+## Sentiment trong tài chính
+
+Sentiment trong tài chính phản ánh thái độ tích cực, tiêu cực hoặc bất định của thông tin đối với doanh nghiệp, cổ phiếu hoặc thị trường. Không giống sentiment trong ngữ cảnh đời sống, sentiment tài chính phụ thuộc mạnh vào domain. Một từ có vẻ tiêu cực trong ngôn ngữ chung chưa chắc tiêu cực trong tài chính, và ngược lại.
+
+Ví dụ, các từ như "nợ", "lỗ", "xử phạt", "đình chỉ" thường mang tín hiệu tiêu cực khi xuất hiện trong tin doanh nghiệp. Trong khi đó, các từ như "tăng trưởng", "phục hồi", "mở rộng", "vượt kế hoạch" thường thể hiện tín hiệu tích cực. Nhóm từ như "dự kiến", "có thể", "rủi ro", "biến động" có thể phản ánh mức độ bất định.
+
+## Textual analysis và financial dictionary
+
+Loughran và McDonald chỉ ra rằng dictionary sentiment chung có thể không phù hợp khi áp dụng trực tiếp cho văn bản tài chính [@loughran2011]. Vì vậy, cách tiếp cận phù hợp hơn là xây dựng dictionary theo domain, dựa trên chính corpus tài chính cần phân tích.
+
+Với dữ liệu tiếng Việt, vấn đề này càng quan trọng vì:
+
+- Từ ghép và cụm từ tài chính cần được tokenize đúng.
+- Một token có thể mang nhiều nghĩa tùy ngữ cảnh.
+- Tin tức tài chính thường chứa tên doanh nghiệp, mã cổ phiếu, số liệu, thuật ngữ kế toán và các cụm từ chuyên ngành.
+- Dữ liệu báo chí có thể chứa nhiễu như HTML, ký tự đặc biệt, duplicate content hoặc nội dung không liên quan.
+
+## Biểu diễn văn bản
+
+Pipeline sử dụng hướng biểu diễn văn bản dạng bag-of-words và ma trận document-term. Mỗi dòng tương ứng với một bài viết, mỗi cột tương ứng với một token hoặc term. Từ ma trận này có thể tính:
+
+- Term Frequency (TF): tổng số lần một term xuất hiện trong corpus.
+- Document Frequency (DF): số lượng document có chứa term đó.
+- DF ratio: tỷ lệ document có chứa term.
+- TF-IDF: trọng số phản ánh mức độ quan trọng tương đối của term trong document.
+
+Các thống kê này hỗ trợ lọc candidate terms để xây dựng dictionary và tạo đặc trưng sentiment.
+
+## PhoBERT cho tiếng Việt
+
+PhoBERT là mô hình ngôn ngữ tiền huấn luyện cho tiếng Việt, phù hợp với nhiều bài toán NLP như phân loại văn bản, nhận diện thực thể và sentiment classification [@nguyen2020phobert]. Trong pipeline này, dictionary-based sentiment có thể được dùng như bước tạo nhãn sơ bộ, sau đó rà soát và cải thiện để chuẩn bị tập huấn luyện cho PhoBERT.
+
+# Phương pháp thực hiện
+
+## Tổng quan pipeline
+
+Pipeline tổng thể được thiết kế theo các bước:
+
+1. Thu thập và kiểm tra dữ liệu tin tức.
+2. Làm sạch văn bản và chuẩn hóa các cột chính.
+3. Tokenize tiếng Việt và tạo corpus.
+4. Xây dựng document-term matrix dạng sparse matrix.
+5. Tính TF, DF và các thống kê từ vựng.
+6. Chọn candidate terms dựa trên rule.
+7. Gán nhóm sentiment để tạo financial dictionary.
+8. Tính sentiment features cho từng bài viết.
+9. Tạo nhãn sentiment sơ bộ và chuẩn bị dữ liệu fine-tune PhoBERT.
+10. Tổng hợp sentiment theo mã cổ phiếu và ngày giao dịch.
+
+## Dữ liệu tin tức
+
+Dữ liệu tin tức là nguồn chính để trích xuất tín hiệu sentiment. Các cột quan trọng có thể bao gồm:
+
+- Tiêu đề bài viết.
+- Mô tả ngắn hoặc nội dung tóm tắt.
+- Ngày đăng tin.
+- Mã cổ phiếu hoặc doanh nghiệp liên quan.
+- Nguồn tin.
+
+Trong project hiện tại, dữ liệu tin tức được xử lý qua các script trong thư mục `News`, bao gồm làm sạch dữ liệu, tokenize tiếng Việt, tạo candidate terms và xây dựng ma trận CSR.
+
+## Dữ liệu giá lịch sử
+
+Dữ liệu giá lịch sử hỗ trợ kiểm tra phản ứng thị trường sau khi tin tức được công bố. Các biến thường dùng gồm giá mở cửa, giá đóng cửa, giá cao nhất, giá thấp nhất, khối lượng giao dịch và tỷ suất sinh lợi.
+
+Các bước xử lý chính:
+
+- Chuẩn hóa định dạng ngày.
+- Kiểm tra missing values và duplicate records.
+- Tạo biến return theo ngày.
+- Ghép dữ liệu theo mã cổ phiếu và ngày giao dịch.
+- Chuẩn bị dữ liệu để so sánh với sentiment theo firm-day.
+
+## Dữ liệu sự kiện cổ phiếu
+
+Dữ liệu sự kiện cổ phiếu giúp bổ sung bối cảnh cho phân tích tin tức. Một số sự kiện có thể ảnh hưởng đến giá cổ phiếu như công bố báo cáo tài chính, chia cổ tức, phát hành thêm, thay đổi nhân sự cấp cao hoặc thông tin xử phạt.
+
+Trong project, thư mục `event_stock` chứa notebook/script phục vụ EDA dữ liệu sự kiện. Dữ liệu này có thể được dùng để kiểm tra xem sentiment từ tin tức có trùng với giai đoạn xuất hiện sự kiện quan trọng hay không.
+
+## Làm sạch và tokenization
+
+Tiền xử lý văn bản là bước quan trọng vì chất lượng token ảnh hưởng trực tiếp đến dictionary và mô hình. Các thao tác chính gồm:
+
+- Chuyển đổi kiểu dữ liệu và xử lý missing text.
+- Loại bỏ ký tự thừa, khoảng trắng thừa, HTML hoặc pattern không cần thiết.
+- Chuẩn hóa chữ hoa/chữ thường.
+- Tokenize tiếng Việt để giữ được cụm từ có nghĩa.
+- Loại bỏ token rác, token quá ngắn hoặc không có giá trị phân tích.
+
+Ví dụ, cụm "tăng trưởng lợi nhuận" nên được giữ như các token/cụm từ có ý nghĩa tài chính thay vì bị tách sai làm mất ngữ cảnh.
+
+## Xây dựng ma trận văn bản
+
+Sau khi có corpus đã tokenize, pipeline xây dựng document-term matrix bằng CountVectorizer hoặc phương pháp tương đương. Để tiết kiệm bộ nhớ, ma trận được lưu ở dạng sparse matrix, đặc biệt phù hợp khi vocabulary lớn nhưng mỗi document chỉ chứa một phần nhỏ số term.
+
+Từ ma trận này, pipeline có thể tính TF, DF và TF-IDF. Các chỉ số này giúp chọn ra những term đủ phổ biến để review thủ công, đồng thời loại bỏ token quá hiếm hoặc quá chung.
+
+## Chọn candidate terms
+
+Candidate terms được chọn theo các tiêu chí:
+
+- Có DF vượt ngưỡng tối thiểu.
+- Không phải stopword phổ thông.
+- Không phải token lỗi, số thuần túy hoặc ký tự rác.
+- Có khả năng mang thông tin tài chính hoặc sentiment.
+- Ưu tiên cụm từ có ý nghĩa rõ trong ngữ cảnh thị trường.
+
+Kết quả của bước này là danh sách term ngắn hơn, phù hợp để review thủ công và gán nhóm sentiment.
+
+## Xây dựng financial dictionary
+
+Dictionary được tổ chức theo nhóm:
+
+| Nhóm | Ý nghĩa | Ví dụ term |
+|---|---|---|
+| Positive | Tín hiệu tích cực | tăng_trưởng, phục_hồi, vượt_kế_hoạch |
+| Negative | Tín hiệu tiêu cực | thua_lỗ, suy_giảm, xử_phạt |
+| Uncertainty | Bất định/rủi ro | rủi_ro, có_thể, dự_kiến |
+| Litigious | Pháp lý/tranh chấp | khởi_kiện, điều_tra, vi_phạm |
+| Neutral/Remove | Không dùng làm sentiment | doanh_nghiệp, cổ_phiếu, thị_trường |
+
+Mỗi term nên có thêm trường ghi chú để giải thích lý do giữ hoặc loại bỏ. Điều này giúp dictionary dễ bảo trì và dễ review khi mở rộng.
+
+## Tạo sentiment features
+
+Sau khi có dictionary, mỗi bài viết có thể được biểu diễn bằng các đặc trưng:
+
+- Số lượng từ positive.
+- Số lượng từ negative.
+- Số lượng từ uncertainty.
+- Số lượng từ litigious.
+- Tỷ lệ positive/negative trên tổng số token.
+- Sentiment score tổng hợp.
+
+Một công thức đơn giản cho sentiment score:
+
+$$
+Sentiment = \frac{Positive - Negative}{Positive + Negative + 1}
+$$
+
+Điểm sentiment này có thể dùng làm nhãn sơ bộ, feature đầu vào hoặc biến giải thích trong các phân tích tiếp theo.
+
+# Kết quả thực hiện
+
+## Cấu trúc mã nguồn
+
+Trong quá trình thực tập, project được tổ chức theo các nhóm chính:
+
+| Thư mục/File | Vai trò |
+|---|---|
+| `News/news_clean.py` | Làm sạch dữ liệu tin tức |
+| `News/tokenize_VN_word.py` | Tokenize tiếng Việt |
+| `News/build_CSR_matrix.py` | Xây dựng ma trận sparse document-term |
+| `News/build_tf_idf.py` | Tính toán TF-IDF hoặc thống kê từ vựng |
+| `News/candidate_term.py` | Lọc candidate terms cho dictionary |
+| `News/train_model.py` | Chuẩn bị hoặc huấn luyện mô hình |
+| `Historical_price/` | EDA và làm sạch dữ liệu giá lịch sử |
+| `event_stock/` | EDA dữ liệu sự kiện cổ phiếu |
+| `REF/` | Tài liệu tham khảo học thuật |
+
+## Kết quả pipeline dữ liệu
+
+Các kết quả đã đạt được gồm:
+
+- Xác định được các nguồn dữ liệu cần thiết cho bài toán sentiment tài chính.
+- Xây dựng các script xử lý dữ liệu tin tức và dữ liệu giá.
+- Tạo được corpus văn bản tiếng Việt sau tiền xử lý.
+- Xây dựng được document-term matrix dạng sparse matrix.
+- Đề xuất quy trình chọn candidate terms và gán nhóm dictionary.
+- Xác định hướng tạo sentiment score để tổng hợp theo mã cổ phiếu và ngày.
+
+## Kết quả học thuật và kỹ năng
+
+Thông qua quá trình thực tập, em đã củng cố các kỹ năng:
+
+- Phân tích yêu cầu và chia nhỏ bài toán dữ liệu.
+- Đọc hiểu dữ liệu thực tế có nhiễu và thiếu nhất quán.
+- Viết script Python phục vụ pipeline có nhiều bước.
+- Xử lý tiếng Việt trong bối cảnh tài chính.
+- Hiểu sự khác biệt giữa sentiment chung và sentiment tài chính.
+- Ghi chép kỹ thuật bằng Quarto để tái lập quy trình.
+
+## Đánh giá chất lượng
+
+Để đánh giá pipeline, có thể sử dụng các tiêu chí sau:
+
+| Tiêu chí | Cách kiểm tra |
+|---|---|
+| Tính đầy đủ dữ liệu | Kiểm tra số lượng bản ghi sau từng bước xử lý |
+| Chất lượng tokenization | Review mẫu token/cụm từ sau khi tách từ |
+| Chất lượng dictionary | Review thủ công term theo từng nhóm sentiment |
+| Tính ổn định pipeline | Chạy lại script với cùng input và so sánh output |
+| Tính hữu ích của sentiment | So sánh sentiment với biến động giá hoặc sự kiện |
+
+# Khó khăn và hướng xử lý
+
+## Khó khăn về dữ liệu
+
+Dữ liệu thực tế thường không sạch hoàn toàn. Một số vấn đề thường gặp:
+
+- Bài viết trùng lặp hoặc gần trùng lặp.
+- Tiêu đề và mô tả thiếu thông tin.
+- Tin tức nhắc đến nhiều mã cổ phiếu trong cùng một bài.
+- Ngày đăng tin không trùng với ngày giao dịch.
+- Dữ liệu có ký tự lạ, lỗi encoding hoặc định dạng không nhất quán.
+
+Hướng xử lý là xây dựng các bước kiểm tra trung gian, lưu log số lượng bản ghi trước và sau mỗi bước, đồng thời review mẫu dữ liệu để phát hiện lỗi.
+
+## Khó khăn về tiếng Việt
+
+Tiếng Việt có nhiều từ ghép và cụm từ mang nghĩa tài chính. Nếu tokenization không tốt, pipeline có thể làm mất tín hiệu. Ví dụ, "lợi nhuận sau thuế" hoặc "áp lực bán" cần được giữ theo ngữ cảnh thay vì chỉ xem từng từ đơn lẻ.
+
+Hướng xử lý là kết hợp tokenizer tiếng Việt với rule thủ công cho một số cụm từ tài chính quan trọng, đồng thời review candidate terms theo tần suất và ngữ cảnh xuất hiện.
+
+## Khó khăn khi xây dựng dictionary
+
+Dictionary tài chính cần được review cẩn thận vì cùng một term có thể mang nghĩa khác nhau trong các ngữ cảnh khác nhau. Ví dụ, "giảm" có thể tiêu cực khi nói về lợi nhuận nhưng tích cực khi nói về chi phí hoặc nợ vay.
+
+Do đó, dictionary không nên chỉ dựa vào từng từ đơn lẻ. Trong các phiên bản sau, có thể mở rộng sang n-gram, phrase pattern hoặc kết hợp với mô hình học máy để giảm nhập nhằng.
+
+# Bài học kinh nghiệm
+
+Qua kỳ thực tập, em rút ra một số bài học:
+
+- Chất lượng dữ liệu quyết định rất lớn đến chất lượng mô hình.
+- Với bài toán tài chính, hiểu domain quan trọng không kém kỹ thuật xử lý dữ liệu.
+- Pipeline nên được chia nhỏ thành nhiều bước rõ ràng để dễ debug và tái lập.
+- Ghi chép bằng Quarto giúp kết nối code, giải thích và kết quả trong cùng một tài liệu.
+- Mô hình học sâu như PhoBERT cần dữ liệu nhãn tốt; dictionary có thể là bước nền tảng để tạo nhãn ban đầu nhưng vẫn cần review.
+
+# Kết luận và kiến nghị
+
+## Kết luận
+
+Trong kỳ thực tập, em đã tham gia xây dựng pipeline xử lý tin tức tài chính phục vụ phân tích sentiment cho thị trường cổ phiếu. Công việc bao gồm làm sạch dữ liệu, tokenization tiếng Việt, xây dựng ma trận văn bản, chọn candidate terms, thiết kế financial dictionary và định hướng chuẩn bị dữ liệu cho mô hình PhoBERT.
+
+Kết quả đạt được là nền tảng quan trọng cho các bước phân tích tiếp theo, đặc biệt là tạo sentiment score theo bài viết và tổng hợp theo mã cổ phiếu/ngày giao dịch. Pipeline này có thể hỗ trợ các nghiên cứu về tác động của tin tức đến biến động thị trường và hành vi nhà đầu tư.
+
+## Kiến nghị phát triển
+
+Các hướng phát triển tiếp theo gồm:
+
+- Hoàn thiện dictionary bằng review thủ công nhiều vòng.
+- Bổ sung n-gram và phrase-level sentiment.
+- Xây dựng bộ nhãn chuẩn để fine-tune PhoBERT.
+- Đánh giá mô hình bằng tập test đã được gán nhãn thủ công.
+- Kết hợp sentiment với dữ liệu giá, thanh khoản và sự kiện cổ phiếu.
+- Tạo dashboard hoặc báo cáo tự động để theo dõi sentiment theo thời gian.
+
+# Tài liệu tham khảo {-}
+
+::: {#refs}
+:::
+
+\appendix
+
+# Phụ lục: Checklist hoàn thiện trước khi nộp
+
+| Hạng mục | Trạng thái |
+|---|---|
+| Thay thông tin cá nhân và đơn vị thực tập ở trang bìa | Chưa cập nhật |
+| Bổ sung mô tả công ty/phòng ban | Chưa cập nhật |
+| Bổ sung số liệu thật về số lượng bài viết và mã cổ phiếu | Chưa cập nhật |
+| Thêm bảng/biểu đồ EDA nếu có | Chưa cập nhật |
+| Review lại tài liệu tham khảo | Chưa cập nhật |
+| Render PDF và kiểm tra format lần cuối | Chưa cập nhật |
+
+# Phụ lục: Lệnh render
+
+```powershell
+cd C:\Users\doank\Documents\dev\project3T\internship_report
+quarto render final_report.qmd --to pdf
+```

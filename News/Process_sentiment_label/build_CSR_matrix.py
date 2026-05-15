@@ -44,11 +44,11 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8")
 
     term_document_matrix, terms, vectorizer = build_term_document_matrix()
-    # print(type(term_document_matrix))
-    # print(term_document_matrix.data)
-    # print(term_document_matrix.indices)
-    # print(term_document_matrix.indptr)
-    # print(term_document_matrix.shape)
+    print(type(term_document_matrix))
+    print(term_document_matrix.data)
+    print(term_document_matrix.indices)
+    print(term_document_matrix.indptr)
+    print(term_document_matrix.shape)
     tf_df = build_tf_df_dataframe(term_document_matrix, terms)
     print(tf_df.head(20).to_string(index=False))
 

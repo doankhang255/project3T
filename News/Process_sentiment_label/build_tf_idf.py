@@ -6,13 +6,13 @@ from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 
 try:
-    from News.build_CSR_matrix import INPUT_PATH
-    from News.build_CSR_matrix import TOKENIZED_COLUMN
-    from News.build_CSR_matrix import build_term_document_matrix
+    from News.Process_sentiment_label.build_CSR_matrix import INPUT_PATH
+    from News.Process_sentiment_label.build_CSR_matrix import TOKENIZED_COLUMN
+    from News.Process_sentiment_label.build_CSR_matrix import build_term_document_matrix
 except ImportError:
-    from build_CSR_matrix import INPUT_PATH
-    from build_CSR_matrix import TOKENIZED_COLUMN
-    from build_CSR_matrix import build_term_document_matrix
+    from News.Process_sentiment_label.build_CSR_matrix import INPUT_PATH
+    from News.Process_sentiment_label.build_CSR_matrix import TOKENIZED_COLUMN
+    from News.Process_sentiment_label.build_CSR_matrix import build_term_document_matrix
 
 
 def build_tfidf_matrix(
@@ -38,10 +38,7 @@ def build_tfidf_matrix(
     return tfidf_matrix, terms, vectorizer, transformer
 
 
-def build_idf_dataframe(
-    terms: list[str],
-    transformer: TfidfTransformer,
-) -> pd.DataFrame:
+def build_idf_dataframe(terms: list[str], transformer: TfidfTransformer) -> pd.DataFrame:
     return (
         pd.DataFrame(
             {

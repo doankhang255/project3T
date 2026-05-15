@@ -4,9 +4,13 @@ import pandas as pd
 from underthesea import word_tokenize
 
 
-INPUT_PATH = Path(__file__).with_name("equity_news_des_title.parquet")
-OUTPUT_PATH = Path(__file__).with_name("equity_news_tokenized.parquet")
-TEXT_COLUMN = "des-title"
+# INPUT_PATH = Path(__file__).with_name("equity_news_des_title.parquet")
+# OUTPUT_PATH = Path(__file__).with_name("equity_news_tokenized.parquet")
+
+INPUT_PATH = Path(__file__).with_name("clean_news_classified_content.parquet")
+OUTPUT_PATH = Path(__file__).with_name("clean_news_tokenized.parquet")
+
+TEXT_COLUMN =  "content" # "des-title"
 TOKENIZED_COLUMN = "Tokenize_des"
 TOTAL_TOKENIZER_COLUMN = "total_tokenizer"
 

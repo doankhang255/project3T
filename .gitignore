@@ -1,8 +1,4 @@
 __pycache__
 *.parquet
 *.csv 
-merge_file.py
-check.ipynb
-check_news.ipynb
-check_histo.ipynb
-Historical_price/check_histo.ipynb
+data/
