@@ -2,3 +2,6 @@ __pycache__
 *.parquet
 *.csv 
 data/
+test_API.py
+.venv/
+.venv
