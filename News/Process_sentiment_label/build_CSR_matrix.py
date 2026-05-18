@@ -5,8 +5,8 @@ from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import CountVectorizer
 
 
-INPUT_PATH = Path(__file__).with_name("equity_news_tokenized.parquet")
-TOKENIZED_COLUMN = "Tokenize_des"
+INPUT_PATH = Path("data/equity_news_tokenized.parquet")
+TOKENIZED_COLUMN = "Tokenize_content"
 
 #csr_matrix: sparse matrix in Compressed Sparse Row format, which is an efficient way to store and manipulate large sparse matrices.
 def build_term_document_matrix(path: Path = INPUT_PATH, text_column: str = TOKENIZED_COLUMN, min_df: int = 2,) -> tuple[csr_matrix, list[str], CountVectorizer]:
