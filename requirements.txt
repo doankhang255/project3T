@@ -14,3 +14,4 @@ readability-lxml>=0.8
 lxml>=4.9
 trafilatura>=1.8
 tqdm>=4.66
+
