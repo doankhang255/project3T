@@ -13,7 +13,7 @@ DIC Corp hoàn tất mua thêm để nâng sở hữu công ty con DIC Hospitali
 
 có thể bạn quan tâm trở về sau 
 
-loại những content có "khóa học online - phân tích"
+loại những content có "Khóa học online - Phân tích Ngành"
 
 dân trí, báo chính phủ, vtv, doanh nhân sài gòn 
 

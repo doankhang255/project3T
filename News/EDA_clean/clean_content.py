@@ -9,6 +9,7 @@ OUTPUT_PATH = Path("data/equity_news_clean_content.parquet")
 CONTENT_REMOVE_PHRASES = ("Khóa học online - Phân tích Ngành",)
 CONTENT_KEEP_START = ("DIC Corp hoàn tất mua thêm để nâng sở hữu công ty con DIC Hospitality lên 99,36% vốn")
 CONTENT_KEEP_END = ("Chủ tịch Nam Việt đăng ký thoái toàn bộ 900.000 cổ phiếu -")
+RELATED_CONTENT_MARKER = "Có thể bạn quan tâm"
 
 
 def remove_records_by_content1(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
@@ -122,15 +123,42 @@ def remove_title_description_from_content(df: pd.DataFrame) -> tuple[pd.DataFram
     return out, changed_rows
 
 
+def keep_content_before_interest_marker(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    if "content" not in df.columns:
+        raise ValueError("Input data must contain column: content")
+
+    def keep_before_marker(raw: object) -> tuple[object, bool]:
+        if pd.isna(raw):
+            return raw, False
+
+        text = str(raw)
+        marker_index = text.casefold().find(RELATED_CONTENT_MARKER.casefold())
+        if marker_index == -1:
+            return raw, False
+
+        return text[:marker_index].strip(), True
+
+    out = df.copy()
+    cleaned_values = []
+    changed_rows = 0
+    for value in out["content"]:
+        cleaned_value, changed = keep_before_marker(value)
+        cleaned_values.append(cleaned_value)
+        changed_rows += int(changed)
+
+    out["content"] = cleaned_values
+    print("Rows cleaned by related-content marker:", changed_rows)
+    return out, changed_rows
+
+
 def main() -> None:
     equity_news_df = pd.read_parquet(INPUT_PATH)
     print("Input rows:", len(equity_news_df))
 
     content_clean_df, removed_by_content_rows = remove_records_by_content1(equity_news_df)
     content_clean_df, cleaned_range_rows = keep_content_between_dic_and_nav(content_clean_df)
-    content_clean_df, cleaned_title_description_rows = remove_title_description_from_content(
-        content_clean_df
-    )
+    content_clean_df, cleaned_related_marker_rows = keep_content_before_interest_marker(content_clean_df)
+    content_clean_df, cleaned_title_description_rows = remove_title_description_from_content(content_clean_df)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     content_clean_df.to_parquet(OUTPUT_PATH, index=False)
@@ -138,6 +166,7 @@ def main() -> None:
     print("Output path:", OUTPUT_PATH)
     print("Rows removed by content filter:", removed_by_content_rows)
     print("Rows cleaned by DIC/Nav content range:", cleaned_range_rows)
+    print("Rows cleaned by related-content marker:", cleaned_related_marker_rows)
     print("Rows cleaned by title/description removal:", cleaned_title_description_rows)
     print("Content clean rows:", len(content_clean_df))
 
