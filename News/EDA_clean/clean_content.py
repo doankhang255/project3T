@@ -9,7 +9,11 @@ OUTPUT_PATH = Path("data/equity_news_clean_content.parquet")
 CONTENT_REMOVE_PHRASES = ("Khóa học online - Phân tích Ngành",)
 CONTENT_KEEP_START = ("DIC Corp hoàn tất mua thêm để nâng sở hữu công ty con DIC Hospitality lên 99,36% vốn")
 CONTENT_KEEP_END = ("Chủ tịch Nam Việt đăng ký thoái toàn bộ 900.000 cổ phiếu -")
-RELATED_CONTENT_MARKER = "Có thể bạn quan tâm"
+RELATED_CONTENT_MARKER = (
+    "Có thể bạn quan tâm",
+    "Xem đáp án tại đây",
+    "Xem thêm tại đây",
+)
 
 
 def remove_records_by_content1(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
@@ -124,18 +128,21 @@ def remove_title_description_from_content(df: pd.DataFrame) -> tuple[pd.DataFram
 
 
 def keep_content_before_interest_marker(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    if "content" not in df.columns:
-        raise ValueError("Input data must contain column: content")
 
     def keep_before_marker(raw: object) -> tuple[object, bool]:
         if pd.isna(raw):
             return raw, False
 
         text = str(raw)
-        marker_index = text.casefold().find(RELATED_CONTENT_MARKER.casefold())
-        if marker_index == -1:
+        marker_indexes = [
+            marker_index
+            for marker in RELATED_CONTENT_MARKER
+            if (marker_index := text.casefold().find(marker.casefold())) != -1
+        ]
+        if not marker_indexes:
             return raw, False
 
+        marker_index = min(marker_indexes)
         return text[:marker_index].strip(), True
 
     out = df.copy()
@@ -151,6 +158,54 @@ def keep_content_before_interest_marker(df: pd.DataFrame) -> tuple[pd.DataFrame,
     return out, changed_rows
 
 
+def replace_short_content_with_description(
+    df: pd.DataFrame,
+    min_word_count: int = 30,
+) -> tuple[pd.DataFrame, int]:
+    required_columns = {"content", "description"}
+    missing_columns = required_columns.difference(df.columns)
+    if missing_columns:
+        raise ValueError(f"Input data must contain columns: {sorted(missing_columns)}")
+
+    def count_words(raw: object) -> int:
+        if pd.isna(raw):
+            return 0
+
+        text = str(raw).strip()
+        if text == "":
+            return 0
+
+        normalized_text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)
+        return len(normalized_text.split())
+
+    def clean_description(raw: object) -> object:
+        if pd.isna(raw):
+            return raw
+
+        description = str(raw).strip()
+        marker_indexes = [
+            marker_index
+            for marker in RELATED_CONTENT_MARKER
+            if (marker_index := description.casefold().find(marker.casefold())) != -1
+        ]
+        if marker_indexes:
+            description = description[: min(marker_indexes)]
+
+        return description.strip()
+
+    out = df.copy()
+    content_word_count = out["content"].apply(count_words)
+    short_content_mask = content_word_count.lt(min_word_count)
+    out.loc[short_content_mask, "content"] = out.loc[
+        short_content_mask,
+        "description",
+    ].apply(clean_description)
+
+    replaced_rows = int(short_content_mask.sum())
+    print("Rows replaced with description because content < 30 words:", replaced_rows)
+    return out, replaced_rows
+
+
 def main() -> None:
     equity_news_df = pd.read_parquet(INPUT_PATH)
     print("Input rows:", len(equity_news_df))
@@ -159,6 +214,7 @@ def main() -> None:
     content_clean_df, cleaned_range_rows = keep_content_between_dic_and_nav(content_clean_df)
     content_clean_df, cleaned_related_marker_rows = keep_content_before_interest_marker(content_clean_df)
     content_clean_df, cleaned_title_description_rows = remove_title_description_from_content(content_clean_df)
+    content_clean_df, replaced_short_content_rows = replace_short_content_with_description(content_clean_df)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     content_clean_df.to_parquet(OUTPUT_PATH, index=False)
@@ -168,6 +224,7 @@ def main() -> None:
     print("Rows cleaned by DIC/Nav content range:", cleaned_range_rows)
     print("Rows cleaned by related-content marker:", cleaned_related_marker_rows)
     print("Rows cleaned by title/description removal:", cleaned_title_description_rows)
+    print("Rows replaced with description because content < 30 words:", replaced_short_content_rows)
     print("Content clean rows:", len(content_clean_df))
 
 
