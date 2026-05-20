@@ -13,9 +13,7 @@ from tqdm import tqdm
 from urllib3.util.retry import Retry
 
 
-# Path("News/classified_links.parquet")
-
-INPUT_PATH = "https://baodautu.vn/tap-doan-danh-khoi-trinh-ke-hoach-tang-von-len-gan-1400-ty-dong-d164466.html"
+INPUT_PATH = Path("News/classified_links.parquet")
 OUTPUT_PATH = Path("News/article_contents.parquet")
 CHECKPOINT_DIR = Path("News/article_content_parts")
 

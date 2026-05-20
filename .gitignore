@@ -6,3 +6,7 @@ test_API.py
 .venv/
 .venv
 .zip
+keyword-extraction-viet/
+keyword-extraction-viet
+vncorenlp
+vncorenlp/
