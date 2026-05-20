@@ -17,4 +17,15 @@ loại những content có "Khóa học online - Phân tích Ngành"
 
 dân trí, báo chính phủ, vtv, doanh nhân sài gòn 
 
+----------------------------------------------------------------------------------------
 
+có thể thay thế các content có word < 30 thành description của bài báo 
+
+nên tokenize cả content và description 
+
+Xem đáp án tại đây
+
+Xem thêm tại đây 
+
+
+kiểm tra lại báo đầu tư 
