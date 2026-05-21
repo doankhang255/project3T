@@ -19,7 +19,7 @@ STOPWORDS_PATH = Path(__file__).resolve().parent / "vietnamese-stopwords-dash.tx
 TOKENIZED_COLUMN = "Tokenize_content_sentences"
 FALLBACK_TOKENIZED_COLUMN = "Tokenize_content"
 NGRAM_SEPARATOR = " "
-MIN_DF_RATIO = 0.05
+MAX_DF_RATIO = 0.50
 
 
 def normalize_token_list(raw: object) -> list[str]:
@@ -153,7 +153,7 @@ def build_ngram_tf_df_dataframe(
     total_documents: int,
     min_n: int = 1,
     max_n: int = 3,
-    min_df_ratio: float = MIN_DF_RATIO,
+    max_df_ratio: float = MAX_DF_RATIO,
     stopwords: set[str] | None = None,
     return_filter_summary: bool = False,
 ) -> pd.DataFrame | tuple[pd.DataFrame, dict[str, int]]:
@@ -179,7 +179,7 @@ def build_ngram_tf_df_dataframe(
     filter_summary = {
         "unique_ngrams_before_filter": len(df_counter),
         "removed_by_stopword_boundary_terms": 0,
-        "removed_by_min_df_ratio_terms": 0,
+        "removed_by_max_df_ratio_terms": 0,
         "kept_ngram_terms": 0,
     }
 
@@ -191,8 +191,8 @@ def build_ngram_tf_df_dataframe(
             continue
 
         df_ratio = df / total_documents
-        if df_ratio < min_df_ratio:
-            filter_summary["removed_by_min_df_ratio_terms"] += 1
+        if df_ratio > max_df_ratio:
+            filter_summary["removed_by_max_df_ratio_terms"] += 1
             continue
 
         filter_summary["kept_ngram_terms"] += 1
@@ -245,7 +245,7 @@ def build_ngram_terms_with_filter_summary(
     tokenized_column: str = TOKENIZED_COLUMN,
     min_n: int = 1,
     max_n: int = 3,
-    min_df_ratio: float = MIN_DF_RATIO,
+    max_df_ratio: float = MAX_DF_RATIO,
     remove_stopwords: bool = True,
     stopwords_path: Path = STOPWORDS_PATH,
 ) -> tuple[pd.DataFrame, dict[str, int]]:
@@ -264,7 +264,7 @@ def build_ngram_terms_with_filter_summary(
         total_documents=len(df),
         min_n=min_n,
         max_n=max_n,
-        min_df_ratio=min_df_ratio,
+        max_df_ratio=max_df_ratio,
         stopwords=stopwords,
         return_filter_summary=True,
     )
@@ -275,7 +275,7 @@ def build_ngram_terms(
     tokenized_column: str = TOKENIZED_COLUMN,
     min_n: int = 1,
     max_n: int = 3,
-    min_df_ratio: float = MIN_DF_RATIO,
+    max_df_ratio: float = MAX_DF_RATIO,
     remove_stopwords: bool = True,
     stopwords_path: Path = STOPWORDS_PATH,
 ) -> pd.DataFrame:
@@ -284,7 +284,7 @@ def build_ngram_terms(
         tokenized_column=tokenized_column,
         min_n=min_n,
         max_n=max_n,
-        min_df_ratio=min_df_ratio,
+        max_df_ratio=max_df_ratio,
         remove_stopwords=remove_stopwords,
         stopwords_path=stopwords_path,
     )
@@ -302,7 +302,7 @@ def main() -> None:
 
     print("Input path:", INPUT_PATH)
     print("Stopwords path:", STOPWORDS_PATH)
-    print("Minimum df_ratio:", MIN_DF_RATIO)
+    print("Maximum df_ratio:", MAX_DF_RATIO)
     print("Output parquet:", OUTPUT_PATH)
     print("Output csv:", OUTPUT_CSV_PATH)
     print("Unique n-grams before filter:", filter_summary["unique_ngrams_before_filter"])
@@ -311,8 +311,8 @@ def main() -> None:
         filter_summary["removed_by_stopword_boundary_terms"],
     )
     print(
-        "N-grams removed by df_ratio < min_df_ratio:",
-        filter_summary["removed_by_min_df_ratio_terms"],
+        "N-grams removed by df_ratio > max_df_ratio:",
+        filter_summary["removed_by_max_df_ratio_terms"],
     )
     print("N-gram terms:", len(ngram_terms_df))
     print(ngram_terms_df.head(30).to_string(index=False))
