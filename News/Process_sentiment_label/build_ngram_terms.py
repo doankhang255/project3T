@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 import ast
-import math
 import sys
 from typing import Iterable
 
@@ -14,12 +13,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INPUT_PATH = PROJECT_ROOT / "data" / "equity_news_tokenized_vncorenlp.parquet"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "ngram_terms.parquet"
 OUTPUT_CSV_PATH = PROJECT_ROOT / "data" / "ngram_terms.csv"
-STOPWORDS_PATH = Path(__file__).resolve().parent / "vietnamese-stopwords-dash.txt"
 
 TOKENIZED_COLUMN = "Tokenize_content_sentences"
 FALLBACK_TOKENIZED_COLUMN = "Tokenize_content"
 NGRAM_SEPARATOR = " "
-MAX_DF_RATIO = 0.50
+DEFAULT_MIN_N = 1
+DEFAULT_MAX_N = 2
 
 
 def normalize_token_list(raw: object) -> list[str]:
@@ -109,26 +108,10 @@ def normalize_sentence_token_lists(raw: object) -> list[list[str]]:
     ]
 
 
-def load_stopwords(path: Path = STOPWORDS_PATH) -> set[str]:
-    with open(path, encoding="utf-8") as file:
-        return {line.strip().casefold() for line in file if line.strip()}
-
-
-def has_stopword_boundary(term: str, stopwords: set[str]) -> bool:
-    if not stopwords:
-        return False
-
-    tokens = term.split(NGRAM_SEPARATOR)
-    if not tokens:
-        return False
-
-    return tokens[0].casefold() in stopwords or tokens[-1].casefold() in stopwords
-
-
 def build_ngrams(
     tokens: list[str],
-    min_n: int = 1,
-    max_n: int = 3,
+    min_n: int = DEFAULT_MIN_N,
+    max_n: int = DEFAULT_MAX_N,
     separator: str = NGRAM_SEPARATOR,
 ) -> list[str]:
     if min_n < 1:
@@ -151,142 +134,114 @@ def build_ngrams(
 def build_ngram_tf_df_dataframe(
     tokenized_documents: Iterable[object],
     total_documents: int,
-    min_n: int = 1,
-    max_n: int = 3,
-    max_df_ratio: float = MAX_DF_RATIO,
-    stopwords: set[str] | None = None,
-    return_filter_summary: bool = False,
-) -> pd.DataFrame | tuple[pd.DataFrame, dict[str, int]]:
+    min_n: int = DEFAULT_MIN_N,
+    max_n: int = DEFAULT_MAX_N,
+    return_summary: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, dict[str, object]]:
     tf_counter: Counter[str] = Counter()
     df_counter: Counter[str] = Counter()
-    stopwords = stopwords or set()
+    documents_with_ngrams = 0
 
     for raw_document_tokens in tokenized_documents:
         document_ngrams: list[str] = []
         for tokens in normalize_sentence_token_lists(raw_document_tokens):
             ngrams = build_ngrams(tokens, min_n=min_n, max_n=max_n)
-            if not ngrams:
-                continue
-
-            document_ngrams.extend(ngrams)
+            if ngrams:
+                document_ngrams.extend(ngrams)
 
         if not document_ngrams:
             continue
 
+        documents_with_ngrams += 1
         tf_counter.update(document_ngrams)
         df_counter.update(set(document_ngrams))
 
-    filter_summary = {
-        "unique_ngrams_before_filter": len(df_counter),
-        "removed_by_stopword_boundary_terms": 0,
-        "removed_by_max_df_ratio_terms": 0,
-        "kept_ngram_terms": 0,
+    summary = {
+        "total_documents": total_documents,
+        "documents_with_ngrams": documents_with_ngrams,
+        "unique_ngrams": len(df_counter),
+        "total_ngram_occurrences": sum(tf_counter.values()),
+        "min_n": min_n,
+        "max_n": max_n,
     }
 
     records = []
-    for term, df in df_counter.items():
-        tf = tf_counter[term]
-        if has_stopword_boundary(term, stopwords):
-            filter_summary["removed_by_stopword_boundary_terms"] += 1
-            continue
-
-        df_ratio = df / total_documents
-        if df_ratio > max_df_ratio:
-            filter_summary["removed_by_max_df_ratio_terms"] += 1
-            continue
-
-        filter_summary["kept_ngram_terms"] += 1
+    for term, document_frequency in df_counter.items():
         records.append(
             {
                 "term": term,
                 "ngram_n": term.count(NGRAM_SEPARATOR) + 1,
-                "tf": tf,
-                "df": df,
-                "df_ratio": df_ratio,
+                "tf": tf_counter[term],
+                "df": document_frequency,
+                "df_ratio": document_frequency / total_documents
+                if total_documents
+                else 0.0,
             }
         )
 
     out = pd.DataFrame.from_records(records)
     if out.empty:
-        empty_df = pd.DataFrame(
-            columns=[
-                "term",
-                "ngram_n",
-                "tf",
-                "df",
-                "df_ratio",
-                "avg_tf_per_doc",
-                "candidate_score",
-            ]
+        out = pd.DataFrame(columns=["term", "ngram_n", "tf", "df", "df_ratio"])
+    else:
+        out = out.sort_values(
+            by=["tf", "df", "ngram_n", "term"],
+            ascending=[False, False, True, True],
+            kind="mergesort",
         )
-        if return_filter_summary:
-            return empty_df, filter_summary
+        out = out.reset_index(drop=True)
 
-        return empty_df
-
-    out["avg_tf_per_doc"] = out["tf"] / out["df"]
-    out["candidate_score"] = out["tf"] * out["df"].apply(
-        lambda df: math.log((total_documents + 1) / (df + 1))
-    )
-    out = out.sort_values(
-        by=["candidate_score", "tf", "df", "ngram_n", "term"],
-        ascending=[False, False, False, True, True],
-        kind="mergesort",
-    )
-    out = out.reset_index(drop=True)
-    if return_filter_summary:
-        return out, filter_summary
+    if return_summary:
+        return out, summary
 
     return out
 
 
-def build_ngram_terms_with_filter_summary(
+def load_tokenized_documents(
     path: Path = INPUT_PATH,
     tokenized_column: str = TOKENIZED_COLUMN,
-    min_n: int = 1,
-    max_n: int = 3,
-    max_df_ratio: float = MAX_DF_RATIO,
-    remove_stopwords: bool = True,
-    stopwords_path: Path = STOPWORDS_PATH,
-) -> tuple[pd.DataFrame, dict[str, int]]:
+) -> tuple[pd.DataFrame, str]:
     try:
-        df = pd.read_parquet(path, columns=[tokenized_column])
+        return pd.read_parquet(path, columns=[tokenized_column]), tokenized_column
     except Exception:
         if tokenized_column != TOKENIZED_COLUMN:
             raise
 
         tokenized_column = FALLBACK_TOKENIZED_COLUMN
-        df = pd.read_parquet(path, columns=[tokenized_column])
+        return pd.read_parquet(path, columns=[tokenized_column]), tokenized_column
 
-    stopwords = load_stopwords(stopwords_path) if remove_stopwords else set()
-    return build_ngram_tf_df_dataframe(
-        tokenized_documents=df[tokenized_column],
+
+def build_ngram_terms_with_summary(
+    path: Path = INPUT_PATH,
+    tokenized_column: str = TOKENIZED_COLUMN,
+    min_n: int = DEFAULT_MIN_N,
+    max_n: int = DEFAULT_MAX_N,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    df, selected_tokenized_column = load_tokenized_documents(
+        path=path,
+        tokenized_column=tokenized_column,
+    )
+    ngram_terms_df, summary = build_ngram_tf_df_dataframe(
+        tokenized_documents=df[selected_tokenized_column],
         total_documents=len(df),
         min_n=min_n,
         max_n=max_n,
-        max_df_ratio=max_df_ratio,
-        stopwords=stopwords,
-        return_filter_summary=True,
+        return_summary=True,
     )
+    summary["tokenized_column"] = selected_tokenized_column
+    return ngram_terms_df, summary
 
 
 def build_ngram_terms(
     path: Path = INPUT_PATH,
     tokenized_column: str = TOKENIZED_COLUMN,
-    min_n: int = 1,
-    max_n: int = 3,
-    max_df_ratio: float = MAX_DF_RATIO,
-    remove_stopwords: bool = True,
-    stopwords_path: Path = STOPWORDS_PATH,
+    min_n: int = DEFAULT_MIN_N,
+    max_n: int = DEFAULT_MAX_N,
 ) -> pd.DataFrame:
-    ngram_terms_df, _ = build_ngram_terms_with_filter_summary(
+    ngram_terms_df, _ = build_ngram_terms_with_summary(
         path=path,
         tokenized_column=tokenized_column,
         min_n=min_n,
         max_n=max_n,
-        max_df_ratio=max_df_ratio,
-        remove_stopwords=remove_stopwords,
-        stopwords_path=stopwords_path,
     )
     return ngram_terms_df
 
@@ -295,25 +250,19 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    ngram_terms_df, filter_summary = build_ngram_terms_with_filter_summary()
+    ngram_terms_df, summary = build_ngram_terms_with_summary()
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     ngram_terms_df.to_parquet(OUTPUT_PATH, index=False)
     ngram_terms_df.to_csv(OUTPUT_CSV_PATH, index=False, encoding="utf-8-sig")
 
     print("Input path:", INPUT_PATH)
-    print("Stopwords path:", STOPWORDS_PATH)
-    print("Maximum df_ratio:", MAX_DF_RATIO)
+    print("Tokenized column:", summary["tokenized_column"])
+    print("N-gram range:", f"{summary['min_n']} to {summary['max_n']}")
     print("Output parquet:", OUTPUT_PATH)
-    print("Output csv:", OUTPUT_CSV_PATH)
-    print("Unique n-grams before filter:", filter_summary["unique_ngrams_before_filter"])
-    print(
-        "N-grams removed by stopword boundary:",
-        filter_summary["removed_by_stopword_boundary_terms"],
-    )
-    print(
-        "N-grams removed by df_ratio > max_df_ratio:",
-        filter_summary["removed_by_max_df_ratio_terms"],
-    )
+    print("Total documents:", summary["total_documents"])
+    print("Documents with n-grams:", summary["documents_with_ngrams"])
+    print("Total n-gram occurrences:", summary["total_ngram_occurrences"])
+    print("Unique n-grams:", summary["unique_ngrams"])
     print("N-gram terms:", len(ngram_terms_df))
     print(ngram_terms_df.head(30).to_string(index=False))
 
