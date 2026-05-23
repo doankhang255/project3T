@@ -26,8 +26,8 @@ OUTPUT_CSV_PATH = PROJECT_ROOT / "data" / "candidate_ngram_terms.csv"
 STOPWORDS_PATH = Path(__file__).resolve().parent / "vietnamese-stopwords-dash.txt"
 SENTIMENT_WORD_PATH = Path(__file__).resolve().parent / "sentiment_word.txt"
 
-MAX_DF_RATIO = 0.255
-MIN_DF_BY_NGRAM = {1: 600, 2: 20,}
+MAX_DF_RATIO = 0.22
+MIN_DF_BY_NGRAM = {1: 5000, 2: 200,}
 REQUIRED_COLUMNS = {"term", "ngram_n", "tf", "df"}
 
 
@@ -116,8 +116,9 @@ def build_min_df_mask(
     if not sentiment_tokens:
         return below_min_df_mask
 
-    sentiment_token_mask = term_stats["term"].apply(
-        lambda term: contains_sentiment_token(term, sentiment_tokens)
+    sentiment_token_mask = build_sentiment_priority_mask(
+        term_stats,
+        sentiment_tokens=sentiment_tokens,
     )
     return below_min_df_mask & ~sentiment_token_mask
 
@@ -133,15 +134,82 @@ def build_sentiment_min_df_keep_mask(
 
     min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
     below_min_df_mask = term_stats["df"].lt(min_df_threshold)
-    sentiment_token_mask = term_stats["term"].apply(
-        lambda term: contains_sentiment_token(term, sentiment_tokens)
+    sentiment_token_mask = build_sentiment_priority_mask(
+        term_stats,
+        sentiment_tokens=sentiment_tokens,
     )
     return below_min_df_mask & sentiment_token_mask
 
 
-def contains_sentiment_token(term: str, sentiment_tokens: set[str]) -> bool:
+def find_sentiment_tokens(term: str, sentiment_tokens: set[str]) -> set[str]:
     term_text = str(term).casefold()
-    return any(token in term_text for token in sentiment_tokens)
+    return {token for token in sentiment_tokens if token in term_text}
+
+
+def contains_sentiment_token(term: str, sentiment_tokens: set[str]) -> bool:
+    return bool(find_sentiment_tokens(term, sentiment_tokens))
+
+
+def build_sentiment_priority_mask(
+    term_stats: pd.DataFrame,
+    sentiment_tokens: set[str] | None = None,
+    preferred_ngram_n: int = 2,
+    fallback_ngram_n: int = 1,
+) -> pd.Series:
+    sentiment_tokens = sentiment_tokens or set()
+    if not sentiment_tokens:
+        return pd.Series(False, index=term_stats.index)
+
+    matched_tokens = term_stats["term"].apply(
+        lambda term: find_sentiment_tokens(term, sentiment_tokens)
+    )
+    preferred_tokens: set[str] = set()
+    for tokens in matched_tokens.loc[term_stats["ngram_n"].eq(preferred_ngram_n)]:
+        preferred_tokens.update(tokens)
+
+    def is_priority_match(index: int) -> bool:
+        tokens = matched_tokens.loc[index]
+        if not tokens:
+            return False
+
+        ngram_n = term_stats.at[index, "ngram_n"]
+        if ngram_n == preferred_ngram_n:
+            return True
+        if ngram_n == fallback_ngram_n:
+            return bool(tokens.difference(preferred_tokens))
+
+        return True
+
+    return pd.Series(
+        (is_priority_match(index) for index in term_stats.index),
+        index=term_stats.index,
+    )
+
+
+def build_shadowed_sentiment_ngram1_mask(
+    term_stats: pd.DataFrame,
+    sentiment_tokens: set[str] | None = None,
+    preferred_ngram_n: int = 2,
+    fallback_ngram_n: int = 1,
+) -> pd.Series:
+    sentiment_tokens = sentiment_tokens or set()
+    if not sentiment_tokens:
+        return pd.Series(False, index=term_stats.index)
+
+    matched_tokens = term_stats["term"].apply(
+        lambda term: find_sentiment_tokens(term, sentiment_tokens)
+    )
+    preferred_tokens: set[str] = set()
+    for tokens in matched_tokens.loc[term_stats["ngram_n"].eq(preferred_ngram_n)]:
+        preferred_tokens.update(tokens)
+
+    if not preferred_tokens:
+        return pd.Series(False, index=term_stats.index)
+
+    return (
+        term_stats["ngram_n"].eq(fallback_ngram_n)
+        & matched_tokens.apply(lambda tokens: bool(tokens.intersection(preferred_tokens)))
+    )
 
 
 def choose_candidate_ngram_terms(
@@ -207,6 +275,18 @@ def choose_candidate_ngram_terms(
     )
     above_max_df_ratio_df["rejection_reason"] = "above_max_df_ratio"
 
+    sentiment_shadowed_ngram1_mask = build_shadowed_sentiment_ngram1_mask(
+        candidate_terms_df,
+        sentiment_tokens=sentiment_tokens,
+    )
+    candidate_terms_df, sentiment_shadowed_ngram1_df = split_by_mask(
+        candidate_terms_df,
+        sentiment_shadowed_ngram1_mask,
+    )
+    sentiment_shadowed_ngram1_df["rejection_reason"] = (
+        "sentiment_shadowed_by_ngram_2"
+    )
+
     candidate_terms_df = candidate_terms_df.drop(columns=["rejection_reason"])
     candidate_terms_df = candidate_terms_df.sort_values(
         by=["candidate_score", "tf", "df", "ngram_n", "term"],
@@ -222,6 +302,7 @@ def choose_candidate_ngram_terms(
         "all_ngram_terms_df": term_stats.reset_index(drop=True),
         "stopword_boundary_df": stopword_boundary_df,
         "sentiment_min_df_keep_df": sentiment_min_df_keep_df,
+        "sentiment_shadowed_ngram1_df": sentiment_shadowed_ngram1_df,
         "below_min_df_df": below_min_df_df,
         "above_max_df_ratio_df": above_max_df_ratio_df,
         "candidate_terms_df": candidate_terms_df,
@@ -276,6 +357,10 @@ def main() -> None:
     print(
         "N-grams kept below min_df because they contain sentiment tokens:",
         len(result["sentiment_min_df_keep_df"]),
+    )
+    print(
+        "Sentiment unigram terms skipped because n-gram 2 matched first:",
+        len(result["sentiment_shadowed_ngram1_df"]),
     )
     print(
         "N-grams removed by min_df by n-gram:",
