@@ -39,3 +39,6 @@ n_gram_2: 20
 maximum: 25
 
 lỗ, lãi, tăng, phát_triển, lợi_nhuận, sụt_giảm, tụt giốc, phát hành, hồi_phục, phục_hồi, cải_thiện, vượt, bứt_phá, ổn_định, lao_dốc, tiêu_cực, tích_cực, suy, ảm_đạm, khó_khăn, rủi_ro, bán_ròng, thúc_đẩy, khả_quan, mở_rộng, cắt_giảm, thuận_lợi 
+
+
+bao giờ lên trên kia thì test lại với model với khoảng 100 tin tự gán nhãn

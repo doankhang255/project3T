@@ -7,7 +7,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 try:
-    from News.Process_sentiment_label.build_ngram_terms import (
+    from News.data_for_model.build_ngram_terms import (
         normalize_sentence_token_lists,
     )
 except ImportError:
@@ -19,9 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DICTIONARY_PATH = PROJECT_ROOT / "data" / "candidate_ngram_terms_dictionary.csv"
 INPUT_PATH = PROJECT_ROOT / "data" / "equity_news_tokenized_vncorenlp.parquet"
 OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data" / "equity_news_content_sentiment_ratios.parquet"
-OUTPUT_SAMPLE_CSV_PATH = (
-    PROJECT_ROOT / "data" / "equity_news_content_sentiment_ratios_sample.csv"
-)
+OUTPUT_SAMPLE_CSV_PATH = (PROJECT_ROOT / "data" / "equity_news_content_sentiment_ratios_sample.csv")
 
 TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"
 TOKENIZED_FALLBACK_COLUMN = "Tokenize_content"

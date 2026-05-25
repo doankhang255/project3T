@@ -1,13 +1,42 @@
 ---
+title: "Final Report for Internship at 3T"
+lang: vi
 date: "2026-05-15"
+bibliography: ../internship_report/references.bib
+link-citations: true
+execute:
+  echo: false
+  warning: false
+  message: false
+format:
+  pdf:
+    pdf-engine: xelatex
+    documentclass: report
+    classoption: oneside
+    papersize: a4
+    fontsize: 12pt
+    number-sections: true
+    toc: false
+    top-level-division: chapter
+    colorlinks: true
+    linkcolor: black
+    urlcolor: blue
+    citecolor: black
+    geometry:
+      - top=2.5cm
+      - bottom=2.5cm
+      - left=3cm
+      - right=2cm
+    include-in-header:
+      - ../internship_report/styles.tex
 ---
 
 ```{=latex}
 \begin{titlepage}
 \thispagestyle{empty}
 \begin{center}
-{\bfseries\Large [TÊN TRƯỜNG ĐẠI HỌC]}\\[0.3cm]
-{\bfseries\large [KHOA / VIỆN / BỘ MÔN]}\\[2.2cm]
+{\bfseries\Large Đại học Bách Khoa Hà Nội}\\[0.3cm]
+{\bfseries\large Trường Công nghệ thông tin và truyền thông}\\[2.2cm]
 
 {\bfseries\Large BÁO CÁO CUỐI KỲ THỰC TẬP}\\[0.4cm]
 {\bfseries\large INTERNSHIP SEMESTER FINAL REPORT}\\[1.6cm]
@@ -17,18 +46,18 @@ VÀ PHÂN TÍCH SENTIMENT CHO THỊ TRƯỜNG CỔ PHIẾU}\\[2.0cm]
 \end{center}
 
 \begin{flushleft}
-\hspace{1.5cm}\textbf{Sinh viên thực hiện:} [Họ và tên sinh viên]\\[0.25cm]
-\hspace{1.5cm}\textbf{Mã số sinh viên:} [MSSV]\\[0.25cm]
-\hspace{1.5cm}\textbf{Lớp/Ngành:} [Lớp - Ngành học]\\[0.25cm]
-\hspace{1.5cm}\textbf{Đơn vị thực tập:} [Tên công ty / phòng ban]\\[0.25cm]
-\hspace{1.5cm}\textbf{Giảng viên hướng dẫn:} [Tên giảng viên]\\[0.25cm]
-\hspace{1.5cm}\textbf{Người hướng dẫn tại đơn vị:} [Tên mentor]\\[0.25cm]
+\hspace{1.5cm}\textbf{Sinh viên thực hiện:} Bùi Doãn Khang\\[0.25cm]
+\hspace{1.5cm}\textbf{Mã số sinh viên:} 20235950\\[0.25cm]
+\hspace{1.5cm}\textbf{Lớp/Ngành:} Global-ICT(IT-E7)\\[0.25cm]
+\hspace{1.5cm}\textbf{Đơn vị thực tập:} Công ty Cổ phần Công nghệ Thông tin 3T\\[0.25cm]
+\hspace{1.5cm}\textbf{Người hướng dẫn tại đơn vị số 1:} Nguyễn Tuấn Nghĩa\\[0.25cm]
+\hspace{1.5cm}\textbf{Người hướng dẫn tại đơn vị số 2:} Vũ Đức Hải\\[0.25cm]
 \hspace{1.5cm}\textbf{Thời gian thực tập:} [Từ ngày] -- [Đến ngày]
 \end{flushleft}
 
 \vfill
 \begin{center}
-{\bfseries TP. Hồ Chí Minh, 2026}
+{\bfseries Tp. Hà Nội, 2026}
 \end{center}
 \end{titlepage}
 
@@ -40,9 +69,7 @@ VÀ PHÂN TÍCH SENTIMENT CHO THỊ TRƯỜNG CỔ PHIẾU}\\[2.0cm]
 
 # Lời cảm ơn {-}
 
-Em xin gửi lời cảm ơn đến [Tên công ty/đơn vị thực tập] đã tạo điều kiện để em tham gia vào môi trường làm việc thực tế, tiếp cận quy trình xử lý dữ liệu và phát triển sản phẩm phân tích trong lĩnh vực tài chính. Em cũng xin cảm ơn [Tên mentor] đã hướng dẫn, góp ý và hỗ trợ em trong suốt quá trình thực tập.
-
-Em xin chân thành cảm ơn [Tên giảng viên hướng dẫn] đã theo dõi, định hướng và góp ý để em hoàn thiện báo cáo này. Những kinh nghiệm thu được trong học kỳ thực tập giúp em hiểu rõ hơn cách kết nối kiến thức về dữ liệu, lập trình, xử lý ngôn ngữ tự nhiên và tài chính định lượng vào một bài toán thực tế.
+Em xin gửi lời cảm ơn đến Công ty cổ phần 3T đã tạo điều kiện để em tham gia vào môi trường làm việc thực tế, tiếp cận quy trình xử lý dữ liệu và phát triển sản phẩm phân tích trong lĩnh vực tài chính. Em cũng xin gửi lời cảm ơn chân thành đến 2 người mentor đi trước, góp ý và hỗ trợ em trong suốt quá trình thực tập.
 
 # Tóm tắt {-}
 
@@ -386,6 +413,6 @@ Các hướng phát triển tiếp theo gồm:
 # Phụ lục: Lệnh render
 
 ```powershell
-cd C:\Users\doank\Documents\dev\project3T\internship_report
+cd C:\Users\doank\Documents\dev\project3T\News
 quarto render final_report.qmd --to pdf
 ```

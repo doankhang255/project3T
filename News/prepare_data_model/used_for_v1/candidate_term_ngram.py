@@ -7,13 +7,13 @@ import sys
 import pandas as pd
 
 try:
-    from News.Process_sentiment_label.build_ngram_terms import (
+    from News.data_for_model.build_ngram_terms import (
         NGRAM_SEPARATOR,
         OUTPUT_PATH as NGRAM_TERMS_PATH,
         PROJECT_ROOT,
     )
 except ImportError:
-    from build_ngram_terms import (
+    from News.data_for_model.build_ngram_terms import (
         NGRAM_SEPARATOR,
         OUTPUT_PATH as NGRAM_TERMS_PATH,
         PROJECT_ROOT,

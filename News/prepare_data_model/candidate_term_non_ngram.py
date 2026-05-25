@@ -7,15 +7,15 @@ import sys
 import pandas as pd
 
 try:
-    from News.Process_sentiment_label.build_CSR_matrix import INPUT_PATH
-    from News.Process_sentiment_label.build_CSR_matrix import TOKENIZED_COLUMN
-    from News.Process_sentiment_label.build_CSR_matrix import build_term_document_matrix
-    from News.Process_sentiment_label.build_CSR_matrix import build_tf_df_dataframe
+    from News.data_for_model.build_CSR_matrix import INPUT_PATH
+    from News.data_for_model.build_CSR_matrix import TOKENIZED_COLUMN
+    from News.data_for_model.build_CSR_matrix import build_term_document_matrix
+    from News.data_for_model.build_CSR_matrix import build_tf_df_dataframe
 except ImportError:
-    from News.Process_sentiment_label.build_CSR_matrix import INPUT_PATH
-    from News.Process_sentiment_label.build_CSR_matrix import TOKENIZED_COLUMN
-    from News.Process_sentiment_label.build_CSR_matrix import build_term_document_matrix
-    from News.Process_sentiment_label.build_CSR_matrix import build_tf_df_dataframe
+    from News.data_for_model.build_CSR_matrix import INPUT_PATH
+    from News.data_for_model.build_CSR_matrix import TOKENIZED_COLUMN
+    from News.data_for_model.build_CSR_matrix import build_term_document_matrix
+    from News.data_for_model.build_CSR_matrix import build_tf_df_dataframe
 
 
 LETTER_PATTERN = re.compile(r"[^\W\d_]", flags=re.UNICODE)
