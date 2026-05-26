@@ -18,7 +18,7 @@ ROLLING_EXPECTED_MIN_PERIODS = 12
 AR_WINDOW = 52
 AR_MIN_OBS = 26
 
-
+ 
 def sum_future_values(values: pd.Series, horizon: int) -> pd.Series:
     future_sum = values.shift(-1)
     for step in range(2, horizon + 1):
@@ -64,37 +64,27 @@ def add_weekly_abnormal_return(df: pd.DataFrame) -> pd.DataFrame:
 
     out["expected_return_26w"] = (
         out[RETURN_COLUMN]
-        .rolling(
-            ROLLING_EXPECTED_WINDOW,
-            min_periods=ROLLING_EXPECTED_MIN_PERIODS,
-        )
+        .rolling(ROLLING_EXPECTED_WINDOW, min_periods=ROLLING_EXPECTED_MIN_PERIODS,)
         .mean()
         .shift(1)
     )
-    out["abnormal_return_rolling_1w"] = (
-        out[RETURN_COLUMN] - out["expected_return_26w"]
-    )
-    out["future_abnormal_rolling_ret_1w"] = out[
-        "abnormal_return_rolling_1w"
-    ].shift(-1)
-    out["future_abnormal_rolling_ret_4w"] = sum_future_values(
-        out["abnormal_return_rolling_1w"],
-        horizon=4,
-    )
+    out["abnormal_return_rolling_1w"] = (out[RETURN_COLUMN] - out["expected_return_26w"])
+
+    out["future_abnormal_rolling_ret_1w"] = out["abnormal_return_rolling_1w"].shift(-1)
+
+    out["future_abnormal_rolling_ret_4w"] = sum_future_values(out["abnormal_return_rolling_1w"], horizon=4,)
 
     out["expected_return_ar1_52w"] = compute_rolling_ar1_expected_return(
         out[RETURN_COLUMN],
         window=AR_WINDOW,
         min_obs=AR_MIN_OBS,
     )
-    out["abnormal_return_ar1_1w"] = (
-        out[RETURN_COLUMN] - out["expected_return_ar1_52w"]
-    )
+
+    out["abnormal_return_ar1_1w"] = (out[RETURN_COLUMN] - out["expected_return_ar1_52w"])
+
     out["future_abnormal_ar1_ret_1w"] = out["abnormal_return_ar1_1w"].shift(-1)
-    out["future_abnormal_ar1_ret_4w"] = sum_future_values(
-        out["abnormal_return_ar1_1w"],
-        horizon=4,
-    )
+
+    out["future_abnormal_ar1_ret_4w"] = sum_future_values(out["abnormal_return_ar1_1w"], horizon=4,)
 
     return out
 
@@ -112,7 +102,6 @@ def main() -> None:
 
     print("Input:", INPUT_PATH)
     print("Output parquet:", OUTPUT_PARQUET_PATH)
-    print("Output csv:", OUTPUT_CSV_PATH)
     print("Input rows:", len(merged_df))
     print("Output rows:", len(abnormal_df))
     print(
