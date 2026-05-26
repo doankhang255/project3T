@@ -2,8 +2,8 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
-HISTORICAL_PRICE_PATH = "historical_price_all.parquet"
-REQUIRED_SYMBOLS_PATH = "symbols.csv"
+HISTORICAL_PRICE_PATH = "data_Histo/historical_price_all.parquet"
+REQUIRED_SYMBOLS_PATH = "data_News/symbols.csv"
 
 FLOAT_COLUMNS = [
     "high_price",
@@ -35,9 +35,6 @@ FLOAT_COLUMNS = [
 
 def load_tabular_data(path: str | Path) -> pd.DataFrame:
     source_path = Path(path)
-    if not str(source_path).strip():
-        raise ValueError("Set HISTORICAL_PRICE_PATH before running clean_historical_price.py.")
-    
     df = pd.read_parquet(source_path)
     return df
 

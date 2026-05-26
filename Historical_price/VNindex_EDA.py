@@ -95,6 +95,7 @@ def main() -> None:
     adj_ratio_not_one_rows = result["adj_ratio_not_one_rows"]
     adj_ratio_equal_one_rows = result["adj_ratio_equal_one_rows"]
     parsed_dates = pd.to_datetime(vnindex_df["date"], errors="coerce")
+    output = vnindex_df.to_csv("data_Histo/vnindex_eda_output.csv", index=False)
 
     print("Input records:", len(vnindex_df))
     print("Min Date:", parsed_dates.min())
