@@ -42,3 +42,6 @@ lỗ, lãi, tăng, phát_triển, lợi_nhuận, sụt_giảm, tụt giốc, ph�
 
 
 bao giờ lên trên kia thì test lại với model với khoảng 100 tin tự gán nhãn
+
+
+xem lại chương 13 
