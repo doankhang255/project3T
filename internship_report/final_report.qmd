@@ -611,7 +611,7 @@ Quy trình huấn luyện:
 
 | Bước | Nội dung |
 |---|---|
-| 1 | Đọc `equity_news_content_sentiment_ratios` |
+| 1 | Đọc file data |
 | 2 | Làm sạch text và map nhãn sentiment |
 | 3 | Chia train/test theo tỷ lệ 80/20, stratify theo label |
 | 4 | Tokenize bằng PhoBERT tokenizer |
@@ -656,7 +656,7 @@ Về trực giác:
 
 ## Daily sentiment index
 
-File `News/Build_sentiment_index/build_sentiment_index_daily.py` tính sentiment index theo ngày. Với mỗi ngày, pipeline tính:
+Tính sentiment index theo ngày. Với mỗi ngày, pipeline tính:
 
 | Cột | Ý nghĩa |
 |---|---|
@@ -684,7 +684,7 @@ Kết quả daily index có 5.037 dòng.
 
 ## Weekly sentiment index
 
-File `News/Build_sentiment_index/build_sentiment_index_weekly.py` gom dữ liệu theo tuần bằng `W-SUN`, tức tuần bắt đầu từ thứ Hai và kết thúc vào Chủ nhật.
+Gom dữ liệu theo tuần bằng `W-SUN`, tức tuần bắt đầu từ thứ Hai và kết thúc vào Chủ nhật.
 
 Các cột chính:
 
@@ -705,7 +705,7 @@ Kết quả weekly index có 731 dòng.
 
 ## Monthly sentiment index
 
-File `News/Build_sentiment_index/build_sentiment_index_monthly.py` mở rộng cách tính sang cấp tháng. Monthly index phù hợp khi cần phân tích xu hướng sentiment dài hơn, giảm nhiễu ngày/tuần và so sánh với biến tài chính/vĩ mô có tần suất thấp.
+Mở rộng cách tính sang cấp tháng. Monthly index phù hợp khi cần phân tích xu hướng sentiment dài hơn, giảm nhiễu ngày/tuần và so sánh với biến tài chính/vĩ mô có tần suất thấp.
 
 Các cột chính gồm:
 
@@ -747,12 +747,7 @@ Trong phần phân tích tác động đến VN-Index, em lựa chọn tần su�
 Ngoài ra, do thời gian thực tập có hạn, phạm vi kiểm thử định lượng được ưu tiên triển khai trước ở mức weekly. Các phân tích ở tần suất daily hoặc monthly có thể được mở rộng trong các bước nghiên cứu tiếp theo để so sánh độ ổn định của kết quả và kiểm tra xem tác động sentiment có thay đổi theo từng khung thời gian hay không.
 
 ## Tạo weekly return cho VN-Index
-
-File `News_Vnindex/build_vnindex_weekly_return.py` đọc dữ liệu VN-Index từ:
-
-`data_Histo/vnindex_eda_output.csv`
-
-Sau đó gom theo tuần `W-SUN`. Với mỗi tuần, pipeline lấy:
+Dữ liệu gom theo tuần `W-SUN`. Với mỗi tuần, pipeline lấy:
 
 | Cột | Cách tính |
 |---|---|
@@ -774,10 +769,6 @@ return_t = \ln\left(\frac{close_t}{close_{t-1}}\right)
 $$
 
 Trong đó $close_t$ là giá đóng cửa cuối tuần hiện tại, $close_{t-1}$ là giá đóng cửa cuối tuần trước. Đây là log return, phù hợp để cộng dồn return qua nhiều kỳ và thường được dùng trong phân tích chuỗi thời gian tài chính.
-
-File đầu ra:
-
-`data_Histo/vnindex_weekly_return.parquet`
 
 ## Tạo biến future return
 
@@ -828,8 +819,6 @@ Trong đó:
 Nếu sentiment có quan hệ với abnormal return, điều đó gợi ý rằng sentiment có thể giải thích phần biến động không chỉ đến từ xu hướng thông thường của thị trường.
 
 ## Hai cách tính expected return
-
-File `News_Vnindex/build_vnindex_weekly_abnormal_return.py` tạo abnormal return theo hai cách.
 
 ### Cách 1: Rolling mean expected return
 
