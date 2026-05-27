@@ -1,18 +1,17 @@
 from __future__ import annotations
-
 from pathlib import Path
 import sys
-
 import numpy as np
 import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASE_INPUT_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged.parquet"
-ABNORMAL_INPUT_PATH = (
-    PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return.parquet"
-)
+
+ABNORMAL_INPUT_PATH = (PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return.parquet")
+
 OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_correlation.parquet"
+
 OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_correlation.csv"
 
 CORRELATION_PAIRS = [

@@ -1,418 +1,1329 @@
 ---
-title: "Final Report for Internship at 3T"
+title: "Báo cáo cuối kỳ thực tập"
+subtitle: "Xây dựng Equity Sentiment Index cho thị trường chứng khoán Việt Nam và phân tích tác động đến VN-Index"
+author: "Bùi Doãn Khang"
+date: "26/05/2026"
 lang: vi
-date: "2026-05-15"
-bibliography: ../internship_report/references.bib
-link-citations: true
-execute:
-  echo: false
-  warning: false
-  message: false
-format:
-  pdf:
-    pdf-engine: xelatex
-    documentclass: report
-    classoption: oneside
-    papersize: a4
-    fontsize: 12pt
-    number-sections: true
-    toc: false
-    top-level-division: chapter
-    colorlinks: true
-    linkcolor: black
-    urlcolor: blue
-    citecolor: black
-    geometry:
-      - top=2.5cm
-      - bottom=2.5cm
-      - left=3cm
-      - right=2cm
-    include-in-header:
-      - ../internship_report/styles.tex
 ---
 
-```{=latex}
 \begin{titlepage}
-\thispagestyle{empty}
-\begin{center}
-{\bfseries\Large Đại học Bách Khoa Hà Nội}\\[0.3cm]
-{\bfseries\large Trường Công nghệ thông tin và truyền thông}\\[2.2cm]
+\centering
 
-{\bfseries\Large BÁO CÁO CUỐI KỲ THỰC TẬP}\\[0.4cm]
-{\bfseries\large INTERNSHIP SEMESTER FINAL REPORT}\\[1.6cm]
+{\Large ĐẠI HỌC BÁCH KHOA HÀ NỘI\par}
+{\Large TRƯỜNG CÔNG NGHỆ THÔNG TIN VÀ TRUYỀN THÔNG\par}
 
-{\bfseries\Large XÂY DỰNG PIPELINE XỬ LÝ TIN TỨC TÀI CHÍNH\\
-VÀ PHÂN TÍCH SENTIMENT CHO THỊ TRƯỜNG CỔ PHIẾU}\\[2.0cm]
-\end{center}
+\vspace{1.2cm}
 
-\begin{flushleft}
-\hspace{1.5cm}\textbf{Sinh viên thực hiện:} Bùi Doãn Khang\\[0.25cm]
-\hspace{1.5cm}\textbf{Mã số sinh viên:} 20235950\\[0.25cm]
-\hspace{1.5cm}\textbf{Lớp/Ngành:} Global-ICT(IT-E7)\\[0.25cm]
-\hspace{1.5cm}\textbf{Đơn vị thực tập:} Công ty Cổ phần Công nghệ Thông tin 3T\\[0.25cm]
-\hspace{1.5cm}\textbf{Người hướng dẫn tại đơn vị số 1:} Nguyễn Tuấn Nghĩa\\[0.25cm]
-\hspace{1.5cm}\textbf{Người hướng dẫn tại đơn vị số 2:} Vũ Đức Hải\\[0.25cm]
-\hspace{1.5cm}\textbf{Thời gian thực tập:} [Từ ngày] -- [Đến ngày]
-\end{flushleft}
+{\Large\bfseries BÁO CÁO CUỐI KỲ THỰC TẬP\par}
+
+\vspace{1.0cm}
+
+{\LARGE\bfseries Xây dựng Equity Sentiment Index cho thị trường chứng khoán Việt Nam và phân tích tác động đến VN-Index\par}
+
+\vspace{1.5cm}
+
+\begin{tabular}{rl}
+\textbf{Sinh viên thực hiện:} & Bùi Doãn Khang \\
+\textbf{Mã số sinh viên:} & 20235950 \\
+\textbf{Lớp:} & Global-ICT (IT-E7) \\
+\textbf{Đơn vị thực tập:} & Công ty Cổ phần Công nghệ Thông tin 3T \\
+\textbf{Bộ phận:} & D\&A \\
+\textbf{Vị trí:} & Thực tập sinh Data Scientist \\
+\textbf{Người hướng dẫn:} & Vũ Đức Hải \\
+\textbf{Thời gian thực tập:} & 18/03/2026 -- 30/04/2026 \\
+\textbf{Kỳ thực tập:} & 2026/3T/TT/01 \\
+\end{tabular}
 
 \vfill
-\begin{center}
-{\bfseries Tp. Hà Nội, 2026}
-\end{center}
+
+{\large Hà Nội, 05/2026\par}
 \end{titlepage}
 
-\pagenumbering{roman}
-\tableofcontents
 \clearpage
-\pagenumbering{arabic}
-```
 
-# Lời cảm ơn {-}
+# Lời cảm ơn
 
-Em xin gửi lời cảm ơn đến Công ty cổ phần 3T đã tạo điều kiện để em tham gia vào môi trường làm việc thực tế, tiếp cận quy trình xử lý dữ liệu và phát triển sản phẩm phân tích trong lĩnh vực tài chính. Em cũng xin gửi lời cảm ơn chân thành đến 2 người mentor đi trước, góp ý và hỗ trợ em trong suốt quá trình thực tập.
+Trong quá trình thực tập tại Công ty Cổ phần Công nghệ Thông tin 3T, em đã có cơ hội tiếp cận một bài toán dữ liệu tài chính tương đối đầy đủ, bắt đầu từ dữ liệu giá lịch sử, dữ liệu tin tức tiếng Việt, xây dựng từ điển cảm xúc tài chính, huấn luyện mô hình NLP, cho đến tính toán chỉ số Equity Sentiment Index và thử nghiệm phân tích tác động đến VN-Index.
 
-# Tóm tắt {-}
+Em xin gửi lời cảm ơn tới anh Vũ Đức Hải và các anh chị trong bộ phận D\&A đã hướng dẫn, góp ý và hỗ trợ em trong quá trình thực hiện. Những trao đổi trong giai đoạn thực tập giúp em hiểu rõ hơn cách một bài toán Data Science trong tài chính cần được triển khai: không chỉ dừng ở mô hình, mà còn cần dữ liệu sạch, định nghĩa biến rõ ràng, kiểm chứng định lượng và diễn giải kết quả thận trọng.
 
-Báo cáo trình bày quá trình thực tập với trọng tâm là xây dựng pipeline xử lý dữ liệu phục vụ phân tích sentiment của tin tức tài chính trên thị trường cổ phiếu. Nội dung công việc bao gồm thu thập và làm sạch dữ liệu tin tức, chuẩn hóa dữ liệu giá lịch sử, phân tích dữ liệu sự kiện cổ phiếu, xây dựng ma trận từ vựng, lựa chọn candidate terms, phát triển financial dictionary theo ngữ cảnh tiếng Việt và chuẩn bị dữ liệu cho hướng fine-tune mô hình PhoBERT.
+# Tóm tắt
 
-Kết quả chính của kỳ thực tập là một pipeline dữ liệu có khả năng chuyển đổi dữ liệu tin tức thô thành các đặc trưng có thể sử dụng trong mô hình phân tích sentiment và nghiên cứu phản ứng thị trường. Báo cáo cũng thảo luận các khó khăn trong xử lý tiếng Việt, vấn đề nhiễu dữ liệu, cách đánh giá chất lượng dictionary và các hướng phát triển tiếp theo.
+Báo cáo này trình bày toàn bộ quá trình xây dựng pipeline xử lý dữ liệu phục vụ phân tích cảm xúc thị trường chứng khoán Việt Nam. Công việc được chia thành bốn nhóm chính:
 
-\clearpage
+1. Xử lý dữ liệu giá lịch sử trong thư mục `Historical_price`, bao gồm kiểm tra chất lượng dữ liệu, chuẩn hóa mã chứng khoán, lọc dữ liệu cần dùng, tạo bộ dữ liệu VN-Index và xây dựng return theo tuần.
+2. Xử lý dữ liệu tin tức trong thư mục `News`, bao gồm làm sạch dữ liệu thô, lọc tin liên quan đến thị trường cổ phiếu, làm sạch nội dung, tách từ tiếng Việt, trích xuất candidate n-gram và xây dựng dictionary cảm xúc tài chính.
+3. Gán nhãn sentiment cho nội dung bài báo, fine-tune mô hình PhoBERT trong ngữ cảnh tài chính, sau đó xây dựng Equity Sentiment Index theo ngày, tuần và tháng.
+4. Phân tích tác động đến VN-Index trong thư mục `News_Vnindex`, gồm tạo weekly return, merge với weekly sentiment, tính abnormal return, chạy correlation và predictive regression.
+
+Kết quả chính của pipeline hiện tại gồm: 126.576 bài báo tài chính đã được làm sạch và tách từ, 43.840 candidate terms trong dictionary cảm xúc tài chính, 5.037 quan sát sentiment index theo ngày, 731 quan sát theo tuần, và bộ dữ liệu merge giữa weekly sentiment với VN-Index gồm 722 tuần. Mô hình PhoBERT fine-tuned trên nhãn sentiment tài chính đạt accuracy khoảng 85,5% và macro F1 khoảng 82,0% trong lần kiểm thử. Kết quả phân tích tác động cho thấy sentiment có quan hệ yếu với return tuần kế tiếp, nhưng có tín hiệu âm rõ hơn ở horizon 4 tuần, đặc biệt với future abnormal return.
 
 # Giới thiệu
 
-## Bối cảnh thực tập
+## Bối cảnh
 
-Trong thị trường chứng khoán, thông tin từ truyền thông và tin tức doanh nghiệp có thể ảnh hưởng đến kỳ vọng của nhà đầu tư, thanh khoản và biến động giá cổ phiếu. Các nghiên cứu về textual analysis trong tài chính cho thấy nội dung văn bản có thể chứa tín hiệu về sentiment, rủi ro, mức độ bất định và kỳ vọng thị trường [@tetlock2007; @loughran2011].
+Tin tức tài chính là một nguồn thông tin quan trọng phản ánh kỳ vọng, lo ngại và tâm lý của nhà đầu tư. Trong thực tế, giá tài sản tài chính không chỉ chịu ảnh hưởng bởi dữ liệu cơ bản như lợi nhuận doanh nghiệp, lãi suất, thanh khoản hay tăng trưởng vĩ mô, mà còn chịu tác động từ cách thị trường tiếp nhận và phản ứng với thông tin. Vì vậy, việc đo lường sentiment từ tin tức có thể bổ sung một lớp tín hiệu định lượng cho các bài toán phân tích thị trường.
 
-Trong kỳ thực tập, em tham gia vào bài toán xây dựng pipeline xử lý dữ liệu tin tức tài chính tiếng Việt nhằm hỗ trợ phân tích sentiment cho cổ phiếu. Bài toán này kết hợp nhiều nhóm kỹ năng: tiền xử lý dữ liệu, xử lý ngôn ngữ tự nhiên tiếng Việt, biểu diễn văn bản dạng bag-of-words, xây dựng dictionary theo domain tài chính và chuẩn bị dữ liệu cho mô hình học sâu.
+Trong nghiên cứu quốc tế, hướng tiếp cận sử dụng văn bản để đo lường tâm lý thị trường đã được khai thác trong nhiều công trình. @tetlock2007 chỉ ra rằng sắc thái tiêu cực trong truyền thông tài chính có quan hệ với biến động thị trường. @loughran2011 nhấn mạnh rằng các từ điển sentiment phổ thông có thể không phù hợp với ngữ cảnh tài chính, do nhiều từ mang sắc thái khác trong báo cáo tài chính và tin tức doanh nghiệp. @baker2006 đề xuất cách nhìn sentiment như một chỉ báo tổng hợp phản ánh mức độ lạc quan hoặc bi quan của thị trường.
 
-## Mục tiêu báo cáo
+Với tiếng Việt, bài toán này có thêm một số khó khăn: dữ liệu tin tức không đồng nhất về nguồn, nội dung nhiều nhiễu, ngôn ngữ tài chính có nhiều cụm từ đặc thù, và các mô hình NLP tiền huấn luyện cần được điều chỉnh theo ngữ cảnh thị trường Việt Nam. Vì vậy, pipeline trong báo cáo này được thiết kế theo hướng kết hợp giữa xử lý dữ liệu, dictionary tài chính và fine-tune PhoBERT, một mô hình ngôn ngữ tiếng Việt được đề xuất bởi @nguyen2020phobert.
 
-Báo cáo này có các mục tiêu chính:
+## Mục tiêu thực tập
 
-- Mô tả bối cảnh, nhiệm vụ và phạm vi công việc trong học kỳ thực tập.
-- Trình bày quy trình xây dựng dữ liệu từ tin tức, giá lịch sử và sự kiện cổ phiếu.
-- Giải thích pipeline xử lý văn bản, xây dựng financial dictionary và chuẩn bị nhãn sentiment.
-- Tổng kết kết quả đạt được, kỹ năng học được và các hạn chế còn tồn tại.
-- Đề xuất hướng phát triển tiếp theo cho hệ thống phân tích sentiment tài chính.
+Dựa trên bảng theo dõi quá trình thực tập tại Công ty Cổ phần Công nghệ Thông tin 3T, mục tiêu của kỳ thực tập gồm:
 
-## Phạm vi công việc
-
-Phạm vi thực hiện tập trung vào giai đoạn nền tảng của pipeline dữ liệu. Báo cáo không đặt mục tiêu xây dựng một hệ thống giao dịch hoàn chỉnh, mà tập trung vào việc tạo dữ liệu đầu vào có chất lượng cho các bước phân tích sau này.
-
-Các thành phần chính gồm:
-
-- Dữ liệu tin tức cổ phiếu và thông tin mô tả bài viết.
-- Dữ liệu giá lịch sử phục vụ phân tích theo thời gian.
-- Dữ liệu sự kiện cổ phiếu phục vụ đối chiếu với biến động thị trường.
-- Pipeline tokenization, làm sạch văn bản và xây dựng ma trận term-document.
-- Quy trình chọn candidate terms và xây dựng dictionary tài chính tiếng Việt.
-- Định hướng tạo sentiment features và chuẩn bị dữ liệu fine-tune PhoBERT [@nguyen2020phobert].
-
-# Tổng quan đơn vị thực tập và nhiệm vụ
-
-## Giới thiệu đơn vị thực tập
-
-[Viết ngắn gọn 1--2 trang về công ty, phòng ban, lĩnh vực hoạt động, sản phẩm/dịch vụ chính, vị trí thực tập và vai trò của nhóm dữ liệu.]
-
-Trong thời gian thực tập, em được phân công tham gia nhóm [Tên nhóm/phòng ban], với trọng tâm là xử lý và phân tích dữ liệu phục vụ các bài toán liên quan đến thị trường tài chính. Môi trường thực tập giúp em tiếp cận quy trình làm việc thực tế, bao gồm đọc yêu cầu, phân tích dữ liệu, viết script xử lý, kiểm tra kết quả và trình bày tiến độ.
-
-## Nhiệm vụ được giao
-
-Các nhiệm vụ chính trong kỳ thực tập bao gồm:
-
-| Nhóm nhiệm vụ | Nội dung thực hiện | Kết quả đầu ra |
+| Nhóm mục tiêu | Nội dung | Kết quả kỳ vọng |
 |---|---|---|
-| Khảo sát dữ liệu | Kiểm tra cấu trúc dữ liệu tin tức, giá lịch sử và sự kiện cổ phiếu | Hiểu nguồn dữ liệu, cột dữ liệu, vấn đề thiếu hoặc nhiễu |
-| Làm sạch dữ liệu | Chuẩn hóa text, xử lý missing values, lọc bản ghi không phù hợp | Dữ liệu đầu vào sạch hơn cho phân tích |
-| Xử lý tiếng Việt | Tokenize văn bản, chuẩn hóa token, chuẩn bị corpus | Corpus phục vụ vectorization |
-| Biểu diễn văn bản | Xây dựng CountVectorizer, TF/DF, TF-IDF hoặc CSR matrix | Ma trận đặc trưng văn bản |
-| Xây dựng dictionary | Lọc candidate terms và gán nhóm sentiment | Financial dictionary phiên bản đầu |
-| Chuẩn bị mô hình | Đề xuất hướng tạo nhãn và fine-tune PhoBERT | Dữ liệu sẵn sàng cho bước mô hình hóa |
+| Xử lý dữ liệu tin tức | Tiền xử lý và khám phá dữ liệu tin tức thị trường cổ phiếu Việt Nam | Dataset tin tức cổ phiếu được phân loại, làm sạch và EDA đầy đủ |
+| Phân tích sentiment | Xây dựng mô hình NLP phân tích cảm xúc tin tức thị trường cổ phiếu | Mô hình sentiment đạt accuracy từ 80% trên tập kiểm thử |
+| Equity Sentiment Index | Tính toán chỉ số sentiment theo ngày và tuần | Chỉ số equity sentiment được tính tự động theo ngày/tuần |
+| Phân tích tác động | Phân tích mối quan hệ giữa sentiment và VN-Index/cổ phiếu | Báo cáo tương quan, hồi quy, abnormal return và hướng backtesting |
+| Báo cáo tổng kết | Tổng hợp quy trình, kết quả và hướng mở rộng | Báo cáo cuối kỳ có thể dùng để trình bày lại toàn bộ pipeline |
 
-## Công cụ và môi trường làm việc
+## Phạm vi báo cáo
 
-Các công cụ được sử dụng trong quá trình thực tập:
+Báo cáo tập trung trả lời bốn câu hỏi chính:
 
-- Python cho xử lý dữ liệu, EDA và xây dựng pipeline.
-- pandas, NumPy, scikit-learn cho xử lý bảng dữ liệu và biểu diễn văn bản.
-- Các thư viện xử lý tiếng Việt cho tokenization và chuẩn hóa văn bản.
-- Quarto để ghi chép pipeline và biên soạn báo cáo.
-- Git để quản lý phiên bản mã nguồn.
+1. Dữ liệu giá lịch sử và dữ liệu tin tức được làm sạch như thế nào?
+2. Dictionary sentiment tài chính và sentiment score cho từng bài báo được xây dựng ra sao?
+3. Equity Sentiment Index theo ngày, tuần và tháng được tính bằng công thức nào?
+4. Chỉ số sentiment có quan hệ như thế nào với return và abnormal return của VN-Index?
 
-# Cơ sở lý thuyết
+# Tổng quan dữ liệu và cấu trúc pipeline
 
-## Sentiment trong tài chính
+## Các nguồn dữ liệu chính
 
-Sentiment trong tài chính phản ánh thái độ tích cực, tiêu cực hoặc bất định của thông tin đối với doanh nghiệp, cổ phiếu hoặc thị trường. Không giống sentiment trong ngữ cảnh đời sống, sentiment tài chính phụ thuộc mạnh vào domain. Một từ có vẻ tiêu cực trong ngôn ngữ chung chưa chắc tiêu cực trong tài chính, và ngược lại.
+\begin{table}[htbp]
+\centering
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{|p{3cm}|Y|Y|}
+\hline
+\textbf{Nhóm dữ liệu} & \textbf{File đầu vào/đầu ra chính} & \textbf{Vai trò} \\
+\hline
 
-Ví dụ, các từ như "nợ", "lỗ", "xử phạt", "đình chỉ" thường mang tín hiệu tiêu cực khi xuất hiện trong tin doanh nghiệp. Trong khi đó, các từ như "tăng trưởng", "phục hồi", "mở rộng", "vượt kế hoạch" thường thể hiện tín hiệu tích cực. Nhóm từ như "dự kiến", "có thể", "rủi ro", "biến động" có thể phản ánh mức độ bất định.
+Giá lịch sử &
+\seqsplit{data\_Histo/historical\_price\_all.parquet} &
+Dữ liệu OHLCV của cổ phiếu và chỉ số \\
+\hline
 
-## Textual analysis và financial dictionary
+VN-Index &
+\seqsplit{data\_Histo/vnindex\_eda\_output.parquet} &
+Dữ liệu riêng cho VN-Index sau khi lọc và kiểm tra \\
+\hline
 
-Loughran và McDonald chỉ ra rằng dictionary sentiment chung có thể không phù hợp khi áp dụng trực tiếp cho văn bản tài chính [@loughran2011]. Vì vậy, cách tiếp cận phù hợp hơn là xây dựng dictionary theo domain, dựa trên chính corpus tài chính cần phân tích.
+Tin tức thô &
+\seqsplit{data\_News/dataset\_news.parquet} &
+Dữ liệu tin tức ban đầu \\
+\hline
 
-Với dữ liệu tiếng Việt, vấn đề này càng quan trọng vì:
+Tin tức sạch &
+\seqsplit{data\_News/clean\_news.parquet} &
+Dữ liệu sau khi chuẩn hóa ngày, domain, category và loại nhiễu \\
+\hline
 
-- Từ ghép và cụm từ tài chính cần được tokenize đúng.
-- Một token có thể mang nhiều nghĩa tùy ngữ cảnh.
-- Tin tức tài chính thường chứa tên doanh nghiệp, mã cổ phiếu, số liệu, thuật ngữ kế toán và các cụm từ chuyên ngành.
-- Dữ liệu báo chí có thể chứa nhiễu như HTML, ký tự đặc biệt, duplicate content hoặc nội dung không liên quan.
+Tin cổ phiếu &
+\seqsplit{data\_News/equity\_news.parquet} &
+Tin tức được lọc theo domain và category liên quan cổ phiếu \\
+\hline
 
-## Biểu diễn văn bản
+Nội dung sạch &
+\seqsplit{data\_News/equity\_news\_clean\_content.parquet} &
+Nội dung bài báo sau xử lý trùng lặp và nhiễu \\
+\hline
 
-Pipeline sử dụng hướng biểu diễn văn bản dạng bag-of-words và ma trận document-term. Mỗi dòng tương ứng với một bài viết, mỗi cột tương ứng với một token hoặc term. Từ ma trận này có thể tính:
+Nội dung đã tách từ &
+\seqsplit{data\_News/equity\_news\_tokenized\_vncorenlp.parquet} &
+Đầu vào cho trích xuất n-gram và mô hình NLP \\
+\hline
 
-- Term Frequency (TF): tổng số lần một term xuất hiện trong corpus.
-- Document Frequency (DF): số lượng document có chứa term đó.
-- DF ratio: tỷ lệ document có chứa term.
-- TF-IDF: trọng số phản ánh mức độ quan trọng tương đối của term trong document.
+Dictionary sentiment &
+\seqsplit{data\_News/candidate\_ngram\_terms\_dictionary.parquet} &
+Từ điển sentiment tài chính theo term \\
+\hline
 
-Các thống kê này hỗ trợ lọc candidate terms để xây dựng dictionary và tạo đặc trưng sentiment.
+Sentiment theo bài báo &
+\seqsplit{data\_News/equity\_news\_content\_sentiment\_ratios.parquet} &
+Dữ liệu bài báo có sentiment score, ratio và label \\
+\hline
 
-## PhoBERT cho tiếng Việt
+Sentiment index &
+\seqsplit{data\_News/market\_sentiment\_index\_daily.parquet};
+\seqsplit{data\_News/market\_sentiment\_index\_weekly.parquet} &
+Chỉ số sentiment theo thời gian \\
+\hline
 
-PhoBERT là mô hình ngôn ngữ tiền huấn luyện cho tiếng Việt, phù hợp với nhiều bài toán NLP như phân loại văn bản, nhận diện thực thể và sentiment classification [@nguyen2020phobert]. Trong pipeline này, dictionary-based sentiment có thể được dùng như bước tạo nhãn sơ bộ, sau đó rà soát và cải thiện để chuẩn bị tập huấn luyện cho PhoBERT.
+Dữ liệu phân tích tác động &
+\seqsplit{data\_News/vnindex\_weekly\_sentiment\_merged.parquet};
+\seqsplit{data\_News/vnindex\_weekly\_sentiment\_abnormal\_return.parquet} &
+Dữ liệu merge giữa sentiment và VN-Index \\
+\hline
 
-# Phương pháp thực hiện
+\end{tabularx}
+\caption{Các nguồn dữ liệu chính trong pipeline}
+\end{table}
 
-## Tổng quan pipeline
+## Kích thước dữ liệu sau các bước xử lý
 
-Pipeline tổng thể được thiết kế theo các bước:
+Một số kết quả trung gian quan trọng:
 
-1. Thu thập và kiểm tra dữ liệu tin tức.
-2. Làm sạch văn bản và chuẩn hóa các cột chính.
-3. Tokenize tiếng Việt và tạo corpus.
-4. Xây dựng document-term matrix dạng sparse matrix.
-5. Tính TF, DF và các thống kê từ vựng.
-6. Chọn candidate terms dựa trên rule.
-7. Gán nhóm sentiment để tạo financial dictionary.
-8. Tính sentiment features cho từng bài viết.
-9. Tạo nhãn sentiment sơ bộ và chuẩn bị dữ liệu fine-tune PhoBERT.
-10. Tổng hợp sentiment theo mã cổ phiếu và ngày giao dịch.
+\begin{table}[H]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.18}
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{6.2cm} >{\raggedleft\arraybackslash}p{1.9cm} Y}
+\toprule
+\textbf{File} & \textbf{Số dòng} & \textbf{Ghi chú} \\
+\midrule
 
-## Dữ liệu tin tức
+\path{data_News/dataset_news.parquet} &
+719.603 &
+Dữ liệu tin tức ban đầu \\
 
-Dữ liệu tin tức là nguồn chính để trích xuất tín hiệu sentiment. Các cột quan trọng có thể bao gồm:
+\path{data_News/clean_news.parquet} &
+678.418 &
+Tin tức sau làm sạch cơ bản \\
 
-- Tiêu đề bài viết.
-- Mô tả ngắn hoặc nội dung tóm tắt.
-- Ngày đăng tin.
-- Mã cổ phiếu hoặc doanh nghiệp liên quan.
-- Nguồn tin.
+\path{data_News/equity_news.parquet} &
+130.545 &
+Tin tức liên quan thị trường cổ phiếu \\
 
-Trong project hiện tại, dữ liệu tin tức được xử lý qua các script trong thư mục `News`, bao gồm làm sạch dữ liệu, tokenize tiếng Việt, tạo candidate terms và xây dựng ma trận CSR.
+\path{data_News/equity_news_clean_content.parquet} &
+126.576 &
+Nội dung bài báo sau làm sạch \\
 
-## Dữ liệu giá lịch sử
+\path{data_News/equity_news_tokenized_vncorenlp.parquet} &
+126.576 &
+Nội dung đã tách từ \\
 
-Dữ liệu giá lịch sử hỗ trợ kiểm tra phản ứng thị trường sau khi tin tức được công bố. Các biến thường dùng gồm giá mở cửa, giá đóng cửa, giá cao nhất, giá thấp nhất, khối lượng giao dịch và tỷ suất sinh lợi.
+\path{data_News/candidate_ngram_terms.parquet} &
+43.840 &
+Candidate terms sau lọc n-gram \\
 
-Các bước xử lý chính:
+\path{data_News/candidate_ngram_terms_dictionary.parquet} &
+43.840 &
+Dictionary sentiment tài chính \\
 
-- Chuẩn hóa định dạng ngày.
-- Kiểm tra missing values và duplicate records.
-- Tạo biến return theo ngày.
-- Ghép dữ liệu theo mã cổ phiếu và ngày giao dịch.
-- Chuẩn bị dữ liệu để so sánh với sentiment theo firm-day.
+\path{data_News/equity_news_content_sentiment_ratios.parquet} &
+126.576 &
+Bài báo có sentiment score và label \\
 
-## Dữ liệu sự kiện cổ phiếu
+\path{data_News/market_sentiment_index_daily.parquet} &
+5.037 &
+Sentiment index theo ngày \\
 
-Dữ liệu sự kiện cổ phiếu giúp bổ sung bối cảnh cho phân tích tin tức. Một số sự kiện có thể ảnh hưởng đến giá cổ phiếu như công bố báo cáo tài chính, chia cổ tức, phát hành thêm, thay đổi nhân sự cấp cao hoặc thông tin xử phạt.
+\path{data_News/market_sentiment_index_weekly.parquet} &
+731 &
+Sentiment index theo tuần \\
 
-Trong project, thư mục `event_stock` chứa notebook/script phục vụ EDA dữ liệu sự kiện. Dữ liệu này có thể được dùng để kiểm tra xem sentiment từ tin tức có trùng với giai đoạn xuất hiện sự kiện quan trọng hay không.
+\path{data_Histo/historical_price_all.parquet} &
+4.307.791 &
+Dữ liệu giá lịch sử \\
 
-## Làm sạch và tokenization
+\path{data_Histo/vnindex_weekly_return.parquet} &
+793 &
+Weekly return của VN-Index \\
 
-Tiền xử lý văn bản là bước quan trọng vì chất lượng token ảnh hưởng trực tiếp đến dictionary và mô hình. Các thao tác chính gồm:
+\path{data_News/vnindex_weekly_sentiment_merged.parquet} &
+722 &
+Dữ liệu weekly sau merge \\
 
-- Chuyển đổi kiểu dữ liệu và xử lý missing text.
-- Loại bỏ ký tự thừa, khoảng trắng thừa, HTML hoặc pattern không cần thiết.
-- Chuẩn hóa chữ hoa/chữ thường.
-- Tokenize tiếng Việt để giữ được cụm từ có nghĩa.
-- Loại bỏ token rác, token quá ngắn hoặc không có giá trị phân tích.
+\bottomrule
+\end{tabularx}
+\caption{Kích thước dữ liệu sau các bước xử lý}
+\end{table}
+- Note: có 9 tuần nghỉ lễ tết chưa được xử lí nên số quan sát sau merge là 722 thay vì 731.
 
-Ví dụ, cụm "tăng trưởng lợi nhuận" nên được giữ như các token/cụm từ có ý nghĩa tài chính thay vì bị tách sai làm mất ngữ cảnh.
 
-## Xây dựng ma trận văn bản
+\begin{table}[H]
+\centering
+\small
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{6pt}
+\begin{tabularx}{\textwidth}{p{6cm} Y}
+\toprule
+\textbf{Dữ liệu} & \textbf{Khoảng thời gian} \\
+\midrule
 
-Sau khi có corpus đã tokenize, pipeline xây dựng document-term matrix bằng CountVectorizer hoặc phương pháp tương đương. Để tiết kiệm bộ nhớ, ma trận được lưu ở dạng sparse matrix, đặc biệt phù hợp khi vocabulary lớn nhưng mỗi document chỉ chứa một phần nhỏ số term.
+Tin tức cổ phiếu sau làm sạch &
+01/01/2010 -- 31/12/2023 \\
 
-Từ ma trận này, pipeline có thể tính TF, DF và TF-IDF. Các chỉ số này giúp chọn ra những term đủ phổ biến để review thủ công, đồng thời loại bỏ token quá hiếm hoặc quá chung.
+Dữ liệu giá lịch sử &
+04/01/2010 -- 12/05/2025 \\
 
-## Chọn candidate terms
+Daily sentiment index &
+01/01/2010 -- 31/12/2023 \\
 
-Candidate terms được chọn theo các tiêu chí:
+Weekly sentiment/VN-Index merged &
+Theo tuần, giai đoạn 2010 -- 2023 \\
 
-- Có DF vượt ngưỡng tối thiểu.
-- Không phải stopword phổ thông.
-- Không phải token lỗi, số thuần túy hoặc ký tự rác.
-- Có khả năng mang thông tin tài chính hoặc sentiment.
-- Ưu tiên cụm từ có ý nghĩa rõ trong ngữ cảnh thị trường.
+\bottomrule
+\end{tabularx}
+\caption{Các mốc thời gian chính của dữ liệu}
+\end{table}
 
-Kết quả của bước này là danh sách term ngắn hơn, phù hợp để review thủ công và gán nhóm sentiment.
+\FloatBarrier
 
-## Xây dựng financial dictionary
+## Luồng xử lý tổng quát
 
-Dictionary được tổ chức theo nhóm:
+Luồng xử lý được triển khai theo thứ tự sau:
 
-| Nhóm | Ý nghĩa | Ví dụ term |
+| Nhánh xử lý | Luồng chính | Output |
 |---|---|---|
-| Positive | Tín hiệu tích cực | tăng_trưởng, phục_hồi, vượt_kế_hoạch |
-| Negative | Tín hiệu tiêu cực | thua_lỗ, suy_giảm, xử_phạt |
-| Uncertainty | Bất định/rủi ro | rủi_ro, có_thể, dự_kiến |
-| Litigious | Pháp lý/tranh chấp | khởi_kiện, điều_tra, vi_phạm |
-| Neutral/Remove | Không dùng làm sentiment | doanh_nghiệp, cổ_phiếu, thị_trường |
+| Giá lịch sử | Historical price raw -> kiểm tra OHLCV/duplicate/mã chứng khoán -> dữ liệu VN-Index sạch | Weekly VN-Index return |
+| Tin tức | News raw -> clean metadata/domain/category -> lọc equity news -> clean content -> tách từ VNCoreNLP | Nội dung tin tức sạch đã tách từ |
+| Sentiment | Candidate n-gram terms -> financial sentiment dictionary -> sentiment score theo bài báo | Daily/weekly/monthly sentiment index |
+| Tác động VN-Index | Weekly return + weekly sentiment -> merge theo tuần -> correlation/regression/abnormal return | Bộ kết quả phân tích tác động |
 
-Mỗi term nên có thêm trường ghi chú để giải thích lý do giữ hoặc loại bỏ. Điều này giúp dictionary dễ bảo trì và dễ review khi mở rộng.
+# Xử lý dữ liệu giá lịch sử
 
-## Tạo sentiment features
+## Mục tiêu xử lý Historical_price
 
-Sau khi có dictionary, mỗi bài viết có thể được biểu diễn bằng các đặc trưng:
+Phần `Historical_price` có nhiệm vụ chuẩn hóa dữ liệu giá lịch sử và tạo các biến thị trường dùng cho phân tích tác động. Dữ liệu giá là nền tảng để tính return của VN-Index, kiểm tra biến động giá, và ghép với sentiment index theo tuần.
 
-- Số lượng từ positive.
-- Số lượng từ negative.
-- Số lượng từ uncertainty.
-- Số lượng từ litigious.
-- Tỷ lệ positive/negative trên tổng số token.
-- Sentiment score tổng hợp.
+Các mục tiêu chính gồm:
 
-Một công thức đơn giản cho sentiment score:
+1. Đọc dữ liệu giá lịch sử từ file parquet.
+2. Chuẩn hóa kiểu dữ liệu cho các cột như `symbol`, `date`, `year`, `open`, `high`, `low`, `close`, `volume`.
+3. Lọc các mã chứng khoán nằm trong danh sách cần phân tích.
+4. Kiểm tra lỗi dữ liệu như ngày không hợp lệ, sai năm, trùng `symbol-date`, giá âm hoặc bằng 0, quan hệ OHLC không hợp lệ.
+5. Tạo dữ liệu riêng cho VN-Index.
+6. Tạo return và các biến trễ để phục vụ phân tích tác động.
+
+## Kiểm tra chất lượng dữ liệu giá
+
+File `Historical_price/EDA_raw_historical_price.py` thực hiện EDA và kiểm tra chất lượng dữ liệu giá. Các nhóm kiểm tra chính gồm:
+
+| Nhóm kiểm tra | Mục đích |
+|---|---|
+| Chuẩn hóa mã | Đảm bảo `symbol` được đưa về dạng string, viết hoa, loại khoảng trắng |
+| Chuẩn hóa ngày | Chuyển `date` về định dạng datetime |
+| Kiểm tra năm | So sánh `year` trong dữ liệu với năm suy ra từ `date` |
+| Kiểm tra trùng lặp | Phát hiện các dòng trùng cùng `symbol` và `date` |
+| Kiểm tra OHLC | Loại các dòng có open/high/low/close không hợp lệ |
+| Kiểm tra quan hệ giá | Đảm bảo `high >= open, close, low` và `low <= open, close, high` |
+
+Việc kiểm tra này quan trọng vì chỉ cần một số dòng lỗi trong chuỗi giá cũng có thể làm sai return, volatility và abnormal return. Với dữ liệu tài chính, các lỗi như giá bằng 0, ngày sai hoặc duplicate có thể tạo ra biến động giả, làm méo kết quả hồi quy.
+
+## Lọc dữ liệu theo danh sách mã cần dùng
+
+File `Historical_price/EDA_ticker_required.py` đọc danh sách mã từ `symbols.csv`, chuẩn hóa tên cột mã chứng khoán thành `ticker`, sau đó lọc dữ liệu giá theo danh sách này. Bước này giúp giảm kích thước dữ liệu và tập trung vào các mã phục vụ bài toán cổ phiếu Việt Nam.
+
+Sau khi lọc, dữ liệu được dùng cho các bước EDA, tạo feature và tách riêng VN-Index.
+
+## Làm sạch và tạo feature
+
+File `Historical_price/clean_EDA.py` xử lý các vấn đề cơ bản trong dữ liệu OHLCV:
+
+1. Loại bỏ các dòng có giá OHLC bằng 0 hoặc không hợp lệ.
+2. Chuẩn hóa những dòng có volume bằng 0 nhưng vẫn có giá giao dịch.
+3. Tạo bộ dữ liệu sạch phục vụ EDA.
+
+File `Historical_price/EDA_Gen_feature.py` tiếp tục tạo các biến đặc trưng cho dữ liệu giá, bao gồm:
+
+| Nhóm feature | Ví dụ | Ý nghĩa |
+|---|---|---|
+| Return | `ret_0`, `ret_1`, `ret_3`, `ret_5` | Lợi suất hiện tại và lợi suất trễ |
+| Volatility | Rolling volatility | Biến động trong một cửa sổ thời gian |
+| Volume | `log_vol_total`, rolling volume | Thanh khoản và mức độ giao dịch |
+| Range | `intraday_range_ratio` | Biên độ dao động trong ngày |
+
+Các feature này là nền tảng nếu mở rộng sang bài toán dự báo cổ phiếu hoặc backtesting tín hiệu giao dịch.
+
+## Tách dữ liệu VN-Index
+
+File `Historical_price/VNindex_EDA.py` lọc riêng mã VNINDEX từ dữ liệu giá lịch sử và lưu thành `data_Histo/vnindex_eda_output.csv`. Đây là dữ liệu trực tiếp được dùng trong phần `News_Vnindex`.
+
+Kết quả dữ liệu VN-Index sau xử lý gồm 3.826 quan sát, trải dài từ 04/01/2010 đến 12/05/2025. Dữ liệu này được dùng để tính return theo tuần, tạo biến trễ, volatility 12 tuần và các target future return.
+
+* Dữ liệu của VnIndex đã được hiệu chỉnh nên giá trị adj_ratio đã được áp dụng vào giá close, do đó không cần hiệu chỉnh thêm. Tuy nhiên, nếu mở rộng sang các mã cổ phiếu khác, cần chú ý đến việc hiệu chỉnh giá để tránh sai lệch khi tính return.
+
+```{python}
+#| label: fig-vnindex-cumulative-return
+#| fig-cap: "VN-Index cumulative return giai đoạn 2010--2025"
+#| fig-width: 10
+#| fig-height: 4.5
+
+from pathlib import Path
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+candidate_paths = [
+    Path("../data_Histo/vnindex_eda_output.csv"),
+    Path("data_Histo/vnindex_eda_output.csv"),
+]
+
+for candidate_path in candidate_paths:
+    if candidate_path.exists():
+        vnindex_path = candidate_path
+        break
+else:
+    raise FileNotFoundError("Không tìm thấy file data_Histo/vnindex_eda_output.csv")
+
+vnindex_df = pd.read_csv(vnindex_path)
+
+plot_df = vnindex_df[["date", "close_price"]].copy()
+plot_df["date"] = pd.to_datetime(plot_df["date"], errors="coerce")
+plot_df["close_price"] = pd.to_numeric(plot_df["close_price"], errors="coerce")
+plot_df = plot_df.dropna(subset=["date", "close_price"])
+plot_df = plot_df.sort_values("date").reset_index(drop=True)
+
+plot_df["daily_return"] = plot_df["close_price"].pct_change()
+plot_df["cumulative_return"] = (1 + plot_df["daily_return"]).cumprod() - 1
+plot_df["cumulative_return_pct"] = plot_df["cumulative_return"] * 100
+
+plt.figure(figsize=(14, 6))
+plt.plot(
+    plot_df["date"],
+    plot_df["cumulative_return_pct"],
+    linewidth=1.5,
+)
+
+plt.title("VNINDEX Cumulative Return Over Time")
+plt.xlabel("Date")
+plt.ylabel("Cumulative Return (%)")
+plt.grid(True, alpha=0.3)
+
+ax = plt.gca()
+ax.xaxis.set_major_locator(mdates.YearLocator(1))
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+```
+
+Biểu đồ trên sử dụng cumulative return thay vì chỉ vẽ `close_price`, vì trong phân tích tài chính return phản ánh trực tiếp mức tăng trưởng tích lũy của chỉ số theo thời gian.
+
+# Xử lý dữ liệu tin tức
+
+## Mục tiêu xử lý News
+
+Phần `News` có nhiệm vụ biến dữ liệu tin tức thô thành dữ liệu văn bản có thể dùng cho NLP và sentiment analysis. Với dữ liệu tiếng Việt, bước này đặc biệt quan trọng vì nội dung thô thường chứa lỗi crawl, đoạn liên quan, mô tả lặp lại, tiêu đề bị lặp trong content, hoặc các bài không liên quan trực tiếp đến thị trường cổ phiếu.
+
+Các bước chính gồm:
+
+1. EDA dữ liệu tin tức thô.
+2. Làm sạch metadata như ngày đăng, domain, category, keyword.
+3. Lọc tin tức liên quan đến thị trường cổ phiếu.
+4. Làm sạch nội dung bài viết.
+5. Tách từ tiếng Việt bằng VNCoreNLP.
+6. Trích xuất candidate terms bằng n-gram.
+7. Xây dựng dictionary sentiment tài chính.
+8. Gán sentiment score và label cho từng bài báo.
+
+## EDA dữ liệu tin tức thô
+
+File `News/EDA_clean/EDA_raw_news.py` đọc dữ liệu ban đầu từ `dataset_news.parquet` và thực hiện các thống kê ban đầu:
+
+| Nhóm EDA | Nội dung |
+|---|---|
+| Missing value | Kiểm tra số lượng giá trị thiếu theo cột |
+| Ngày đăng | Parse `publication_date`, kiểm tra khoảng thời gian |
+| Nội dung văn bản | Tính số từ title, description, content |
+| Trùng lặp | Kiểm tra duplicate theo link và ngày |
+| Domain/category | Thống kê nguồn tin và nhóm tin |
+| Keyword | Chuẩn hóa và kiểm tra keyword |
+
+Dữ liệu tin tức ban đầu có 719.603 dòng. Sau bước làm sạch cơ bản, file `clean_news.parquet` còn 678.418 dòng.
+
+## Làm sạch metadata
+
+File `News/EDA_clean/news_clean.py` tạo dữ liệu `clean_news.parquet`. Các xử lý chính gồm:
+
+1. Chuẩn hóa domain về `domain_norm`.
+    - bỏ http://, https://, www., bỏ path sau /, bỏ query sau ?, bỏ fragment sau # và chỉ giữ phần tên miền chính.
+2. Parse ngày đăng và loại bỏ dòng có ngày không hợp lệ.
+    - 79 dòng bị loại vì ngày đăng không parse được do lỗi format dạng 00:00:0000
+3. Loại các bài trước năm 2010 để đồng bộ với dữ liệu giá lịch sử.
+    - 22.316 dòng bị loại.
+4. Chuẩn hóa keyword từ dạng chuỗi/dict-like về dạng dễ xử lý.
+5. Tính độ dài description và loại các bài có mô tả quá ngắn.
+    - 18.790 dòng bị loại vì description có độ dài dưới 5 từ, vì những bài này thường không đủ thông tin để phân tích sentiment.
+6. Loại duplicate theo link và ngày đăng.
+7. Giữ các cột chính: `publication_date`, `year`, `domain_norm`, `category`, `title`, `description`, `keywords_norm`.
+
+Mục tiêu của bước này là tạo một lớp dữ liệu tin tức sạch về mặt metadata trước khi xử lý nội dung sâu hơn.
+
+## Lọc tin tức cổ phiếu
+
+File `News/EDA_clean/to_equity_news.py` dùng hai danh sách lọc:
+
+1. `categories.csv`: danh sách category liên quan tới cổ phiếu/thị trường.
+2. `domain_norm.csv`: danh sách nguồn tin phù hợp.
+
+Sau khi lọc theo category chỉ giữ lại những category liên quan đến equity, dữ liệu `equity_news.parquet` còn 130.545 dòng. Đây là tập tin tức tập trung vào bối cảnh thị trường cổ phiếu Việt Nam, tránh đưa quá nhiều tin vĩ mô, xã hội hoặc tin không liên quan vào sentiment index.
+
+## Làm sạch nội dung bài báo
+
+File `News/EDA_clean/clean_content.py` tạo file `equity_news_clean_content.parquet`. Bước này xử lý các vấn đề thường gặp trong dữ liệu crawl:
+
+| Vấn đề | Cách xử lý |
+|---|---|
+| Tiêu đề/mô tả lặp trong content | Loại bỏ phần trùng với title hoặc description |
+| Đoạn gợi ý bài liên quan | Cắt theo các marker như “Có thể bạn quan tâm” |
+| Nội dung quá ngắn | Thay bằng description nếu description đủ thông tin |
+| Nhiễu theo nguồn cụ thể | Có logic riêng cho một số domain/case đặc biệt |
+| Khoảng trắng và ký tự thừa | Chuẩn hóa khoảng trắng |
+
+- Lọc theo domain loại 40 records
+- Xóa 3.969 content chứa phrase nhiễu 
+
+-> Sau bước này, dữ liệu còn 126.576 bài báo, là tập nội dung chính dùng cho tách từ, sentiment scoring và fine-tune model.
+
+## Tách từ tiếng Việt (Tokenize Vietnamese text)
+
+File `News/prepare_data_model/used_for_v1/tokenize_VNCoreNLP.py` dùng VNCoreNLP để tách từ và tách câu cho nội dung tiếng Việt. Đây là bước cần thiết vì tiếng Việt là ngôn ngữ đơn lập, nhiều khái niệm tài chính là cụm nhiều âm tiết như `lợi nhuận`, `thanh khoản`, `tăng trưởng`, `áp lực bán`, `dòng tiền`.
+
+Nếu không tách từ, mô hình n-gram và PhoBERT có thể hiểu sai ranh giới từ. Ví dụ:
+
+| Văn bản gốc | Sau tách từ |
+|---|---|
+| lợi nhuận tăng mạnh | lợi_nhuận tăng mạnh |
+| áp lực bán gia tăng | áp_lực_bán gia_tăng |
+| dòng tiền tích cực | dòng_tiền tích_cực |
+
+Kết quả được lưu ở `data_News/equity_news_tokenized_vncorenlp.parquet`.
+
+# Trích xuất candidate terms và xây dựng dictionary sentiment
+
+## Trích xuất candidate n-gram
+
+Sau khi có nội dung đã tách từ, pipeline xây dựng tập candidate terms bằng n-gram. Mục tiêu là tìm các từ/cụm từ có khả năng mang ý nghĩa sentiment trong tài chính.
+
+File `News/prepare_data_model/build_CSR_matrix.py` và các script liên quan tạo ma trận term-document bằng `CountVectorizer`. Từ đó, pipeline tính các chỉ số:
+
+| Chỉ số | Ý nghĩa |
+|---|---|
+| `tf` | Tổng số lần term xuất hiện trong toàn bộ corpus |
+| `df` | Số bài báo có chứa term |
+| `df_ratio` | Tỷ lệ bài báo có chứa term |
+| `ngram_size` | Độ dài của term: unigram, bigram |
+
+Tổng số n-gram được tạo ra là **2.858.165**, bao gồm:
+
+- Uni-gram: 141.397
+- Bi-gram: 2.716.768
+
+File `candidate_term_ngram.py` lọc candidate terms theo các điều kiện như:
+
+1. Loại những tokenize chứa stopwords ở đầu hoặc cuối (1.425.053)
+2. Loại term quá phổ biến (xuất hiện trong hơn 22% bài báo) (40)
+3. Loại quá hiếm 
+    - min_df unigram = 5000 (140.231)
+    - min_df bigram = 200 (1.248.986)
+4. Ưu tiên các cụm sentiment có ý nghĩa trong tài chính.
+    - Ví dụ (tăng_trưởng, giảm_mạnh, lợi_nhuận_tăng,...)
+5. Xử lý trường hợp bigram/unigram để tránh nhiễu khi cần.
+
+-> Tập candidate cuối cùng có 43.840 terms.
+
+## Xây dựng dictionary sentiment tài chính
+
+File `News/Process_sentiment_label/build_sentiment_dictionary.py` dùng model `wonrax/phobert-base-vietnamese-sentiment` để gán sentiment cho từng candidate term. Đầu ra là file:
+
+`data_News/candidate_ngram_terms_dictionary.parquet`
+
+Dictionary gồm 43.840 terms, với phân bố nhãn:
+
+| Sentiment label | Số lượng term |
+|---|---:|
+| Positive | 16.485 |
+| Negative | 9.699 |
+| Neutral | 17.656 |
+
+Dictionary này đóng vai trò là lớp tri thức tài chính ban đầu. Thay vì chỉ dùng model tổng quát để đọc cả bài báo, dictionary giúp đo sentiment theo term trong ngữ cảnh tài chính, từ đó tạo nhãn yếu cho content và xây dựng sentiment score.
+
+## Lý do cần dictionary theo ngữ cảnh tài chính
+
+Một số từ trong tiếng Việt có thể mang ý nghĩa khác nhau tùy ngữ cảnh. Ví dụ, “giảm” trong ngữ cảnh chi phí có thể là tích cực, nhưng “giảm lợi nhuận” lại tiêu cực. Tương tự, “tăng” không phải lúc nào cũng tích cực nếu đi cùng các cụm như “tăng lỗ”, “tăng áp lực bán”, “tăng nợ”.
+
+Vì vậy, dictionary tài chính cần ưu tiên cụm từ thay vì chỉ xét từng từ đơn. Cụm `lợi_nhuận tăng`, `áp_lực_bán`, `dòng_tiền tích_cực` thường mang thông tin rõ hơn so với các unigram như `tăng`, `giảm`, `áp_lực`.
+
+# Gán sentiment score cho bài báo (basic solution)
+
+## Input và output
+
+File `News/Process_sentiment_label/build_sentiment_label_content.py` đọc hai nguồn dữ liệu:
+
+1. `data_News/candidate_ngram_terms_dictionary.parquet`: dictionary sentiment theo term.
+2. `data_News/equity_news_tokenized_vncorenlp.parquet`: nội dung bài báo đã tách từ.
+
+Đầu ra là:
+
+`data_News/equity_news_content_sentiment_ratios.parquet`
+
+File này chứa các cột sentiment cho từng bài báo, ví dụ:
+
+| Nhóm cột | Ý nghĩa |
+|---|---|
+| `positive_count` | Số lần match term positive |
+| `negative_count` | Số lần match term negative |
+| `neutral_count` | Số lần match term neutral |
+| `positive_ratio` | Tỷ lệ positive trên tổng token |
+| `negative_ratio` | Tỷ lệ negative trên tổng token |
+| `neutral_ratio` | Tỷ lệ neutral trên tổng token |
+| `sentiment_score` | Điểm sentiment tổng hợp |
+| `sentiment_label` | Nhãn positive/negative/neutral của bài báo |
+
+## Công thức sentiment score (fundamental formula)
+
+Sau khi đếm số term positive và negative trong bài báo, sentiment score được tính theo công thức:
 
 $$
-Sentiment = \frac{Positive - Negative}{Positive + Negative + 1}
+sentiment\_score = \frac{positive\_count - negative\_count}{positive\_count + negative\_count}
 $$
 
-Điểm sentiment này có thể dùng làm nhãn sơ bộ, feature đầu vào hoặc biến giải thích trong các phân tích tiếp theo.
+Trong đó:
 
-# Kết quả thực hiện
+- `positive_count` là số term tích cực match được trong bài báo.
+- `negative_count` là số term tiêu cực match được trong bài báo.
+- Mẫu số chỉ tính positive và negative để đo độ lệch cảm xúc thực sự.
+- Neutral được dùng như thông tin bổ sung về độ bao phủ từ điển, không trực tiếp kéo điểm về 0.
 
-## Cấu trúc mã nguồn
+Giá trị `sentiment_score` nằm trong khoảng từ -1 đến 1:
 
-Trong quá trình thực tập, project được tổ chức theo các nhóm chính:
-
-| Thư mục/File | Vai trò |
+| Giá trị | Diễn giải |
 |---|---|
-| `News/news_clean.py` | Làm sạch dữ liệu tin tức |
-| `News/tokenize_VN_word.py` | Tokenize tiếng Việt |
-| `News/build_CSR_matrix.py` | Xây dựng ma trận sparse document-term |
-| `News/build_tf_idf.py` | Tính toán TF-IDF hoặc thống kê từ vựng |
-| `News/candidate_term.py` | Lọc candidate terms cho dictionary |
-| `News/train_model.py` | Chuẩn bị hoặc huấn luyện mô hình |
-| `Historical_price/` | EDA và làm sạch dữ liệu giá lịch sử |
-| `event_stock/` | EDA dữ liệu sự kiện cổ phiếu |
-| `REF/` | Tài liệu tham khảo học thuật |
+| Gần 1 | Bài báo nghiêng mạnh về positive |
+| Gần 0 | Bài báo cân bằng hoặc không rõ sentiment |
+| Gần -1 | Bài báo nghiêng mạnh về negative |
 
-## Kết quả pipeline dữ liệu
+## Quy tắc gán nhãn content
 
-Các kết quả đã đạt được gồm:
+Trong pipeline hiện tại, nhãn bài báo được gán theo hướng thận trọng bằng cách kết hợp `sentiment_score` với `polarity_count`.
 
-- Xác định được các nguồn dữ liệu cần thiết cho bài toán sentiment tài chính.
-- Xây dựng các script xử lý dữ liệu tin tức và dữ liệu giá.
-- Tạo được corpus văn bản tiếng Việt sau tiền xử lý.
-- Xây dựng được document-term matrix dạng sparse matrix.
-- Đề xuất quy trình chọn candidate terms và gán nhóm dictionary.
-- Xác định hướng tạo sentiment score để tổng hợp theo mã cổ phiếu và ngày.
+Biến `polarity_count` được tính bằng:
 
-## Kết quả học thuật và kỹ năng
+$$
+polarity\_count = positive\_count + negative\_count
+$$
 
-Thông qua quá trình thực tập, em đã củng cố các kỹ năng:
+Biến này chỉ đếm các token có cực tính rõ ràng là positive hoặc negative, không cộng `neutral_count`. Lý do là neutral term giúp đo mức độ bao phủ của dictionary, nhưng không nên quyết định chiều cảm xúc của bài báo.
 
-- Phân tích yêu cầu và chia nhỏ bài toán dữ liệu.
-- Đọc hiểu dữ liệu thực tế có nhiễu và thiếu nhất quán.
-- Viết script Python phục vụ pipeline có nhiều bước.
-- Xử lý tiếng Việt trong bối cảnh tài chính.
-- Hiểu sự khác biệt giữa sentiment chung và sentiment tài chính.
-- Ghi chép kỹ thuật bằng Quarto để tái lập quy trình.
-
-## Đánh giá chất lượng
-
-Để đánh giá pipeline, có thể sử dụng các tiêu chí sau:
-
-| Tiêu chí | Cách kiểm tra |
+| Điều kiện | Nhãn |
 |---|---|
-| Tính đầy đủ dữ liệu | Kiểm tra số lượng bản ghi sau từng bước xử lý |
-| Chất lượng tokenization | Review mẫu token/cụm từ sau khi tách từ |
-| Chất lượng dictionary | Review thủ công term theo từng nhóm sentiment |
-| Tính ổn định pipeline | Chạy lại script với cùng input và so sánh output |
-| Tính hữu ích của sentiment | So sánh sentiment với biến động giá hoặc sự kiện |
+| `polarity_count < 2` | Neutral |
+| `polarity_count >= 2` và `sentiment_score >= 0,30` | Positive |
+| `polarity_count >= 2` và `sentiment_score <= -0,30` | Negative |
+| Còn lại | Neutral |
 
-# Khó khăn và hướng xử lý
+Cách này giúp hạn chế việc một bài báo bị gán positive hoặc negative chỉ vì xuất hiện một từ đơn lẻ. Nếu `polarity_count` nhỏ hơn 2, bài báo được gán neutral dù `sentiment_score` có thể lệch về một phía, vì số lượng tín hiệu cảm xúc chưa đủ tin cậy. Với dữ liệu tài chính, nhiều bài báo có nội dung thông tin trung tính, nên việc giữ lớp neutral là cần thiết.
 
-## Khó khăn về dữ liệu
+Thống kê theo `polarity_count`:
 
-Dữ liệu thực tế thường không sạch hoàn toàn. Một số vấn đề thường gặp:
+| Nhóm bài báo | Số bài báo |
+|---|---:|
+| `polarity_count < 2` | 17.907 |
+| `polarity_count >= 2` | 108.669 |
+| Đủ polarity và `sentiment_score >= 0,30` | 72.849 |
+| Đủ polarity và `sentiment_score <= -0,30` | 11.676 |
 
-- Bài viết trùng lặp hoặc gần trùng lặp.
-- Tiêu đề và mô tả thiếu thông tin.
-- Tin tức nhắc đến nhiều mã cổ phiếu trong cùng một bài.
-- Ngày đăng tin không trùng với ngày giao dịch.
-- Dữ liệu có ký tự lạ, lỗi encoding hoặc định dạng không nhất quán.
+Kết quả gán nhãn trên 126.576 bài báo:
 
-Hướng xử lý là xây dựng các bước kiểm tra trung gian, lưu log số lượng bản ghi trước và sau mỗi bước, đồng thời review mẫu dữ liệu để phát hiện lỗi.
+| Sentiment label | Số bài báo |
+|---|---:|
+| Positive | 72.849 |
+| Negative | 11.676 |
+| Neutral | 42.051 |
 
-## Khó khăn về tiếng Việt
+Phân bố nhãn cho thấy lớp positive chiếm tỷ trọng lớn nhất trong tập dữ liệu. Cụ thể, positive có 72.849 bài, tương đương khoảng 57,6% tổng số bài; neutral có 42.051 bài, tương đương khoảng 33,2%; negative chỉ có 11.676 bài, tương đương khoảng 9,2%. Đây là một điểm cần lưu ý khi sử dụng tập nhãn này để fine-tune mô hình PhoBERT.
 
-Tiếng Việt có nhiều từ ghép và cụm từ mang nghĩa tài chính. Nếu tokenization không tốt, pipeline có thể làm mất tín hiệu. Ví dụ, "lợi nhuận sau thuế" hoặc "áp lực bán" cần được giữ theo ngữ cảnh thay vì chỉ xem từng từ đơn lẻ.
+Sự mất cân bằng nhãn có thể ảnh hưởng đến mô hình theo một số cách:
 
-Hướng xử lý là kết hợp tokenizer tiếng Việt với rule thủ công cho một số cụm từ tài chính quan trọng, đồng thời review candidate terms theo tần suất và ngữ cảnh xuất hiện.
+| Vấn đề | Ảnh hưởng tới mô hình |
+|---|---|
+| Positive chiếm tỷ trọng lớn | Model có xu hướng dự đoán positive nhiều hơn |
+| Negative ít hơn rõ rệt | Recall của lớp negative có thể thấp hơn positive |
+| Accuracy dễ bị lạc quan | Model đoán tốt lớp positive đã có thể đạt accuracy tương đối cao |
+| Macro F1 quan trọng hơn accuracy | Macro F1 phản ánh công bằng hơn giữa positive, negative và neutral |
 
-## Khó khăn khi xây dựng dictionary
+Vì vậy, khi đánh giá mô hình sentiment, không nên chỉ nhìn accuracy. Cần xem thêm precision, recall và F1-score theo từng lớp. Trong kết quả kiểm thử, lớp negative có F1-score thấp hơn positive, phản ánh đúng rủi ro từ việc số lượng mẫu negative ít hơn. Nếu tiếp tục cải thiện mô hình, có thể áp dụng một số hướng như cân bằng lại dữ liệu train, dùng class weight, oversampling lớp negative, hoặc kiểm tra thủ công thêm các bài negative để tăng chất lượng nhãn.
 
-Dictionary tài chính cần được review cẩn thận vì cùng một term có thể mang nghĩa khác nhau trong các ngữ cảnh khác nhau. Ví dụ, "giảm" có thể tiêu cực khi nói về lợi nhuận nhưng tích cực khi nói về chi phí hoặc nợ vay.
+# Fine-tune mô hình PhoBERT cho sentiment tài chính (1st version)
 
-Do đó, dictionary không nên chỉ dựa vào từng từ đơn lẻ. Trong các phiên bản sau, có thể mở rộng sang n-gram, phrase pattern hoặc kết hợp với mô hình học máy để giảm nhập nhằng.
+## Mục tiêu fine-tune
 
-# Bài học kinh nghiệm
+Model `wonrax/phobert-base-vietnamese-sentiment` là mô hình sentiment tiếng Việt tổng quát. Tuy nhiên, bài toán của đề tài là sentiment trong ngữ cảnh tài chính. Vì vậy, mô hình cần được fine-tune lại trên tập content đã được gán nhãn bằng dictionary tài chính.
 
-Qua kỳ thực tập, em rút ra một số bài học:
+Mục tiêu của fine-tune là:
 
-- Chất lượng dữ liệu quyết định rất lớn đến chất lượng mô hình.
-- Với bài toán tài chính, hiểu domain quan trọng không kém kỹ thuật xử lý dữ liệu.
-- Pipeline nên được chia nhỏ thành nhiều bước rõ ràng để dễ debug và tái lập.
-- Ghi chép bằng Quarto giúp kết nối code, giải thích và kết quả trong cùng một tài liệu.
-- Mô hình học sâu như PhoBERT cần dữ liệu nhãn tốt; dictionary có thể là bước nền tảng để tạo nhãn ban đầu nhưng vẫn cần review.
+1. Giúp model học cách phân biệt positive, negative, neutral trong tin tức chứng khoán.
+2. Giảm phụ thuộc hoàn toàn vào rule-based dictionary.
+3. Tạo mô hình có thể nhận đầu vào là nội dung bài báo mới và dự đoán sentiment trực tiếp.
+4. Kiểm tra xem tập nhãn được xây dựng có đủ nhất quán để huấn luyện model hay không.
 
-# Kết luận và kiến nghị
+## Input của mô hình
 
-## Kết luận
+Input của PhoBERT là văn bản tiếng Việt đã được làm sạch và tách từ. Trong pipeline, cột chính là `Tokenize_content`.
 
-Trong kỳ thực tập, em đã tham gia xây dựng pipeline xử lý tin tức tài chính phục vụ phân tích sentiment cho thị trường cổ phiếu. Công việc bao gồm làm sạch dữ liệu, tokenization tiếng Việt, xây dựng ma trận văn bản, chọn candidate terms, thiết kế financial dictionary và định hướng chuẩn bị dữ liệu cho mô hình PhoBERT.
+Ví dụ:
 
-Kết quả đạt được là nền tảng quan trọng cho các bước phân tích tiếp theo, đặc biệt là tạo sentiment score theo bài viết và tổng hợp theo mã cổ phiếu/ngày giao dịch. Pipeline này có thể hỗ trợ các nghiên cứu về tác động của tin tức đến biến động thị trường và hành vi nhà đầu tư.
+| Content gốc | Input cho PhoBERT |
+|---|---|
+| Thị trường chứng khoán tăng điểm nhờ dòng tiền tích cực | Thị_trường chứng_khoán tăng_điểm nhờ dòng_tiền tích_cực |
 
-## Kiến nghị phát triển
+Mỗi bài báo được map với một nhãn:
 
-Các hướng phát triển tiếp theo gồm:
+| Nhãn | Ý nghĩa |
+|---|---|
+| `positive` | Tin tức có sentiment tích cực |
+| `negative` | Tin tức có sentiment tiêu cực |
+| `neutral` | Tin tức trung tính hoặc không rõ chiều |
 
-- Hoàn thiện dictionary bằng review thủ công nhiều vòng.
-- Bổ sung n-gram và phrase-level sentiment.
-- Xây dựng bộ nhãn chuẩn để fine-tune PhoBERT.
-- Đánh giá mô hình bằng tập test đã được gán nhãn thủ công.
-- Kết hợp sentiment với dữ liệu giá, thanh khoản và sự kiện cổ phiếu.
-- Tạo dashboard hoặc báo cáo tự động để theo dõi sentiment theo thời gian.
+## Train/test split
 
-# Tài liệu tham khảo {-}
+File train model chia dữ liệu thành train/test theo tỷ lệ 80/20, có stratify theo nhãn. Việc stratify giúp phân phối positive, negative và neutral trong tập train/test gần giống nhau, tránh trường hợp tập test bị lệch nhãn.
+
+Quy trình huấn luyện:
+
+| Bước | Nội dung |
+|---|---|
+| 1 | Đọc `equity_news_content_sentiment_ratios` |
+| 2 | Làm sạch text và map nhãn sentiment |
+| 3 | Chia train/test theo tỷ lệ 80/20, stratify theo label |
+| 4 | Tokenize bằng PhoBERT tokenizer |
+| 5 | Fine-tune mô hình sequence classification |
+| 6 | Evaluate bằng accuracy, macro F1, weighted F1 |
+| 7 | Lưu fine-tuned model để tái sử dụng |
+
+## Kết quả đánh giá mô hình
+
+Trong lần kiểm thử đã chạy, mô hình đạt:
+
+| Metric | Giá trị |
+|---|---:|
+| Accuracy | 0,855 |
+| Macro F1 | 0,820 |
+| Weighted F1 | 0,854 |
+
+Classification report:
+
+| Label | Precision | Recall | F1-score | Support |
+|---|---:|---:|---:|---:|
+| Negative | 0,80 | 0,74 | 0,77 | 2.335 |
+| Positive | 0,89 | 0,92 | 0,91 | 14.570 |
+| Neutral | 0,80 | 0,76 | 0,78 | 8.411 |
+| Accuracy |  |  | 0,85 | 25.316 |
+| Macro avg | 0,83 | 0,81 | 0,82 | 25.316 |
+| Weighted avg | 0,85 | 0,85 | 0,85 | 25.316 |
+
+Kết quả này đạt mục tiêu accuracy từ 80%. Tuy nhiên, cần lưu ý rằng nhãn train được tạo từ dictionary/rule-based pipeline, nên đây là đánh giá trên nhãn yếu chứ chưa phải nhãn thủ công hoàn toàn. Vì vậy, kết quả cần được hiểu là mô hình học tốt quy tắc sentiment tài chính hiện tại, chưa đủ để khẳng định mô hình đạt chất lượng tương đương một bộ nhãn chuyên gia.
+
+# Xây dựng Equity Sentiment Index (rule-based approach)
+
+## Ý tưởng
+
+Sau khi mỗi bài báo có `sentiment_score` và `sentiment_label`, bước tiếp theo là tổng hợp sentiment theo thời gian để tạo Equity Sentiment Index. Đây là chỉ số phản ánh mức độ tích cực/tiêu cực trung bình của tin tức tài chính trong một ngày, một tuần hoặc một tháng.
+
+Về trực giác:
+
+- Nếu nhiều bài báo trong cùng kỳ có sentiment positive, chỉ số tăng.
+- Nếu nhiều bài báo tiêu cực, chỉ số giảm.
+- Nếu tin tức chủ yếu trung tính, chỉ số ở gần mức trung bình.
+
+## Daily sentiment index
+
+File `News/Build_sentiment_index/build_sentiment_index_daily.py` tính sentiment index theo ngày. Với mỗi ngày, pipeline tính:
+
+| Cột | Ý nghĩa |
+|---|---|
+| `date` | Ngày giao dịch/tin tức |
+| `article_count` | Số bài báo trong ngày |
+| `sentiment_index` | Trung bình `sentiment_score` của các bài trong ngày |
+| `sentiment_index_z` | Z-score của sentiment index |
+| `positive_article_count` | Số bài positive |
+| `negative_article_count` | Số bài negative |
+| `neutral_article_count` | Số bài neutral |
+
+Công thức sentiment index ngày:
+
+$$
+SI_t = \frac{1}{N_t}\sum_{i=1}^{N_t} score_{i,t}
+$$
+
+Trong đó:
+
+- $SI_t$ là sentiment index tại ngày $t$.
+- $N_t$ là số bài báo trong ngày $t$.
+- $score_{i,t}$ là sentiment score của bài báo $i$ trong ngày $t$.
+
+Kết quả daily index có 5.037 dòng.
+
+## Weekly sentiment index
+
+File `News/Build_sentiment_index/build_sentiment_index_weekly.py` gom dữ liệu theo tuần bằng `W-SUN`, tức tuần bắt đầu từ thứ Hai và kết thúc vào Chủ nhật.
+
+Các cột chính:
+
+| Cột | Ý nghĩa |
+|---|---|
+| `week_start` | Ngày bắt đầu tuần |
+| `week_end` | Ngày kết thúc tuần |
+| `article_count` | Số bài báo trong tuần |
+| `sentiment_index` | Trung bình sentiment score trong tuần |
+| `sentiment_index_z` | Z-score theo toàn bộ chuỗi tuần |
+| `positive_article_count` | Số bài positive trong tuần |
+| `negative_article_count` | Số bài negative trong tuần |
+| `neutral_article_count` | Số bài neutral trong tuần |
+
+Việc gom tuần từ thứ Hai đến Chủ nhật phù hợp với dữ liệu tin tức vì tin có thể xuất hiện cả cuối tuần. Khi merge với VN-Index, tuần được căn theo `week_end` để đảm bảo sentiment của cùng một tuần được ghép với return của cùng kỳ hoặc dùng để tạo biến dự báo tuần sau.
+
+Kết quả weekly index có 731 dòng.
+
+## Monthly sentiment index
+
+File `News/Build_sentiment_index/build_sentiment_index_monthly.py` mở rộng cách tính sang cấp tháng. Monthly index phù hợp khi cần phân tích xu hướng sentiment dài hơn, giảm nhiễu ngày/tuần và so sánh với biến tài chính/vĩ mô có tần suất thấp.
+
+Các cột chính gồm:
+
+| Cột | Ý nghĩa |
+|---|---|
+| `month` | Tháng quan sát |
+| `month_start` | Ngày đầu tháng |
+| `month_end` | Ngày cuối tháng |
+| `article_count` | Số bài trong tháng |
+| `sentiment_index` | Trung bình sentiment score trong tháng |
+| `sentiment_index_z` | Z-score theo chuỗi tháng |
+
+## Chuẩn hóa z-score
+
+Z-score được tính theo công thức:
+
+$$
+SI^z_t = \frac{SI_t - \mu(SI)}{\sigma(SI)}
+$$
+
+Trong đó:
+
+- $\mu(SI)$ là trung bình sentiment index toàn kỳ.
+- $\sigma(SI)$ là độ lệch chuẩn sentiment index toàn kỳ.
+
+Lợi ích của chuẩn hóa z-score:
+
+1. Đưa sentiment index về cùng thang đo, dễ so sánh giữa ngày, tuần và tháng.
+2. Diễn giải được mức độ bất thường: z-score = 2 nghĩa là sentiment cao hơn trung bình 2 độ lệch chuẩn.
+3. Giúp hồi quy ổn định hơn vì biến sentiment không phụ thuộc vào scale ban đầu.
+4. Cho phép so sánh sentiment với các biến khác như return, volatility, article count.
+
+Z-score không làm thay đổi thứ tự tăng/giảm của sentiment index, mà chỉ chuẩn hóa mức độ lệch khỏi trạng thái bình thường.
+
+# Xử lý VN-Index và phân tích tác động
+
+Trong phần phân tích tác động đến VN-Index, em lựa chọn tần suất tuần (weekly) làm đơn vị phân tích chính. Lý do là dữ liệu tin tức có thể xuất hiện cả trong ngày nghỉ, cuối tuần hoặc các giai đoạn thị trường không giao dịch, trong khi dữ liệu giá VN-Index chỉ phản ánh các ngày giao dịch. Việc gom theo tuần giúp đồng bộ hai nguồn dữ liệu, giảm nhiễu ngắn hạn theo ngày và phù hợp hơn với mục tiêu kiểm tra tác động của sentiment đến xu hướng thị trường trong ngắn hạn.
+
+Ngoài ra, do thời gian thực tập có hạn, phạm vi kiểm thử định lượng được ưu tiên triển khai trước ở mức weekly. Các phân tích ở tần suất daily hoặc monthly có thể được mở rộng trong các bước nghiên cứu tiếp theo để so sánh độ ổn định của kết quả và kiểm tra xem tác động sentiment có thay đổi theo từng khung thời gian hay không.
+
+## Tạo weekly return cho VN-Index
+
+File `News_Vnindex/build_vnindex_weekly_return.py` đọc dữ liệu VN-Index từ:
+
+`data_Histo/vnindex_eda_output.csv`
+
+Sau đó gom theo tuần `W-SUN`. Với mỗi tuần, pipeline lấy:
+
+| Cột | Cách tính |
+|---|---|
+| `week_start` | Ngày bắt đầu tuần |
+| `week_end` | Ngày kết thúc tuần |
+| `first_trading_date` | Ngày giao dịch đầu tiên trong tuần |
+| `last_trading_date` | Ngày giao dịch cuối cùng trong tuần |
+| `open` | Giá mở cửa đầu tuần |
+| `close` | Giá đóng cửa cuối tuần |
+| `high` | Giá cao nhất trong tuần |
+| `low` | Giá thấp nhất trong tuần |
+| `volume` | Tổng volume trong tuần |
+| `trading_day_count` | Số ngày giao dịch trong tuần |
+
+Weekly return được tính:
+
+$$
+return_t = \ln\left(\frac{close_t}{close_{t-1}}\right)
+$$
+
+Trong đó $close_t$ là giá đóng cửa cuối tuần hiện tại, $close_{t-1}$ là giá đóng cửa cuối tuần trước. Đây là log return, phù hợp để cộng dồn return qua nhiều kỳ và thường được dùng trong phân tích chuỗi thời gian tài chính.
+
+File đầu ra:
+
+`data_Histo/vnindex_weekly_return.parquet`
+
+## Tạo biến future return
+
+Để phân tích tác động dự báo, pipeline tạo các biến tương lai:
+
+| Biến | Ý nghĩa |
+|---|---|
+| `future_ret_1w` | Log return của tuần kế tiếp |
+| `future_ret_4w` | Log return tích lũy của 4 tuần tiếp theo |
+| `return_lag_1w` | Return của tuần trước |
+| `volatility_12w` | Độ lệch chuẩn return trong 12 tuần gần nhất |
+| `log_vol_total` | Log của tổng giá trị/khối lượng giao dịch |
+
+Trong đó:
+
+$$
+future\_ret\_1w_t = \ln\left(\frac{close_{t+1}}{close_t}\right)
+$$
+
+và:
+
+$$
+future\_ret\_4w_t = \ln\left(\frac{close_{t+4}}{close_t}\right)
+$$
+
+Do đó, sentiment của tuần $t$ được dùng để phân tích log return tương lai, đặc biệt là tuần kế tiếp và bốn tuần kế tiếp.
+
+## Merge sentiment với VN-Index
+
+File `News_Vnindex/merge_vnindex_weekly_with_sentiment.py` merge weekly return của VN-Index với weekly sentiment index theo `week_end`.
+
+Ý nghĩa của merge này:
+
+- Tuần sentiment $t$ được ghép với dữ liệu VN-Index cùng tuần.
+- Các target như `future_ret_1w` và `future_ret_4w` đã được tạo sẵn để đo tác động trong tương lai.
+- Sau merge, ta có thể kiểm tra liệu sentiment tuần này có liên quan tới return tuần sau hay không.
+
+File đầu ra:
+
+`data_News/vnindex_weekly_sentiment_merged.parquet`
+
+Dữ liệu merge có 722 quan sát tuần.
+
+# Abnormal return
+
+## Lý do dùng abnormal return
+
+Return thông thường cho biết VN-Index tăng hay giảm. Tuy nhiên, để phân tích tác động của sentiment, chỉ nhìn return thô có thể chưa đủ, vì return còn chịu ảnh hưởng từ xu hướng thị trường, quán tính giá và các yếu tố nền.
+
+Abnormal return được dùng để đo phần return vượt ngoài mức kỳ vọng:
+
+$$
+abnormal\_return_t = actual\_return_t - expected\_return_t
+$$
+
+Trong đó:
+
+- `actual_return` là return thực tế.
+- `expected_return` là return kỳ vọng theo một mô hình nền.
+- `abnormal_return` là phần bất thường còn lại.
+
+Nếu sentiment có quan hệ với abnormal return, điều đó gợi ý rằng sentiment có thể giải thích phần biến động không chỉ đến từ xu hướng thông thường của thị trường.
+
+## Hai cách tính expected return
+
+File `News_Vnindex/build_vnindex_weekly_abnormal_return.py` tạo abnormal return theo hai cách.
+
+### Cách 1: Rolling mean expected return
+
+Expected return được tính bằng trung bình return của 26 tuần trước đó:
+
+$$
+E(r_t) = \frac{1}{26}\sum_{k=1}^{26} r_{t-k}
+$$
+
+Sau đó:
+
+$$
+abnormal\_return^{rolling}_t = r_t - E(r_t)
+$$
+
+Cách này đơn giản, dễ hiểu và ổn định. Nó giả định return kỳ vọng của tuần hiện tại gần với trung bình trong nửa năm trước đó.
+
+### Cách 2: Rolling AR(1)
+
+Mô hình AR(1) giả định return tuần này có quan hệ tuyến tính với return tuần trước:
+
+$$
+r_t = \alpha + \beta r_{t-1} + \epsilon_t
+$$
+
+Với mỗi tuần, pipeline dùng cửa sổ 52 tuần trước đó để ước lượng $\alpha$ và $\beta$, sau đó dự báo expected return cho tuần hiện tại:
+
+$$
+E(r_t) = \hat{\alpha} + \hat{\beta} r_{t-1}
+$$
+
+Abnormal return:
+
+$$
+abnormal\_return^{AR1}_t = r_t - E(r_t)
+$$
+
+Cách này linh hoạt hơn rolling mean vì nó cho phép return có quán tính theo tuần trước. Tuy nhiên, nó cũng nhạy hơn với kích thước cửa sổ và chất lượng dữ liệu.
+
+## Future abnormal return
+
+Sau khi có abnormal return từng tuần, pipeline tạo target tương lai:
+
+| Biến | Ý nghĩa |
+|---|---|
+| `future_abnormal_rolling_ret_1w` | Abnormal return rolling của tuần kế tiếp |
+| `future_abnormal_rolling_ret_4w` | Tổng abnormal return rolling của 4 tuần kế tiếp |
+| `future_abnormal_ar1_ret_1w` | Abnormal return AR(1) của tuần kế tiếp |
+| `future_abnormal_ar1_ret_4w` | Tổng abnormal return AR(1) của 4 tuần kế tiếp |
+
+Các biến này giúp kiểm tra liệu sentiment hiện tại có liên quan tới phần return bất thường trong tương lai hay không.
+
+# Correlation analysis
+
+## Mục tiêu
+
+File `News_Vnindex/run_vnindex_weekly_correlation.py` chạy tương quan giữa các biến sentiment chính và các biến return/abnormal return tương lai.
+
+Thay vì match tất cả các cột với nhau, phiên bản hiện tại chỉ giữ các cặp có ý nghĩa:
+
+| Predictor sentiment | Target tài chính |
+|---|---|
+| `sentiment_index_z` | `future_ret_1w` |
+| `sentiment_index_z` | `future_ret_4w` |
+| `sentiment_index_z` | `future_abnormal_rolling_ret_1w` |
+| `sentiment_index_z` | `future_abnormal_rolling_ret_4w` |
+| `sentiment_index_z` | `future_abnormal_ar1_ret_1w` |
+| `sentiment_index_z` | `future_abnormal_ar1_ret_4w` |
+| `net_positive_article_ratio` | Các target tương tự |
+
+## Pearson và Spearman
+
+Pipeline tính hai loại tương quan:
+
+| Method | Ý nghĩa |
+|---|---|
+| Pearson | Đo quan hệ tuyến tính giữa hai biến |
+| Spearman | Đo quan hệ đơn điệu dựa trên thứ hạng, ít nhạy với outlier hơn |
+
+Nếu Pearson gần 0, quan hệ tuyến tính yếu. Nếu Spearman gần 0, quan hệ thứ hạng cũng yếu. Trong dữ liệu tài chính, tương quan sentiment-return thường không lớn vì thị trường chịu ảnh hưởng bởi nhiều yếu tố khác nhau.
+
+## Kết quả chính
+
+Một số kết quả đáng chú ý:
+
+| Sentiment variable | Target | Pearson | Spearman | Diễn giải |
+|---|---:|---:|---:|---|
+| `sentiment_index_z` | `future_ret_1w` | -0,013 | -0,007 | Gần như không có tương quan tuyến tính/đơn điệu |
+| `sentiment_index_z` | `future_ret_4w` | -0,102 | -0,106 | Tương quan âm nhẹ ở horizon 4 tuần |
+| `sentiment_index_z` | `future_abnormal_rolling_ret_4w` | -0,129 | -0,116 | Tín hiệu âm rõ hơn với abnormal return 4 tuần |
+| `sentiment_index_z` | `future_abnormal_ar1_ret_4w` | -0,104 | -0,082 | Tương quan âm nhẹ |
+
+Kết quả này cho thấy sentiment không có quan hệ mạnh với return ngay tuần kế tiếp, nhưng có dấu hiệu liên quan âm ở horizon dài hơn, đặc biệt là 4 tuần.
+
+# Predictive regression
+
+## Mục tiêu
+
+Correlation chỉ đo quan hệ hai biến. Để kiểm tra tác động của sentiment trong khi kiểm soát một số biến thị trường khác, pipeline sử dụng predictive regression.
+
+File:
+
+`News_Vnindex/vnindex_weekly_predictive_regression.py`
+
+Mô hình tổng quát:
+
+$$
+Y_{t+h} = \alpha + \beta_1 Sentiment_t + \beta_2 ReturnLag_t + \beta_3 Volatility_t + \beta_4 LogArticleCount_t + \epsilon_t
+$$
+
+Trong đó:
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| $Y_{t+h}$ | Return hoặc abnormal return tương lai |
+| $Sentiment_t$ | `sentiment_index_z` của tuần hiện tại |
+| $ReturnLag_t$ | Return tuần trước |
+| $Volatility_t$ | Volatility 12 tuần |
+| $LogArticleCount_t$ | Log số lượng bài báo |
+| $\alpha$ | Hệ số chặn |
+| $\epsilon_t$ | Sai số mô hình |
+
+## Target và predictor
+
+Các target được chạy hồi quy:
+
+| Target | Ý nghĩa |
+|---|---|
+| `future_ret_1w` | Return tuần kế tiếp |
+| `future_ret_4w` | Tổng return 4 tuần kế tiếp |
+| `future_abnormal_rolling_ret_1w` | Abnormal return rolling tuần kế tiếp |
+| `future_abnormal_rolling_ret_4w` | Abnormal return rolling 4 tuần kế tiếp |
+| `future_abnormal_ar1_ret_1w` | Abnormal return AR(1) tuần kế tiếp |
+| `future_abnormal_ar1_ret_4w` | Abnormal return AR(1) 4 tuần kế tiếp |
+
+Các predictor:
+
+| Predictor | Vai trò |
+|---|---|
+| `sentiment_index_z` | Biến sentiment chính |
+| `return_lag_1w` | Kiểm soát quán tính return |
+| `volatility_12w` | Kiểm soát mức rủi ro/biến động |
+| `log_article_count` | Kiểm soát cường độ tin tức |
+
+## Newey-West standard error
+
+Vì dữ liệu tài chính theo thời gian có thể có tự tương quan và phương sai thay đổi, pipeline sử dụng Newey-West standard error. Cách này giúp thống kê t và p-value thận trọng hơn so với standard error OLS thông thường.
+
+Với target 1 tuần, `hac_lags = 1`. Với target 4 tuần, `hac_lags = 4`.
+
+## Kết quả hồi quy chính
+
+Kết quả cho biến `sentiment_index_z`:
+
+| Target | Coefficient | t-stat | p-value | R² | Số quan sát | Diễn giải |
+|---|---:|---:|---:|---:|---:|---|
+| `future_ret_1w` | -0,0010 | -0,939 | 0,348 | 0,0025 | 710 | Không có ý nghĩa thống kê |
+| `future_ret_4w` | -0,0109 | -3,293 | 0,001 | 0,0373 | 710 | Có ý nghĩa thống kê, tác động âm |
+| `future_abnormal_rolling_ret_1w` | -0,0009 | -- | 0,415 | 0,0066 | 709 | Không có ý nghĩa thống kê |
+| `future_abnormal_rolling_ret_4w` | -0,0105 | -- | 0,0029 | 0,0416 | 706 | Có ý nghĩa thống kê, tác động âm |
+| `future_abnormal_ar1_ret_1w` | -0,0004 | -- | 0,727 | 0,0037 | 694 | Không có ý nghĩa thống kê |
+| `future_abnormal_ar1_ret_4w` | -0,0076 | -- | 0,0193 | 0,0211 | 691 | Có ý nghĩa thống kê, tác động âm |
+
+Kết quả có thể diễn giải như sau:
+
+1. Ở horizon 1 tuần, sentiment chưa cho thấy tác động rõ ràng tới return hoặc abnormal return.
+2. Ở horizon 4 tuần, sentiment có hệ số âm và có ý nghĩa thống kê trong nhiều target.
+3. R² nhìn chung thấp, cho thấy mô hình chỉ giải thích một phần nhỏ biến động VN-Index. Đây là điều thường gặp với dữ liệu tài chính vì return chịu ảnh hưởng bởi rất nhiều yếu tố ngoài sentiment.
+4. Kết quả âm có thể phản ánh hiện tượng mean reversion: khi sentiment tin tức quá tích cực so với bình thường, thị trường có thể đã phản ánh phần kỳ vọng đó vào giá, khiến return các tuần sau thấp hơn.
+
+# Diễn giải kết quả phân tích tác động
+
+## Sentiment có tác động mạnh không?
+
+Dựa trên correlation và predictive regression hiện tại, có thể kết luận thận trọng:
+
+- Tác động của sentiment đến VN-Index không mạnh ở horizon 1 tuần.
+- Ở horizon 4 tuần, sentiment có tín hiệu thống kê rõ hơn, đặc biệt với abnormal return.
+- Mức giải thích của mô hình còn thấp, nên không nên xem sentiment là biến duy nhất để dự báo VN-Index.
+- Sentiment phù hợp hơn như một biến bổ sung trong hệ thống phân tích thị trường, thay vì một tín hiệu giao dịch độc lập.
+
+## Vì sao R² thấp vẫn có ý nghĩa?
+
+Trong tài chính, R² của mô hình dự báo return thường thấp vì return rất nhiễu. Một biến có R² thấp vẫn có thể hữu ích nếu:
+
+1. Hệ số có ý nghĩa thống kê ổn định qua nhiều target.
+2. Dấu của hệ số phù hợp với giả thuyết kinh tế.
+3. Biến có thể cải thiện mô hình khi kết hợp với các biến khác.
+4. Tín hiệu có thể dùng trong phân nhóm regime, cảnh báo rủi ro hoặc backtesting danh mục.
+
+Vì vậy, R² không phải thước đo duy nhất. Để xem sentiment có tác động hay không, cần nhìn đồng thời:
+
+| Chỉ số | Vai trò |
+|---|---|
+| Coefficient | Cho biết chiều và độ lớn tác động |
+| t-stat/p-value | Cho biết hệ số có ý nghĩa thống kê hay không |
+| R²/Adjusted R² | Cho biết mô hình giải thích được bao nhiêu phần biến động |
+| Số quan sát | Đảm bảo kết quả không dựa trên mẫu quá nhỏ |
+| Tính ổn định | Kiểm tra kết quả qua horizon, cách tính abnormal return và giai đoạn khác nhau |
+
+## Ý nghĩa kinh tế của hệ số âm
+
+Hệ số âm của `sentiment_index_z` ở horizon 4 tuần có thể được hiểu theo một số hướng:
+
+1. Khi sentiment tăng mạnh, thị trường có thể đang ở trạng thái lạc quan, giá đã phản ánh kỳ vọng, dẫn đến return tương lai thấp hơn.
+2. Tin tức tích cực có thể xuất hiện nhiều sau khi giá đã tăng, làm sentiment trở thành biến phản ánh quá khứ hơn là biến dẫn dắt.
+3. Với thị trường mới nổi, sentiment quá tích cực đôi khi đi kèm trạng thái hưng phấn ngắn hạn, sau đó điều chỉnh.
+4. Cách gán nhãn bằng dictionary có thể khiến một số tin tích cực về doanh nghiệp xuất hiện trong giai đoạn giá đã phản ứng trước đó.
+
+Các diễn giải này cần được kiểm chứng thêm bằng event study, rolling regression, phân tích theo giai đoạn thị trường và backtesting.
+
+# Đánh giá pipeline hiện tại
+
+## Điểm mạnh
+
+Pipeline hiện tại có một số điểm mạnh:
+
+1. Đi từ dữ liệu thô đến chỉ số sentiment hoàn chỉnh, không chỉ dừng ở mô hình NLP.
+2. Có xử lý riêng cho tiếng Việt thông qua VNCoreNLP và PhoBERT.
+3. Có dictionary tài chính thay vì dùng sentiment phổ thông.
+4. Có kiểm chứng mô hình với train/test split.
+5. Có phân tích tác động bằng nhiều cách: correlation, abnormal return và predictive regression.
+6. Có các output trung gian rõ ràng, giúp kiểm tra từng bước.
+
+## Hạn chế
+
+Một số hạn chế cần ghi nhận:
+
+1. Nhãn sentiment của content được tạo từ dictionary và rule-based score, chưa phải nhãn thủ công hoàn toàn.
+2. Model PhoBERT fine-tuned học từ nhãn yếu, nên kết quả accuracy phản ánh mức độ học lại pipeline gán nhãn nhiều hơn là chất lượng nhãn chuyên gia.
+3. Dictionary sentiment có thể còn nhầm ở các cụm từ phụ thuộc ngữ cảnh, ví dụ `tăng chi phí` và `tăng lợi nhuận`.
+4. Sentiment index đang dùng trung bình score, chưa weighting theo độ quan trọng của nguồn tin, số lượt đọc hoặc mức độ liên quan đến VN-Index.
+5. Phân tích tác động mới tập trung ở cấp VN-Index weekly, chưa mở rộng sâu sang từng cổ phiếu.
+6. Kết quả hồi quy có R² thấp, cần thêm biến kiểm soát và kiểm định độ ổn định.
+
+## Rủi ro sai lệch dữ liệu
+
+Một số nguồn sai lệch có thể ảnh hưởng kết quả:
+
+| Nguồn sai lệch | Ảnh hưởng |
+|---|---|
+| Tin tức crawl không đầy đủ | Làm sentiment index thiếu đại diện |
+| Domain/category filter | Có thể bỏ sót hoặc giữ nhầm tin |
+| Nội dung trùng lặp | Làm một thông tin bị đếm nhiều lần |
+| Dictionary tự động | Có thể gán sai sentiment cho term |
+| Tin cuối tuần | Cần căn đúng tuần khi merge với dữ liệu giao dịch |
+| Return target | Cách định nghĩa future return ảnh hưởng kết quả hồi quy |
+
+# Hướng phát triển
+
+## Cải thiện dictionary sentiment
+
+Một hướng quan trọng là kiểm tra thủ công một phần dictionary, đặc biệt là các term có tần suất cao hoặc confidence thấp. Có thể chia dictionary thành ba nhóm:
+
+1. Term chắc chắn: giữ nguyên.
+2. Term cần kiểm tra: review thủ công.
+3. Term phụ thuộc ngữ cảnh: xử lý bằng cụm dài hơn hoặc model contextual.
+
+Ngoài ra, có thể thêm trọng số cho term:
+
+| Trọng số | Ý nghĩa |
+|---|---|
+| Theo confidence của model | Term có confidence cao được tính mạnh hơn |
+| Theo df/tf | Term phổ biến vừa phải được ưu tiên |
+| Theo loại n-gram | Bigram/trigram có thể đáng tin hơn unigram |
+| Theo domain tài chính | Term trong nguồn tin uy tín có thể được kiểm tra ưu tiên |
+
+## Cải thiện sentiment score
+
+Sentiment score hiện tại dựa trên số lượng term positive/negative. Có thể mở rộng:
+
+1. Dùng weighted score theo confidence.
+2. Tách sentiment theo câu thay vì toàn bài.
+3. Ưu tiên các câu gần tên doanh nghiệp, VN-Index hoặc từ khóa thị trường.
+4. Giảm trọng số của các đoạn mô tả chung.
+5. Kết hợp output của dictionary với output của PhoBERT fine-tuned.
+
+## Cải thiện Equity Sentiment Index
+
+Một số hướng nâng cấp chỉ số:
+
+1. Weight bài báo theo nguồn tin.
+2. Weight theo độ dài hoặc mức độ liên quan đến cổ phiếu.
+3. Loại bớt duplicate giữa các nguồn đưa lại cùng một thông tin.
+4. Tạo index riêng cho từng nhóm ngành.
+5. Tạo index riêng cho từng mã cổ phiếu nếu có mapping ticker-news tốt.
+6. So sánh daily, weekly, monthly để chọn horizon phù hợp.
+
+## Mở rộng phân tích tác động
+
+Với dữ liệu hiện tại, có thể mở rộng theo các hướng:
+
+| Phương pháp | Mục tiêu |
+|---|---|
+| Rolling regression | Kiểm tra tác động sentiment có thay đổi theo thời gian không |
+| Event study | Đo phản ứng thị trường quanh ngày sentiment cực đoan |
+| Regime analysis | Tách giai đoạn bull/bear/sideway |
+| Quantile regression | Kiểm tra sentiment ảnh hưởng mạnh hơn ở đuôi phân phối không |
+| Granger causality | Kiểm tra sentiment có giúp dự báo return ngoài return quá khứ không |
+| Backtesting | Kiểm tra giá trị thực chiến của tín hiệu sentiment |
+
+## Backtesting tín hiệu giao dịch
+
+Backtesting là bước tiếp theo để kiểm tra liệu sentiment index có thể tạo giá trị đầu tư hay không. Một ví dụ đơn giản:
+
+| Điều kiện | Hành động |
+|---|---|
+| `sentiment_index_z` rất thấp | Có thể xem là tín hiệu thị trường bi quan quá mức |
+| `sentiment_index_z` rất cao | Có thể cảnh báo hưng phấn quá mức |
+| Sentiment cải thiện liên tục | Có thể là tín hiệu momentum thông tin |
+| Sentiment giảm mạnh | Có thể là tín hiệu rủi ro |
+
+Tuy nhiên, backtesting cần tính thêm chi phí giao dịch, độ trễ tin tức, khả năng mua bán thực tế và tránh look-ahead bias.
+
+# Kết luận
+
+Trong kỳ thực tập, em đã xây dựng được một pipeline tương đối đầy đủ cho bài toán phân tích sentiment thị trường chứng khoán Việt Nam. Pipeline bắt đầu từ xử lý dữ liệu giá lịch sử và dữ liệu tin tức thô, sau đó xây dựng dictionary sentiment tài chính, gán sentiment score cho bài báo, fine-tune PhoBERT, tính Equity Sentiment Index và phân tích tác động đến VN-Index.
+
+Kết quả đạt được gồm:
+
+1. Làm sạch và chuẩn hóa dữ liệu tin tức cổ phiếu giai đoạn 2010--2023.
+2. Xây dựng tập 43.840 candidate terms và dictionary sentiment tài chính.
+3. Gán sentiment label cho 126.576 bài báo.
+4. Fine-tune mô hình PhoBERT với accuracy khoảng 85,5% trên tập kiểm thử.
+5. Tính daily, weekly và monthly Equity Sentiment Index.
+6. Tạo weekly return, abnormal return và dữ liệu merge với VN-Index.
+7. Chạy correlation và predictive regression để kiểm tra tác động sentiment đến return tương lai.
+
+Kết quả phân tích cho thấy sentiment index chưa có quan hệ rõ ở horizon 1 tuần, nhưng có tín hiệu âm đáng chú ý ở horizon 4 tuần, đặc biệt khi xét abnormal return. Điều này gợi ý rằng sentiment có thể là một biến bổ sung hữu ích trong phân tích thị trường, nhưng chưa đủ để sử dụng độc lập cho dự báo hoặc giao dịch. Các hướng phát triển tiếp theo nên tập trung vào kiểm định độ ổn định, cải thiện dictionary, bổ sung biến kiểm soát và xây dựng backtest thực tế.
+
+# Phụ lục A: Danh sách script chính
+
+## Historical_price
+
+| Script | Vai trò |
+|---|---|
+| `EDA_raw_historical_price.py` | EDA và kiểm tra chất lượng dữ liệu giá lịch sử |
+| `EDA_ticker_required.py` | Lọc dữ liệu theo danh sách mã cần phân tích |
+| `clean_EDA.py` | Làm sạch OHLCV cơ bản |
+| `EDA_Gen_feature.py` | Tạo feature return, volatility, volume |
+| `VNindex_EDA.py` | Tách và kiểm tra dữ liệu VN-Index |
+
+## News
+
+| Script | Vai trò |
+|---|---|
+| `EDA_raw_news.py` | EDA dữ liệu tin tức thô |
+| `news_clean.py` | Làm sạch metadata tin tức |
+| `to_equity_news.py` | Lọc tin tức cổ phiếu |
+| `clean_content.py` | Làm sạch nội dung bài báo |
+| `tokenize_VNCoreNLP.py` | Tách từ tiếng Việt |
+| `build_CSR_matrix.py` | Tạo ma trận term-document |
+| `candidate_term_ngram.py` | Lọc candidate n-gram terms |
+| `build_sentiment_dictionary.py` | Gán sentiment cho candidate terms |
+| `build_sentiment_label_content.py` | Tính sentiment score và label cho bài báo |
+| `model_sentiment_v1.py` | Fine-tune PhoBERT |
+| `build_sentiment_index_daily.py` | Tính daily sentiment index |
+| `build_sentiment_index_weekly.py` | Tính weekly sentiment index |
+| `build_sentiment_index_monthly.py` | Tính monthly sentiment index |
+
+## News_Vnindex
+
+| Script | Vai trò |
+|---|---|
+| `build_vnindex_weekly_return.py` | Tạo weekly return cho VN-Index |
+| `merge_vnindex_weekly_with_sentiment.py` | Merge weekly sentiment với VN-Index |
+| `build_vnindex_weekly_abnormal_return.py` | Tính abnormal return |
+| `run_vnindex_weekly_correlation.py` | Chạy correlation |
+| `vnindex_weekly_predictive_regression.py` | Chạy predictive regression |
+
+# Phụ lục B: Công thức chính
+
+## Sentiment score bài báo
+
+$$
+sentiment\_score = \frac{positive\_count - negative\_count}{positive\_count + negative\_count}
+$$
+
+## Sentiment index theo kỳ
+
+$$
+SI_t = \frac{1}{N_t}\sum_{i=1}^{N_t} score_{i,t}
+$$
+
+## Z-score sentiment index
+
+$$
+SI^z_t = \frac{SI_t - \mu(SI)}{\sigma(SI)}
+$$
+
+## Weekly return
+
+$$
+return_t = \ln\left(\frac{close_t}{close_{t-1}}\right)
+$$
+
+## Abnormal return
+
+$$
+abnormal\_return_t = actual\_return_t - expected\_return_t
+$$
+
+## Predictive regression
+
+$$
+Y_{t+h} = \alpha + \beta_1 Sentiment_t + \beta_2 ReturnLag_t + \beta_3 Volatility_t + \beta_4 LogArticleCount_t + \epsilon_t
+$$
+
+# Tài liệu tham khảo
 
 ::: {#refs}
 :::
-
-\appendix
-
-# Phụ lục: Checklist hoàn thiện trước khi nộp
-
-| Hạng mục | Trạng thái |
-|---|---|
-| Thay thông tin cá nhân và đơn vị thực tập ở trang bìa | Chưa cập nhật |
-| Bổ sung mô tả công ty/phòng ban | Chưa cập nhật |
-| Bổ sung số liệu thật về số lượng bài viết và mã cổ phiếu | Chưa cập nhật |
-| Thêm bảng/biểu đồ EDA nếu có | Chưa cập nhật |
-| Review lại tài liệu tham khảo | Chưa cập nhật |
-| Render PDF và kiểm tra format lần cuối | Chưa cập nhật |
-
-# Phụ lục: Lệnh render
-
-```powershell
-cd C:\Users\doank\Documents\dev\project3T\News
-quarto render final_report.qmd --to pdf
-```
