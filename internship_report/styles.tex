@@ -17,7 +17,10 @@
 \usepackage{seqsplit}
 \usepackage{float}
 \usepackage{placeins}
+\usepackage{ragged2e}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+% Chữa lỗi nếu trong bảng lỡ viết \raggedRight
+\newcommand{\raggedRight}{\raggedright}
 
 \setlength{\parindent}{1.25cm}
 \setlength{\parskip}{6pt}

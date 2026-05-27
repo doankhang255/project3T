@@ -14,7 +14,7 @@ format:
     papersize: a4
     fontsize: 12pt
     number-sections: true
-    toc: true
+    toc: false
     toc-depth: 3
     top-level-division: chapter
     colorlinks: true

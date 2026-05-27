@@ -1,8 +1,8 @@
 ---
-title: "Báo cáo cuối kỳ thực tập"
-subtitle: "Xây dựng Equity Sentiment Index cho thị trường chứng khoán Việt Nam và phân tích tác động đến VN-Index"
-author: "Bùi Doãn Khang"
-date: "26/05/2026"
+# title: "Báo cáo cuối kỳ thực tập"
+# subtitle: "Xây dựng Equity Sentiment Index cho thị trường chứng khoán Việt Nam và phân tích tác động đến VN-Index"
+# author: "Bùi Doãn Khang"
+# date: "26/05/2026"
 lang: vi
 ---
 
@@ -30,7 +30,7 @@ lang: vi
 \textbf{Bộ phận:} & D\&A \\
 \textbf{Vị trí:} & Thực tập sinh Data Scientist \\
 \textbf{Người hướng dẫn:} & Vũ Đức Hải \\
-\textbf{Thời gian thực tập:} & 18/03/2026 -- 30/04/2026 \\
+\textbf{Thời gian thực tập:} & 18/03/2026 -- 30/05/2026 \\
 \textbf{Kỳ thực tập:} & 2026/3T/TT/01 \\
 \end{tabular}
 
@@ -39,6 +39,8 @@ lang: vi
 {\large Hà Nội, 05/2026\par}
 \end{titlepage}
 
+\clearpage
+\tableofcontents
 \clearpage
 
 # Lời cảm ơn
@@ -90,79 +92,6 @@ Báo cáo tập trung trả lời bốn câu hỏi chính:
 4. Chỉ số sentiment có quan hệ như thế nào với return và abnormal return của VN-Index?
 
 # Tổng quan dữ liệu và cấu trúc pipeline
-
-## Các nguồn dữ liệu chính
-
-\begin{table}[htbp]
-\centering
-\small
-\renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{|p{3cm}|Y|Y|}
-\hline
-\textbf{Nhóm dữ liệu} & \textbf{File đầu vào/đầu ra chính} & \textbf{Vai trò} \\
-\hline
-
-Giá lịch sử &
-\seqsplit{data\_Histo/historical\_price\_all.parquet} &
-Dữ liệu OHLCV của cổ phiếu và chỉ số \\
-\hline
-
-VN-Index &
-\seqsplit{data\_Histo/vnindex\_eda\_output.parquet} &
-Dữ liệu riêng cho VN-Index sau khi lọc và kiểm tra \\
-\hline
-
-Tin tức thô &
-\seqsplit{data\_News/dataset\_news.parquet} &
-Dữ liệu tin tức ban đầu \\
-\hline
-
-Tin tức sạch &
-\seqsplit{data\_News/clean\_news.parquet} &
-Dữ liệu sau khi chuẩn hóa ngày, domain, category và loại nhiễu \\
-\hline
-
-Tin cổ phiếu &
-\seqsplit{data\_News/equity\_news.parquet} &
-Tin tức được lọc theo domain và category liên quan cổ phiếu \\
-\hline
-
-Nội dung sạch &
-\seqsplit{data\_News/equity\_news\_clean\_content.parquet} &
-Nội dung bài báo sau xử lý trùng lặp và nhiễu \\
-\hline
-
-Nội dung đã tách từ &
-\seqsplit{data\_News/equity\_news\_tokenized\_vncorenlp.parquet} &
-Đầu vào cho trích xuất n-gram và mô hình NLP \\
-\hline
-
-Dictionary sentiment &
-\seqsplit{data\_News/candidate\_ngram\_terms\_dictionary.parquet} &
-Từ điển sentiment tài chính theo term \\
-\hline
-
-Sentiment theo bài báo &
-\seqsplit{data\_News/equity\_news\_content\_sentiment\_ratios.parquet} &
-Dữ liệu bài báo có sentiment score, ratio và label \\
-\hline
-
-Sentiment index &
-\seqsplit{data\_News/market\_sentiment\_index\_daily.parquet};
-\seqsplit{data\_News/market\_sentiment\_index\_weekly.parquet} &
-Chỉ số sentiment theo thời gian \\
-\hline
-
-Dữ liệu phân tích tác động &
-\seqsplit{data\_News/vnindex\_weekly\_sentiment\_merged.parquet};
-\seqsplit{data\_News/vnindex\_weekly\_sentiment\_abnormal\_return.parquet} &
-Dữ liệu merge giữa sentiment và VN-Index \\
-\hline
-
-\end{tabularx}
-\caption{Các nguồn dữ liệu chính trong pipeline}
-\end{table}
-
 ## Kích thước dữ liệu sau các bước xử lý
 
 Một số kết quả trung gian quan trọng:
@@ -292,8 +221,7 @@ Các mục tiêu chính gồm:
 6. Tạo return và các biến trễ để phục vụ phân tích tác động.
 
 ## Kiểm tra chất lượng dữ liệu giá
-
-File `Historical_price/EDA_raw_historical_price.py` thực hiện EDA và kiểm tra chất lượng dữ liệu giá. Các nhóm kiểm tra chính gồm:
+Các nhóm kiểm tra chính gồm:
 
 | Nhóm kiểm tra | Mục đích |
 |---|---|
@@ -306,34 +234,29 @@ File `Historical_price/EDA_raw_historical_price.py` thực hiện EDA và kiểm
 
 Việc kiểm tra này quan trọng vì chỉ cần một số dòng lỗi trong chuỗi giá cũng có thể làm sai return, volatility và abnormal return. Với dữ liệu tài chính, các lỗi như giá bằng 0, ngày sai hoặc duplicate có thể tạo ra biến động giả, làm méo kết quả hồi quy.
 
-## Lọc dữ liệu theo danh sách mã cần dùng
-
-File `Historical_price/EDA_ticker_required.py` đọc danh sách mã từ `symbols.csv`, chuẩn hóa tên cột mã chứng khoán thành `ticker`, sau đó lọc dữ liệu giá theo danh sách này. Bước này giúp giảm kích thước dữ liệu và tập trung vào các mã phục vụ bài toán cổ phiếu Việt Nam.
+## Xử lí cột symbol 
+Vì trong cột symbol của dataset có các mã phái sinh nên không thể giữ lại vì đây không phải niêm yết của công ty khoảng (1536 ticker)
 
 Sau khi lọc, dữ liệu được dùng cho các bước EDA, tạo feature và tách riêng VN-Index.
 
 ## Làm sạch và tạo feature
 
-File `Historical_price/clean_EDA.py` xử lý các vấn đề cơ bản trong dữ liệu OHLCV:
-
 1. Loại bỏ các dòng có giá OHLC bằng 0 hoặc không hợp lệ.
 2. Chuẩn hóa những dòng có volume bằng 0 nhưng vẫn có giá giao dịch.
 3. Tạo bộ dữ liệu sạch phục vụ EDA.
 
-File `Historical_price/EDA_Gen_feature.py` tiếp tục tạo các biến đặc trưng cho dữ liệu giá, bao gồm:
+Tạo các biến đặc trưng cho dữ liệu giá, bao gồm:
 
 | Nhóm feature | Ví dụ | Ý nghĩa |
 |---|---|---|
-| Return | `ret_0`, `ret_1`, `ret_3`, `ret_5` | Lợi suất hiện tại và lợi suất trễ |
-| Volatility | Rolling volatility | Biến động trong một cửa sổ thời gian |
-| Volume | `log_vol_total`, rolling volume | Thanh khoản và mức độ giao dịch |
-| Range | `intraday_range_ratio` | Biên độ dao động trong ngày |
+| Return lag | `return_lag_1w` | Return của tuần trước, dùng để kiểm soát quán tính thị trường |
+| Volatility | `volatility_12w` | Độ lệch chuẩn return trong 12 tuần gần nhất, đại diện cho mức rủi ro/biến động |
+| Target return | `future_ret_1w`, `future_ret_4w` | Return tương lai của VN-Index ở horizon 1 tuần và 4 tuần |
+| Target abnormal return | `future_abnormal_rolling_ret_1w`, `future_abnormal_rolling_ret_4w`, `future_abnormal_ar1_ret_1w`, `future_abnormal_ar1_ret_4w` | Abnormal return tương lai theo rolling mean và AR(1) |
 
 Các feature này là nền tảng nếu mở rộng sang bài toán dự báo cổ phiếu hoặc backtesting tín hiệu giao dịch.
 
 ## Tách dữ liệu VN-Index
-
-File `Historical_price/VNindex_EDA.py` lọc riêng mã VNINDEX từ dữ liệu giá lịch sử và lưu thành `data_Histo/vnindex_eda_output.csv`. Đây là dữ liệu trực tiếp được dùng trong phần `News_Vnindex`.
 
 Kết quả dữ liệu VN-Index sau xử lý gồm 3.826 quan sát, trải dài từ 04/01/2010 đến 12/05/2025. Dữ liệu này được dùng để tính return theo tuần, tạo biến trễ, volatility 12 tuần và các target future return.
 
@@ -356,44 +279,58 @@ candidate_paths = [
     Path("data_Histo/vnindex_eda_output.csv"),
 ]
 
+vnindex_path = None
 for candidate_path in candidate_paths:
     if candidate_path.exists():
         vnindex_path = candidate_path
         break
+
+if vnindex_path is None:
+    # TODO: Khôi phục sau khi tạo lại file data_Histo/vnindex_eda_output.csv.
+    plt.figure(figsize=(14, 6))
+    plt.text(
+        0.5,
+        0.5,
+        "Tạm bỏ qua biểu đồ VN-Index cumulative return\n"
+        "do chưa tìm thấy data_Histo/vnindex_eda_output.csv",
+        ha="center",
+        va="center",
+    )
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
 else:
-    raise FileNotFoundError("Không tìm thấy file data_Histo/vnindex_eda_output.csv")
+    vnindex_df = pd.read_csv(vnindex_path)
 
-vnindex_df = pd.read_csv(vnindex_path)
+    plot_df = vnindex_df[["date", "close_price"]].copy()
+    plot_df["date"] = pd.to_datetime(plot_df["date"], errors="coerce")
+    plot_df["close_price"] = pd.to_numeric(plot_df["close_price"], errors="coerce")
+    plot_df = plot_df.dropna(subset=["date", "close_price"])
+    plot_df = plot_df.sort_values("date").reset_index(drop=True)
 
-plot_df = vnindex_df[["date", "close_price"]].copy()
-plot_df["date"] = pd.to_datetime(plot_df["date"], errors="coerce")
-plot_df["close_price"] = pd.to_numeric(plot_df["close_price"], errors="coerce")
-plot_df = plot_df.dropna(subset=["date", "close_price"])
-plot_df = plot_df.sort_values("date").reset_index(drop=True)
+    plot_df["daily_return"] = plot_df["close_price"].pct_change()
+    plot_df["cumulative_return"] = (1 + plot_df["daily_return"]).cumprod() - 1
+    plot_df["cumulative_return_pct"] = plot_df["cumulative_return"] * 100
 
-plot_df["daily_return"] = plot_df["close_price"].pct_change()
-plot_df["cumulative_return"] = (1 + plot_df["daily_return"]).cumprod() - 1
-plot_df["cumulative_return_pct"] = plot_df["cumulative_return"] * 100
+    plt.figure(figsize=(14, 6))
+    plt.plot(
+        plot_df["date"],
+        plot_df["cumulative_return_pct"],
+        linewidth=1.5,
+    )
 
-plt.figure(figsize=(14, 6))
-plt.plot(
-    plot_df["date"],
-    plot_df["cumulative_return_pct"],
-    linewidth=1.5,
-)
+    plt.title("VNINDEX Cumulative Return Over Time")
+    plt.xlabel("Date")
+    plt.ylabel("Cumulative Return (%)")
+    plt.grid(True, alpha=0.3)
 
-plt.title("VNINDEX Cumulative Return Over Time")
-plt.xlabel("Date")
-plt.ylabel("Cumulative Return (%)")
-plt.grid(True, alpha=0.3)
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(mdates.YearLocator(1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
-ax = plt.gca()
-ax.xaxis.set_major_locator(mdates.YearLocator(1))
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.show()
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
 ```
 
 Biểu đồ trên sử dụng cumulative return thay vì chỉ vẽ `close_price`, vì trong phân tích tài chính return phản ánh trực tiếp mức tăng trưởng tích lũy của chỉ số theo thời gian.
@@ -417,8 +354,6 @@ Các bước chính gồm:
 
 ## EDA dữ liệu tin tức thô
 
-File `News/EDA_clean/EDA_raw_news.py` đọc dữ liệu ban đầu từ `dataset_news.parquet` và thực hiện các thống kê ban đầu:
-
 | Nhóm EDA | Nội dung |
 |---|---|
 | Missing value | Kiểm tra số lượng giá trị thiếu theo cột |
@@ -428,7 +363,7 @@ File `News/EDA_clean/EDA_raw_news.py` đọc dữ liệu ban đầu từ `datase
 | Domain/category | Thống kê nguồn tin và nhóm tin |
 | Keyword | Chuẩn hóa và kiểm tra keyword |
 
-Dữ liệu tin tức ban đầu có 719.603 dòng. Sau bước làm sạch cơ bản, file `clean_news.parquet` còn 678.418 dòng.
+Dữ liệu tin tức ban đầu có 719.603 records. Sau bước làm sạch cơ bản còn 678.418 records.
 
 ## Làm sạch metadata
 
@@ -450,16 +385,10 @@ Mục tiêu của bước này là tạo một lớp dữ liệu tin tức sạc
 
 ## Lọc tin tức cổ phiếu
 
-File `News/EDA_clean/to_equity_news.py` dùng hai danh sách lọc:
-
-1. `categories.csv`: danh sách category liên quan tới cổ phiếu/thị trường.
-2. `domain_norm.csv`: danh sách nguồn tin phù hợp.
-
-Sau khi lọc theo category chỉ giữ lại những category liên quan đến equity, dữ liệu `equity_news.parquet` còn 130.545 dòng. Đây là tập tin tức tập trung vào bối cảnh thị trường cổ phiếu Việt Nam, tránh đưa quá nhiều tin vĩ mô, xã hội hoặc tin không liên quan vào sentiment index.
+Sau khi lọc theo category chỉ giữ lại những category liên quan đến equity, dữ liệu còn 130.545 records. Đây là tập tin tức tập trung vào bối cảnh thị trường cổ phiếu Việt Nam, tránh đưa quá nhiều tin vĩ mô, xã hội hoặc tin không liên quan vào sentiment index.
 
 ## Làm sạch nội dung bài báo
-
-File `News/EDA_clean/clean_content.py` tạo file `equity_news_clean_content.parquet`. Bước này xử lý các vấn đề thường gặp trong dữ liệu crawl:
+Bước này xử lý các vấn đề thường gặp trong dữ liệu crawl:
 
 | Vấn đề | Cách xử lý |
 |---|---|
@@ -876,21 +805,7 @@ $$
 
 Do đó, sentiment của tuần $t$ được dùng để phân tích log return tương lai, đặc biệt là tuần kế tiếp và bốn tuần kế tiếp.
 
-## Merge sentiment với VN-Index
-
-File `News_Vnindex/merge_vnindex_weekly_with_sentiment.py` merge weekly return của VN-Index với weekly sentiment index theo `week_end`.
-
-Ý nghĩa của merge này:
-
-- Tuần sentiment $t$ được ghép với dữ liệu VN-Index cùng tuần.
-- Các target như `future_ret_1w` và `future_ret_4w` đã được tạo sẵn để đo tác động trong tương lai.
-- Sau merge, ta có thể kiểm tra liệu sentiment tuần này có liên quan tới return tuần sau hay không.
-
-File đầu ra:
-
-`data_News/vnindex_weekly_sentiment_merged.parquet`
-
-Dữ liệu merge có 722 quan sát tuần.
+**Sau đó News này sẽ được merge với VN-Index theo start-week và week-end**
 
 # Abnormal return
 
@@ -967,57 +882,10 @@ Sau khi có abnormal return từng tuần, pipeline tạo target tương lai:
 
 Các biến này giúp kiểm tra liệu sentiment hiện tại có liên quan tới phần return bất thường trong tương lai hay không.
 
-# Correlation analysis
-
-## Mục tiêu
-
-File `News_Vnindex/run_vnindex_weekly_correlation.py` chạy tương quan giữa các biến sentiment chính và các biến return/abnormal return tương lai.
-
-Thay vì match tất cả các cột với nhau, phiên bản hiện tại chỉ giữ các cặp có ý nghĩa:
-
-| Predictor sentiment | Target tài chính |
-|---|---|
-| `sentiment_index_z` | `future_ret_1w` |
-| `sentiment_index_z` | `future_ret_4w` |
-| `sentiment_index_z` | `future_abnormal_rolling_ret_1w` |
-| `sentiment_index_z` | `future_abnormal_rolling_ret_4w` |
-| `sentiment_index_z` | `future_abnormal_ar1_ret_1w` |
-| `sentiment_index_z` | `future_abnormal_ar1_ret_4w` |
-| `net_positive_article_ratio` | Các target tương tự |
-
-## Pearson và Spearman
-
-Pipeline tính hai loại tương quan:
-
-| Method | Ý nghĩa |
-|---|---|
-| Pearson | Đo quan hệ tuyến tính giữa hai biến |
-| Spearman | Đo quan hệ đơn điệu dựa trên thứ hạng, ít nhạy với outlier hơn |
-
-Nếu Pearson gần 0, quan hệ tuyến tính yếu. Nếu Spearman gần 0, quan hệ thứ hạng cũng yếu. Trong dữ liệu tài chính, tương quan sentiment-return thường không lớn vì thị trường chịu ảnh hưởng bởi nhiều yếu tố khác nhau.
-
-## Kết quả chính
-
-Một số kết quả đáng chú ý:
-
-| Sentiment variable | Target | Pearson | Spearman | Diễn giải |
-|---|---:|---:|---:|---|
-| `sentiment_index_z` | `future_ret_1w` | -0,013 | -0,007 | Gần như không có tương quan tuyến tính/đơn điệu |
-| `sentiment_index_z` | `future_ret_4w` | -0,102 | -0,106 | Tương quan âm nhẹ ở horizon 4 tuần |
-| `sentiment_index_z` | `future_abnormal_rolling_ret_4w` | -0,129 | -0,116 | Tín hiệu âm rõ hơn với abnormal return 4 tuần |
-| `sentiment_index_z` | `future_abnormal_ar1_ret_4w` | -0,104 | -0,082 | Tương quan âm nhẹ |
-
-Kết quả này cho thấy sentiment không có quan hệ mạnh với return ngay tuần kế tiếp, nhưng có dấu hiệu liên quan âm ở horizon dài hơn, đặc biệt là 4 tuần.
-
 # Predictive regression
 
 ## Mục tiêu
-
-Correlation chỉ đo quan hệ hai biến. Để kiểm tra tác động của sentiment trong khi kiểm soát một số biến thị trường khác, pipeline sử dụng predictive regression.
-
-File:
-
-`News_Vnindex/vnindex_weekly_predictive_regression.py`
+Để kiểm tra tác động của sentiment trong khi kiểm soát một số biến thị trường khác, pipeline sử dụng predictive regression.
 
 Mô hình tổng quát:
 
@@ -1069,62 +937,63 @@ Với target 1 tuần, `hac_lags = 1`. Với target 4 tuần, `hac_lags = 4`.
 
 Kết quả cho biến `sentiment_index_z`:
 
-| Target | Coefficient | t-stat | p-value | R² | Số quan sát | Diễn giải |
-|---|---:|---:|---:|---:|---:|---|
-| `future_ret_1w` | -0,0010 | -0,939 | 0,348 | 0,0025 | 710 | Không có ý nghĩa thống kê |
-| `future_ret_4w` | -0,0109 | -3,293 | 0,001 | 0,0373 | 710 | Có ý nghĩa thống kê, tác động âm |
-| `future_abnormal_rolling_ret_1w` | -0,0009 | -- | 0,415 | 0,0066 | 709 | Không có ý nghĩa thống kê |
-| `future_abnormal_rolling_ret_4w` | -0,0105 | -- | 0,0029 | 0,0416 | 706 | Có ý nghĩa thống kê, tác động âm |
-| `future_abnormal_ar1_ret_1w` | -0,0004 | -- | 0,727 | 0,0037 | 694 | Không có ý nghĩa thống kê |
-| `future_abnormal_ar1_ret_4w` | -0,0076 | -- | 0,0193 | 0,0211 | 691 | Có ý nghĩa thống kê, tác động âm |
+```{=latex}
+\begin{table}[!htbp]
+\centering
+\caption{Kết quả hồi quy cho biến sentiment\_index\_z}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.25}
+
+\begin{tabularx}{\textwidth}{
+  >{\raggedRight\arraybackslash}p{3.4cm}
+  >{\centering\arraybackslash}p{1.6cm}
+  >{\centering\arraybackslash}p{1.3cm}
+  >{\centering\arraybackslash}p{1.3cm}
+  >{\centering\arraybackslash}p{1.2cm}
+  >{\centering\arraybackslash}p{1.4cm}
+  >{\raggedRight\arraybackslash}X
+}
+\toprule
+\textbf{Target} & \textbf{Coefficient} & \textbf{t-stat} & \textbf{p-value} & \textbf{R\textsuperscript{2}} & \textbf{Số quan sát} & \textbf{Diễn giải} \\
+\midrule
+
+\makecell[l]{\texttt{future\_ret\_1w}} 
+& -0,0010 & -0,939 & 0,348 & 0,0025 & 710 
+& Không có ý nghĩa thống kê \\
+
+\makecell[l]{\texttt{future\_ret\_4w}} 
+& -0,0109 & -3,293 & 0,001 & 0,0373 & 710 
+& Có ý nghĩa thống kê, tác động âm \\
+
+\makecell[l]{\texttt{future\_abnormal\_}\\\texttt{rolling\_ret\_1w}} 
+& -0,0009 & -- & 0,415 & 0,0066 & 709 
+& Không có ý nghĩa thống kê \\
+
+\makecell[l]{\texttt{future\_abnormal\_}\\\texttt{rolling\_ret\_4w}} 
+& -0,0105 & -- & 0,0029 & 0,0416 & 706 
+& Có ý nghĩa thống kê, tác động âm \\
+
+\makecell[l]{\texttt{future\_abnormal\_}\\\texttt{ar1\_ret\_1w}} 
+& -0,0004 & -- & 0,727 & 0,0037 & 694 
+& Không có ý nghĩa thống kê \\
+
+\makecell[l]{\texttt{future\_abnormal\_}\\\texttt{ar1\_ret\_4w}} 
+& -0,0076 & -- & 0,0193 & 0,0211 & 691 
+& Có ý nghĩa thống kê, tác động âm \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+```
 
 Kết quả có thể diễn giải như sau:
 
 1. Ở horizon 1 tuần, sentiment chưa cho thấy tác động rõ ràng tới return hoặc abnormal return.
-2. Ở horizon 4 tuần, sentiment có hệ số âm và có ý nghĩa thống kê trong nhiều target.
-3. R² nhìn chung thấp, cho thấy mô hình chỉ giải thích một phần nhỏ biến động VN-Index. Đây là điều thường gặp với dữ liệu tài chính vì return chịu ảnh hưởng bởi rất nhiều yếu tố ngoài sentiment.
-4. Kết quả âm có thể phản ánh hiện tượng mean reversion: khi sentiment tin tức quá tích cực so với bình thường, thị trường có thể đã phản ánh phần kỳ vọng đó vào giá, khiến return các tuần sau thấp hơn.
+2. Ở horizon 4 tuần, sentiment có hệ số âm và có ý nghĩa thống kê trong một vài target.
+3. R² nhìn chung thấp, cho thấy mô hình chỉ giải thích một phần nhỏ biến động VN-Index. Chưa thể khẳng định chắc chắn rằng liệu news_sentiment có thể ảnh hưởng đến Vnindex hay không trong lần kiểm thử này. (1st version)
 
-# Diễn giải kết quả phân tích tác động
-
-## Sentiment có tác động mạnh không?
-
-Dựa trên correlation và predictive regression hiện tại, có thể kết luận thận trọng:
-
-- Tác động của sentiment đến VN-Index không mạnh ở horizon 1 tuần.
-- Ở horizon 4 tuần, sentiment có tín hiệu thống kê rõ hơn, đặc biệt với abnormal return.
-- Mức giải thích của mô hình còn thấp, nên không nên xem sentiment là biến duy nhất để dự báo VN-Index.
-- Sentiment phù hợp hơn như một biến bổ sung trong hệ thống phân tích thị trường, thay vì một tín hiệu giao dịch độc lập.
-
-## Vì sao R² thấp vẫn có ý nghĩa?
-
-Trong tài chính, R² của mô hình dự báo return thường thấp vì return rất nhiễu. Một biến có R² thấp vẫn có thể hữu ích nếu:
-
-1. Hệ số có ý nghĩa thống kê ổn định qua nhiều target.
-2. Dấu của hệ số phù hợp với giả thuyết kinh tế.
-3. Biến có thể cải thiện mô hình khi kết hợp với các biến khác.
-4. Tín hiệu có thể dùng trong phân nhóm regime, cảnh báo rủi ro hoặc backtesting danh mục.
-
-Vì vậy, R² không phải thước đo duy nhất. Để xem sentiment có tác động hay không, cần nhìn đồng thời:
-
-| Chỉ số | Vai trò |
-|---|---|
-| Coefficient | Cho biết chiều và độ lớn tác động |
-| t-stat/p-value | Cho biết hệ số có ý nghĩa thống kê hay không |
-| R²/Adjusted R² | Cho biết mô hình giải thích được bao nhiêu phần biến động |
-| Số quan sát | Đảm bảo kết quả không dựa trên mẫu quá nhỏ |
-| Tính ổn định | Kiểm tra kết quả qua horizon, cách tính abnormal return và giai đoạn khác nhau |
-
-## Ý nghĩa kinh tế của hệ số âm
-
-Hệ số âm của `sentiment_index_z` ở horizon 4 tuần có thể được hiểu theo một số hướng:
-
-1. Khi sentiment tăng mạnh, thị trường có thể đang ở trạng thái lạc quan, giá đã phản ánh kỳ vọng, dẫn đến return tương lai thấp hơn.
-2. Tin tức tích cực có thể xuất hiện nhiều sau khi giá đã tăng, làm sentiment trở thành biến phản ánh quá khứ hơn là biến dẫn dắt.
-3. Với thị trường mới nổi, sentiment quá tích cực đôi khi đi kèm trạng thái hưng phấn ngắn hạn, sau đó điều chỉnh.
-4. Cách gán nhãn bằng dictionary có thể khiến một số tin tích cực về doanh nghiệp xuất hiện trong giai đoạn giá đã phản ứng trước đó.
-
-Các diễn giải này cần được kiểm chứng thêm bằng event study, rolling regression, phân tích theo giai đoạn thị trường và backtesting.
+-> Cần được kiểm chứng thêm bằng event study, rolling regression, High-Low sentiment phân tích theo giai đoạn thị trường và backtesting.   
 
 # Đánh giá pipeline hiện tại
 
@@ -1145,7 +1014,7 @@ Một số hạn chế cần ghi nhận:
 
 1. Nhãn sentiment của content được tạo từ dictionary và rule-based score, chưa phải nhãn thủ công hoàn toàn.
 2. Model PhoBERT fine-tuned học từ nhãn yếu, nên kết quả accuracy phản ánh mức độ học lại pipeline gán nhãn nhiều hơn là chất lượng nhãn chuyên gia.
-3. Dictionary sentiment có thể còn nhầm ở các cụm từ phụ thuộc ngữ cảnh, ví dụ `tăng chi phí` và `tăng lợi nhuận`.
+3. Dictionary sentiment có thể còn nhầm ở các cụm từ phụ thuộc ngữ cảnh, ví dụ `tăng_chi_phí` và `tăng_lợi_nhuận`.
 4. Sentiment index đang dùng trung bình score, chưa weighting theo độ quan trọng của nguồn tin, số lượt đọc hoặc mức độ liên quan đến VN-Index.
 5. Phân tích tác động mới tập trung ở cấp VN-Index weekly, chưa mở rộng sâu sang từng cổ phiếu.
 6. Kết quả hồi quy có R² thấp, cần thêm biến kiểm soát và kiểm định độ ổn định.
@@ -1161,9 +1030,11 @@ Một số nguồn sai lệch có thể ảnh hưởng kết quả:
 | Nội dung trùng lặp | Làm một thông tin bị đếm nhiều lần |
 | Dictionary tự động | Có thể gán sai sentiment cho term |
 | Tin cuối tuần | Cần căn đúng tuần khi merge với dữ liệu giao dịch |
+| Weak label cho content | Gây nhầm lẫn trong việc chạy model và hồi quy |
 | Return target | Cách định nghĩa future return ảnh hưởng kết quả hồi quy |
 
-# Hướng phát triển
+# Hướng phát triển 
+(Chưa hoàn thành)
 
 ## Cải thiện dictionary sentiment
 
@@ -1182,7 +1053,9 @@ Ngoài ra, có thể thêm trọng số cho term:
 | Theo loại n-gram | Bigram/trigram có thể đáng tin hơn unigram |
 | Theo domain tài chính | Term trong nguồn tin uy tín có thể được kiểm tra ưu tiên |
 
-## Cải thiện sentiment score
+- Có thể thêm các bước kiểm tra cho những term có chiếm đa số về label, thêm phương pháp **tf.idf** để xây dựng financial dictionary chính xác hơn làm giảm trọng số của các từ không cần thiết và tăng trọng số của các từ quan trọng, 
+
+## Cải thiện sentiment score cho content
 
 Sentiment score hiện tại dựa trên số lượng term positive/negative. Có thể mở rộng:
 
@@ -1211,12 +1084,14 @@ Với dữ liệu hiện tại, có thể mở rộng theo các hướng:
 |---|---|
 | Rolling regression | Kiểm tra tác động sentiment có thay đổi theo thời gian không |
 | Event study | Đo phản ứng thị trường quanh ngày sentiment cực đoan |
+| High-Low sentiment | So sánh return khi sentiment rất cao vs rất thấp |
 | Regime analysis | Tách giai đoạn bull/bear/sideway |
 | Quantile regression | Kiểm tra sentiment ảnh hưởng mạnh hơn ở đuôi phân phối không |
 | Granger causality | Kiểm tra sentiment có giúp dự báo return ngoài return quá khứ không |
+| Correlation analysis | Kiểm tra mối quan hệ giữa sentiment và các biến tài chính khác |
 | Backtesting | Kiểm tra giá trị thực chiến của tín hiệu sentiment |
 
-## Backtesting tín hiệu giao dịch
+## Backtesting tín hiệu giao dịch (chưa hoàn thành)
 
 Backtesting là bước tiếp theo để kiểm tra liệu sentiment index có thể tạo giá trị đầu tư hay không. Một ví dụ đơn giản:
 
@@ -1229,11 +1104,7 @@ Backtesting là bước tiếp theo để kiểm tra liệu sentiment index có 
 
 Tuy nhiên, backtesting cần tính thêm chi phí giao dịch, độ trễ tin tức, khả năng mua bán thực tế và tránh look-ahead bias.
 
-# Kết luận
-
-Trong kỳ thực tập, em đã xây dựng được một pipeline tương đối đầy đủ cho bài toán phân tích sentiment thị trường chứng khoán Việt Nam. Pipeline bắt đầu từ xử lý dữ liệu giá lịch sử và dữ liệu tin tức thô, sau đó xây dựng dictionary sentiment tài chính, gán sentiment score cho bài báo, fine-tune PhoBERT, tính Equity Sentiment Index và phân tích tác động đến VN-Index.
-
-Kết quả đạt được gồm:
+## Kết luận về những điểm làm được trong dự án
 
 1. Làm sạch và chuẩn hóa dữ liệu tin tức cổ phiếu giai đoạn 2010--2023.
 2. Xây dựng tập 43.840 candidate terms và dictionary sentiment tài chính.
@@ -1241,51 +1112,11 @@ Kết quả đạt được gồm:
 4. Fine-tune mô hình PhoBERT với accuracy khoảng 85,5% trên tập kiểm thử.
 5. Tính daily, weekly và monthly Equity Sentiment Index.
 6. Tạo weekly return, abnormal return và dữ liệu merge với VN-Index.
-7. Chạy correlation và predictive regression để kiểm tra tác động sentiment đến return tương lai.
+7. Chạy predictive regression để kiểm tra tác động sentiment đến return tương lai.
 
 Kết quả phân tích cho thấy sentiment index chưa có quan hệ rõ ở horizon 1 tuần, nhưng có tín hiệu âm đáng chú ý ở horizon 4 tuần, đặc biệt khi xét abnormal return. Điều này gợi ý rằng sentiment có thể là một biến bổ sung hữu ích trong phân tích thị trường, nhưng chưa đủ để sử dụng độc lập cho dự báo hoặc giao dịch. Các hướng phát triển tiếp theo nên tập trung vào kiểm định độ ổn định, cải thiện dictionary, bổ sung biến kiểm soát và xây dựng backtest thực tế.
 
-# Phụ lục A: Danh sách script chính
-
-## Historical_price
-
-| Script | Vai trò |
-|---|---|
-| `EDA_raw_historical_price.py` | EDA và kiểm tra chất lượng dữ liệu giá lịch sử |
-| `EDA_ticker_required.py` | Lọc dữ liệu theo danh sách mã cần phân tích |
-| `clean_EDA.py` | Làm sạch OHLCV cơ bản |
-| `EDA_Gen_feature.py` | Tạo feature return, volatility, volume |
-| `VNindex_EDA.py` | Tách và kiểm tra dữ liệu VN-Index |
-
-## News
-
-| Script | Vai trò |
-|---|---|
-| `EDA_raw_news.py` | EDA dữ liệu tin tức thô |
-| `news_clean.py` | Làm sạch metadata tin tức |
-| `to_equity_news.py` | Lọc tin tức cổ phiếu |
-| `clean_content.py` | Làm sạch nội dung bài báo |
-| `tokenize_VNCoreNLP.py` | Tách từ tiếng Việt |
-| `build_CSR_matrix.py` | Tạo ma trận term-document |
-| `candidate_term_ngram.py` | Lọc candidate n-gram terms |
-| `build_sentiment_dictionary.py` | Gán sentiment cho candidate terms |
-| `build_sentiment_label_content.py` | Tính sentiment score và label cho bài báo |
-| `model_sentiment_v1.py` | Fine-tune PhoBERT |
-| `build_sentiment_index_daily.py` | Tính daily sentiment index |
-| `build_sentiment_index_weekly.py` | Tính weekly sentiment index |
-| `build_sentiment_index_monthly.py` | Tính monthly sentiment index |
-
-## News_Vnindex
-
-| Script | Vai trò |
-|---|---|
-| `build_vnindex_weekly_return.py` | Tạo weekly return cho VN-Index |
-| `merge_vnindex_weekly_with_sentiment.py` | Merge weekly sentiment với VN-Index |
-| `build_vnindex_weekly_abnormal_return.py` | Tính abnormal return |
-| `run_vnindex_weekly_correlation.py` | Chạy correlation |
-| `vnindex_weekly_predictive_regression.py` | Chạy predictive regression |
-
-# Phụ lục B: Công thức chính
+# Công thức chính
 
 ## Sentiment score bài báo
 
