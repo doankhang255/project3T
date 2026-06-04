@@ -20,3 +20,5 @@ training_args.bin
 phobert__sentiment_model_v1
 phobert_financial_sentiment_model
 phobert_financial_sentiment_model_v2_class_weight
+.DS_Store
+.DS_Store/
