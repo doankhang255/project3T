@@ -19,8 +19,8 @@ Mục tiêu chính:
 
 ```text
 project3T/
-|-- data_News/              # Dữ liệu tin tức, dữ liệu sentiment và kết quả phân tích tin tức
-|-- data_Histo/             # Dữ liệu giá lịch sử và VN-Index đã xử lý
+|-- data_News/              # Dữ liệu tin tức và dữ liệu sentiment
+|-- data_Histo/             # Dữ liệu giá lịch sử và VN-Index
 |-- News/                   # Code xử lý tin tức, NLP, sentiment label và sentiment index
 |-- News_Vnindex/           # Code merge sentiment với VN-Index, correlation và regression
 |-- Historical_price/       # Code EDA và xử lý dữ liệu giá lịch sử
@@ -46,14 +46,6 @@ Quá trình xử lý gồm:
 * Tokenize tiếng Việt bằng `underthesea` hoặc `VNCoreNLP`.
 * Tạo candidate terms, n-gram terms và ma trận đặc trưng phục vụ sentiment model.
 
-Một số file dữ liệu đầu ra quan trọng:
-
-* `data_News/clean_news.parquet`
-* `data_News/equity_news.parquet`
-* `data_News/equity_news_clean_content.parquet`
-* `data_News/equity_news_tokenized.parquet`
-* `data_News/equity_news_tokenized_vncorenlp.parquet`
-
 ### 2. Gắn nhãn Sentiment
 
 Code nằm trong `News/Process_sentiment_label/` và `News/Train_model/`.
@@ -65,23 +57,13 @@ Thành phần chính:
 * Tạo các tỷ lệ sentiment theo bài viết.
 * Thử nghiệm model sentiment cho dữ liệu tiếng Việt.
 
-Kết quả đầu ra tiêu biểu:
-
-* `data_News/equity_news_content_sentiment_ratios.parquet`
-* `data_News/equity_news_content_positive.csv`
-* `data_News/equity_news_content_negative.csv`
-* `data_News/equity_news_content_neutral.csv`
-
 ### 3. Xây dựng Equity Sentiment Index
 
 Code nằm trong `News/Build_sentiment_index/`.
 
-Chỉ số sentiment được tổng hợp theo:
+Chỉ số sentiment được tổng hợp theo ngày và theo tuần nhằm phản ánh trạng thái cảm xúc chung của thị trường tại từng thời điểm.
 
-* Ngày: `market_sentiment_index_daily.parquet`
-* Tuần: `market_sentiment_index_weekly.parquet`
-
-Một số cột quan trọng:
+Một số biến chính được sử dụng trong quá trình xây dựng chỉ số:
 
 * `article_count`: số lượng bài viết.
 * `sentiment_index`: điểm sentiment trung bình.
@@ -98,12 +80,6 @@ Dữ liệu giá lịch sử được dùng để:
 * Tạo biến return theo tuần.
 * Tạo biến future return và các biến control như volatility, volume, lag return.
 
-Kết quả đầu ra tiêu biểu:
-
-* `data_Histo/historical_price_all.parquet`
-* `data_Histo/vnindex_weekly_return.parquet`
-* `data_Histo/vnindex_weekly_return.csv`
-
 ### 5. Phân tích tác động của Sentiment đến VN-Index
 
 Code nằm trong `News_Vnindex/`.
@@ -112,16 +88,8 @@ Phân tích gồm:
 
 * Merge sentiment weekly với VN-Index weekly return.
 * Tính tương quan giữa sentiment và return.
-* Chạy predictive regression để kiểm tra sentiment có giải thích/dự báo biến động VN-Index hay không.
+* Chạy predictive regression để kiểm tra sentiment có giải thích hoặc dự báo biến động VN-Index hay không.
 * Vẽ biểu đồ sentiment index, VN-Index return, cumulative return và tác động hồi quy.
-
-Kết quả đầu ra:
-
-* `data_News/vnindex_weekly_sentiment_merged.parquet`
-* `data_News/vnindex_weekly_sentiment_merged.csv`
-* `data_News/vnindex_weekly_correlation.csv`
-* `data_News/vnindex_weekly_predictive_regression.csv`
-* `data_News/figures/`
 
 ## Cài đặt môi trường
 
@@ -168,19 +136,13 @@ python News_Vnindex\plot_predictive_regression_impact.py
 
 ## Báo cáo và Slide
 
-Thư mục `internship_report/` chứa báo cáo thực tập dưới dạng Quarto và file PDF đã render.
+Thư mục `internship_report/` chứa báo cáo thực tập dưới dạng Quarto, file PDF và slide trình bày.
 
 Render lại báo cáo:
 
 ```powershell
 cd internship_report
 quarto render final_report.qmd --to pdf
-```
-
-File kết quả nằm trong:
-
-```text
-internship_report/_output/final_report.pdf
 ```
 
 ## Tài liệu tham khảo
