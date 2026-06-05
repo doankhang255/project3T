@@ -1,131 +1,131 @@
-# Project 3T - Phan Tich Sentiment Tin Tuc Va Tac Dong Den VN-Index
+# Project 3T - Phân tích Sentiment Tin tức và Tác động đến VN-Index
 
-**Du lieu su dung trong du an nay duoc lay tu cong ty 3T.** Day la nguon du lieu dau vao quan trong cho toan bo qua trinh xu ly, gom du lieu tin tuc tai chinh, du lieu gia lich su va cac bang trung gian phuc vu phan tich thi truong chung khoan Viet Nam.
+**Dữ liệu sử dụng trong dự án này được lấy từ công ty 3T.** Đây là nguồn dữ liệu đầu vào quan trọng cho toàn bộ quá trình xử lý, bao gồm dữ liệu tin tức tài chính, dữ liệu giá lịch sử và các bảng trung gian phục vụ phân tích thị trường chứng khoán Việt Nam.
 
-## Gioi Thieu
+## Giới thiệu
 
-Du an nay xay dung pipeline xu ly tin tuc tai chinh bang NLP, gan nhan sentiment cho noi dung tin tuc, tao chi so **Equity Sentiment Index**, sau do phan tich moi quan he giua sentiment thi truong va bien dong **VN-Index**.
+Dự án này xây dựng pipeline xử lý tin tức tài chính bằng NLP, gắn nhãn sentiment cho nội dung tin tức, tạo chỉ số **Equity Sentiment Index**, sau đó phân tích mối quan hệ giữa sentiment thị trường và biến động **VN-Index**.
 
-Muc tieu chinh:
+Mục tiêu chính:
 
-- Lam sach va chuan hoa du lieu tin tuc tu nguon du lieu 3T.
-- Loc cac tin lien quan den co phieu va thi truong chung khoan.
-- Tach tu, tao tu dien/cum tu sentiment va gan nhan cam xuc cho tin tuc.
-- Tong hop sentiment thanh chi so theo ngay va theo tuan.
-- Ket hop sentiment index voi du lieu VN-Index de phan tich tuong quan, hoi quy du bao va tac dong thi truong.
-- Tao bao cao thuc tap va cac bieu do minh hoa ket qua.
+* Làm sạch và chuẩn hóa dữ liệu tin tức từ nguồn dữ liệu 3T.
+* Lọc các tin liên quan đến cổ phiếu và thị trường chứng khoán.
+* Tách từ, tạo từ điển/cụm từ sentiment và gắn nhãn cảm xúc cho tin tức.
+* Tổng hợp sentiment thành chỉ số theo ngày và theo tuần.
+* Kết hợp sentiment index với dữ liệu VN-Index để phân tích tương quan, hồi quy dự báo và tác động thị trường.
+* Tạo báo cáo thực tập và các biểu đồ minh họa kết quả.
 
-## Cau Truc Thu Muc
+## Cấu trúc thư mục
 
 ```text
 project3T/
-|-- data_News/              # Du lieu tin tuc, du lieu sentiment va ket qua phan tich tin tuc
-|-- data_Histo/             # Du lieu gia lich su va VN-Index da xu ly
-|-- News/                   # Code xu ly tin tuc, NLP, sentiment label va sentiment index
-|-- News_Vnindex/           # Code merge sentiment voi VN-Index, correlation va regression
-|-- Historical_price/       # Code EDA va xu ly du lieu gia lich su
-|-- event_stock/            # Phan tich event study lien quan den co phieu
-|-- REF/                    # Tai lieu tham khao va paper nen tang
-|-- internship_report/      # Bao cao thuc tap, file Quarto, PDF va slide trinh bay
-|-- requirements.txt        # Danh sach thu vien Python can cai dat
-`-- test.py                 # Script thu nghiem trong qua trinh phat trien
+|-- data_News/              # Dữ liệu tin tức, dữ liệu sentiment và kết quả phân tích tin tức
+|-- data_Histo/             # Dữ liệu giá lịch sử và VN-Index đã xử lý
+|-- News/                   # Code xử lý tin tức, NLP, sentiment label và sentiment index
+|-- News_Vnindex/           # Code merge sentiment với VN-Index, correlation và regression
+|-- Historical_price/       # Code EDA và xử lý dữ liệu giá lịch sử
+|-- event_stock/            # Phân tích event study liên quan đến cổ phiếu
+|-- REF/                    # Tài liệu tham khảo và paper nền tảng
+|-- internship_report/      # Báo cáo thực tập, file Quarto, PDF và slide trình bày
+|-- requirements.txt        # Danh sách thư viện Python cần cài đặt
+`-- test.py                 # Script thử nghiệm trong quá trình phát triển
 ```
 
-## Pipeline Chinh
+## Pipeline chính
 
-### 1. Xu Ly Tin Tuc
+### 1. Xử lý tin tức
 
-Code nam trong `News/EDA_clean/` va `News/prepare_data_model/`.
+Code nằm trong `News/EDA_clean/` và `News/prepare_data_model/`.
 
-Qua trinh xu ly gom:
+Quá trình xử lý gồm:
 
-- Doc va kiem tra du lieu tin tuc goc.
-- Lam sach noi dung bai viet.
-- Chuan hoa domain, category va cac truong metadata.
-- Loc tin lien quan den co phieu/thi truong.
-- Tokenize tieng Viet bang `underthesea` hoac `VNCoreNLP`.
-- Tao candidate terms, n-gram terms va ma tran dac trung phuc vu sentiment model.
+* Đọc và kiểm tra dữ liệu tin tức gốc.
+* Làm sạch nội dung bài viết.
+* Chuẩn hóa domain, category và các trường metadata.
+* Lọc tin liên quan đến cổ phiếu/thị trường chứng khoán.
+* Tokenize tiếng Việt bằng `underthesea` hoặc `VNCoreNLP`.
+* Tạo candidate terms, n-gram terms và ma trận đặc trưng phục vụ sentiment model.
 
-Mot so file du lieu dau ra quan trong:
+Một số file dữ liệu đầu ra quan trọng:
 
-- `data_News/clean_news.parquet`
-- `data_News/equity_news.parquet`
-- `data_News/equity_news_clean_content.parquet`
-- `data_News/equity_news_tokenized.parquet`
-- `data_News/equity_news_tokenized_vncorenlp.parquet`
+* `data_News/clean_news.parquet`
+* `data_News/equity_news.parquet`
+* `data_News/equity_news_clean_content.parquet`
+* `data_News/equity_news_tokenized.parquet`
+* `data_News/equity_news_tokenized_vncorenlp.parquet`
 
-### 2. Gan Nhan Sentiment
+### 2. Gắn nhãn Sentiment
 
-Code nam trong `News/Process_sentiment_label/` va `News/Train_model/`.
+Code nằm trong `News/Process_sentiment_label/` và `News/Train_model/`.
 
-Thanh phan chinh:
+Thành phần chính:
 
-- Xay dung tu dien sentiment.
-- Gan nhan positive, negative, neutral cho noi dung tin tuc.
-- Tao cac ti le sentiment theo bai viet.
-- Thu nghiem model sentiment cho du lieu tieng Viet.
+* Xây dựng từ điển sentiment.
+* Gắn nhãn positive, negative, neutral cho nội dung tin tức.
+* Tạo các tỷ lệ sentiment theo bài viết.
+* Thử nghiệm model sentiment cho dữ liệu tiếng Việt.
 
-Ket qua dau ra tieu bieu:
+Kết quả đầu ra tiêu biểu:
 
-- `data_News/equity_news_content_sentiment_ratios.parquet`
-- `data_News/equity_news_content_positive.csv`
-- `data_News/equity_news_content_negative.csv`
-- `data_News/equity_news_content_neutral.csv`
+* `data_News/equity_news_content_sentiment_ratios.parquet`
+* `data_News/equity_news_content_positive.csv`
+* `data_News/equity_news_content_negative.csv`
+* `data_News/equity_news_content_neutral.csv`
 
-### 3. Xay Dung Equity Sentiment Index
+### 3. Xây dựng Equity Sentiment Index
 
-Code nam trong `News/Build_sentiment_index/`.
+Code nằm trong `News/Build_sentiment_index/`.
 
-Chi so sentiment duoc tong hop theo:
+Chỉ số sentiment được tổng hợp theo:
 
-- Ngay: `market_sentiment_index_daily.parquet`
-- Tuan: `market_sentiment_index_weekly.parquet`
+* Ngày: `market_sentiment_index_daily.parquet`
+* Tuần: `market_sentiment_index_weekly.parquet`
 
-Mot so cot quan trong:
+Một số cột quan trọng:
 
-- `article_count`: so luong bai viet.
-- `sentiment_index`: diem sentiment trung binh.
-- `sentiment_index_z`: diem sentiment da chuan hoa z-score.
-- `positive_article_count`, `negative_article_count`, `neutral_article_count`: so bai theo tung nhom sentiment.
+* `article_count`: số lượng bài viết.
+* `sentiment_index`: điểm sentiment trung bình.
+* `sentiment_index_z`: điểm sentiment đã chuẩn hóa z-score.
+* `positive_article_count`, `negative_article_count`, `neutral_article_count`: số bài theo từng nhóm sentiment.
 
-### 4. Xu Ly Du Lieu Gia Va VN-Index
+### 4. Xử lý dữ liệu giá và VN-Index
 
-Code nam trong `Historical_price/` va `News_Vnindex/`.
+Code nằm trong `Historical_price/` và `News_Vnindex/`.
 
-Du lieu gia lich su duoc dung de:
+Dữ liệu giá lịch sử được dùng để:
 
-- Kiem tra va lam sach gia co phieu/VN-Index.
-- Tao bien return theo tuan.
-- Tao bien future return va cac bien control nhu volatility, volume, lag return.
+* Kiểm tra và làm sạch giá cổ phiếu/VN-Index.
+* Tạo biến return theo tuần.
+* Tạo biến future return và các biến control như volatility, volume, lag return.
 
-Ket qua dau ra tieu bieu:
+Kết quả đầu ra tiêu biểu:
 
-- `data_Histo/historical_price_all.parquet`
-- `data_Histo/vnindex_weekly_return.parquet`
-- `data_Histo/vnindex_weekly_return.csv`
+* `data_Histo/historical_price_all.parquet`
+* `data_Histo/vnindex_weekly_return.parquet`
+* `data_Histo/vnindex_weekly_return.csv`
 
-### 5. Phan Tich Tac Dong Sentiment Den VN-Index
+### 5. Phân tích tác động của Sentiment đến VN-Index
 
-Code nam trong `News_Vnindex/`.
+Code nằm trong `News_Vnindex/`.
 
-Phan tich gom:
+Phân tích gồm:
 
-- Merge sentiment weekly voi VN-Index weekly return.
-- Tinh tuong quan giua sentiment va return.
-- Chay predictive regression de kiem tra sentiment co giai thich/du bao bien dong VN-Index hay khong.
-- Ve bieu do sentiment index, VN-Index return, cumulative return va tac dong hoi quy.
+* Merge sentiment weekly với VN-Index weekly return.
+* Tính tương quan giữa sentiment và return.
+* Chạy predictive regression để kiểm tra sentiment có giải thích/dự báo biến động VN-Index hay không.
+* Vẽ biểu đồ sentiment index, VN-Index return, cumulative return và tác động hồi quy.
 
-Ket qua dau ra:
+Kết quả đầu ra:
 
-- `data_News/vnindex_weekly_sentiment_merged.parquet`
-- `data_News/vnindex_weekly_sentiment_merged.csv`
-- `data_News/vnindex_weekly_correlation.csv`
-- `data_News/vnindex_weekly_predictive_regression.csv`
-- `data_News/figures/`
+* `data_News/vnindex_weekly_sentiment_merged.parquet`
+* `data_News/vnindex_weekly_sentiment_merged.csv`
+* `data_News/vnindex_weekly_correlation.csv`
+* `data_News/vnindex_weekly_predictive_regression.csv`
+* `data_News/figures/`
 
-## Cai Dat Moi Truong
+## Cài đặt môi trường
 
-Yeu cau Python 3.10+.
+Yêu cầu Python 3.10+.
 
 ```powershell
 python -m venv .venv
@@ -133,65 +133,65 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Cach Chay Mot So Buoc Chinh
+## Cách chạy một số bước chính
 
-Tao VN-Index weekly return:
+Tạo VN-Index weekly return:
 
 ```powershell
 python News_Vnindex\build_vnindex_weekly_return.py
 ```
 
-Merge VN-Index weekly voi sentiment weekly:
+Merge VN-Index weekly với sentiment weekly:
 
 ```powershell
 python News_Vnindex\merge_vnindex_weekly_with_sentiment.py
 ```
 
-Chay correlation:
+Chạy correlation:
 
 ```powershell
 python News_Vnindex\run_vnindex_weekly_correlation.py
 ```
 
-Chay predictive regression:
+Chạy predictive regression:
 
 ```powershell
 python News_Vnindex\vnindex_weekly_predictive_regression.py
 ```
 
-Ve bieu do phan tich:
+Vẽ biểu đồ phân tích:
 
 ```powershell
 python News_Vnindex\plot_sentiment_vs_vnindex_timeseries.py
 python News_Vnindex\plot_predictive_regression_impact.py
 ```
 
-## Bao Cao Va Slide
+## Báo cáo và Slide
 
-Thu muc `internship_report/` chua bao cao thuc tap duoi dang Quarto va file PDF da render.
+Thư mục `internship_report/` chứa báo cáo thực tập dưới dạng Quarto và file PDF đã render.
 
-Render lai bao cao:
+Render lại báo cáo:
 
 ```powershell
 cd internship_report
 quarto render final_report.qmd --to pdf
 ```
 
-File ket qua nam trong:
+File kết quả nằm trong:
 
 ```text
 internship_report/_output/final_report.pdf
 ```
 
-## Tai Lieu Tham Khao
+## Tài liệu tham khảo
 
-Thu muc `REF/` gom cac paper va tai lieu nen tang ve:
+Thư mục `REF/` gồm các paper và tài liệu nền tảng về:
 
-- Media sentiment va thi truong tai chinh.
-- Tu dien sentiment trong tai chinh.
-- Tac dong cua tin tuc den loi suat co phieu.
-- Phuong phap event study va predictive regression.
+* Media sentiment và thị trường tài chính.
+* Từ điển sentiment trong tài chính.
+* Tác động của tin tức đến lợi suất cổ phiếu.
+* Phương pháp event study và predictive regression.
 
-## Luu Y Ve Du Lieu
+## Lưu ý về dữ liệu
 
-Vi du lieu duoc lay tu cong ty 3T, can dam bao viec chia se, sao chep hoac cong bo du lieu tu repo nay tuan thu quy dinh noi bo va cac thoa thuan lien quan den bao mat du lieu.
+Vì dữ liệu được lấy từ công ty 3T, cần đảm bảo việc chia sẻ, sao chép hoặc công bố dữ liệu từ repo này tuân thủ quy định nội bộ và các thỏa thuận liên quan đến bảo mật dữ liệu.
