@@ -22,3 +22,5 @@ phobert_financial_sentiment_model
 phobert_financial_sentiment_model_v2_class_weight
 .DS_Store
 .DS_Store/
+venv/
+venv
