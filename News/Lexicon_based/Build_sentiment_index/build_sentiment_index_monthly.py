@@ -6,10 +6,11 @@ import sys
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data_News" / "equity_news_content_sentiment_ratios.parquet"
-OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data_News" / "market_sentiment_index_monthly.parquet"
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "market_sentiment_index_monthly.csv"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+LEXICON_DATA_DIR = PROJECT_ROOT / "News" / "Lexicon_based" / "data"
+INPUT_PATH = LEXICON_DATA_DIR / "equity_news_content_sentiment_ratios.parquet"
+OUTPUT_PARQUET_PATH = LEXICON_DATA_DIR / "market_sentiment_index_monthly.parquet"
+OUTPUT_CSV_PATH = LEXICON_DATA_DIR / "market_sentiment_index_monthly.csv"
 
 DATE_COLUMN = "publication_date"
 SENTIMENT_SCORE_COLUMN = "sentiment_score"

@@ -7,13 +7,13 @@ import sys
 import pandas as pd
 
 try:
-    from News.data_for_model.build_ngram_terms import (
+    from News.Common.build_ngram_terms import (
         NGRAM_SEPARATOR,
         OUTPUT_PATH as NGRAM_TERMS_PATH,
         PROJECT_ROOT,
     )
 except ImportError:
-    from News.data_for_model.build_ngram_terms import (
+    from News.Common.build_ngram_terms import (
         NGRAM_SEPARATOR,
         OUTPUT_PATH as NGRAM_TERMS_PATH,
         PROJECT_ROOT,
@@ -21,10 +21,11 @@ except ImportError:
 
 
 INPUT_PATH = NGRAM_TERMS_PATH
-OUTPUT_PATH = PROJECT_ROOT / "data" / "candidate_ngram_terms.parquet"
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data" / "candidate_ngram_terms.csv"
-STOPWORDS_PATH = Path(__file__).resolve().parent / "vietnamese-stopwords-dash.txt"
-SENTIMENT_WORD_PATH = Path(__file__).resolve().parent / "sentiment_word.txt"
+RESOURCES_DIR = PROJECT_ROOT / "News" / "Resources"
+OUTPUT_PATH = PROJECT_ROOT / "data_News" / "candidate_ngram_terms.parquet"
+OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "candidate_ngram_terms.csv"
+STOPWORDS_PATH = RESOURCES_DIR / "vietnamese-stopwords-dash.txt"
+SENTIMENT_WORD_PATH = RESOURCES_DIR / "sentiment_word.txt"
 
 MAX_DF_RATIO = 0.22
 MIN_DF_BY_NGRAM = {1: 5000, 2: 200,}

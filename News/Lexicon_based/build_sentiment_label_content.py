@@ -7,19 +7,21 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 try:
-    from News.data_for_model.build_ngram_terms import (
+    from News.Common.build_ngram_terms import (
         normalize_sentence_token_lists,
     )
 except ImportError:
-    from build_ngram_terms import normalize_sentence_token_lists
+    from News.Common.build_ngram_terms import normalize_sentence_token_lists
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = Path(__file__).resolve().parent
+LEXICON_DATA_DIR = SCRIPT_DIR / "data"
 
-DICTIONARY_PATH = PROJECT_ROOT / "data" / "candidate_ngram_terms_dictionary.csv"
-INPUT_PATH = PROJECT_ROOT / "data" / "equity_news_tokenized_vncorenlp.parquet"
-OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data" / "equity_news_content_sentiment_ratios.parquet"
-OUTPUT_SAMPLE_CSV_PATH = (PROJECT_ROOT / "data" / "equity_news_content_sentiment_ratios_sample.csv")
+DICTIONARY_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms_dictionary.csv"
+INPUT_PATH = PROJECT_ROOT / "data_News" / "equity_news_tokenized_vncorenlp.parquet"
+OUTPUT_PARQUET_PATH = LEXICON_DATA_DIR / "equity_news_content_sentiment_ratios.parquet"
+OUTPUT_SAMPLE_CSV_PATH = (LEXICON_DATA_DIR / "equity_news_content_sentiment_ratios_sample.csv")
 
 TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"
 TOKENIZED_FALLBACK_COLUMN = "Tokenize_content"

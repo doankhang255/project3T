@@ -11,10 +11,13 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_DIR = Path(__file__).resolve().parent
+LEXICON_DATA_DIR = SCRIPT_DIR / "data"
 
-INPUT_PATH = PROJECT_ROOT / "data" / "candidate_ngram_terms.parquet"
+INPUT_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
 MODEL_PATH = (
-    SCRIPT_DIR
+    PROJECT_ROOT
+    / "News"
+    / "Process_sentiment_label"
     / "hub"
     / "models--wonrax--phobert-base-vietnamese-sentiment"
     / "snapshots"
@@ -22,9 +25,9 @@ MODEL_PATH = (
 )
 
 OUTPUT_DICTIONARY_PARQUET_PATH = (
-    PROJECT_ROOT / "data" / "candidate_ngram_terms_dictionary.parquet"
+    LEXICON_DATA_DIR / "candidate_ngram_terms_dictionary.parquet"
 )
-OUTPUT_DICTIONARY_CSV_PATH = PROJECT_ROOT / "data" / "candidate_ngram_terms_dictionary.csv"
+OUTPUT_DICTIONARY_CSV_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms_dictionary.csv"
 
 BATCH_SIZE = 128
 MAX_LENGTH = 32

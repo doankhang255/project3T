@@ -10,9 +10,9 @@ import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data" / "equity_news_tokenized_vncorenlp.parquet"
-OUTPUT_PATH = PROJECT_ROOT / "data" / "ngram_terms.parquet"
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data" / "ngram_terms.csv"
+INPUT_PATH = PROJECT_ROOT / "data_News" / "equity_news_tokenized_vncorenlp.parquet"
+OUTPUT_PATH = PROJECT_ROOT / "data_News" / "ngram_terms.parquet"
+OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "ngram_terms.csv"
 
 TOKENIZED_COLUMN = "Tokenize_content_sentences"
 FALLBACK_TOKENIZED_COLUMN = "Tokenize_content"
