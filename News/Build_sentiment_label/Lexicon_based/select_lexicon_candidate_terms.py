@@ -1,40 +1,48 @@
 from __future__ import annotations
 
 from pathlib import Path
-import math
 import sys
 
 import pandas as pd
 
-try:
-    from News.Common.build_ngram_terms import (
-        NGRAM_SEPARATOR,
-        OUTPUT_PATH as NGRAM_TERMS_PATH,
-        PROJECT_ROOT,
-    )
-except ImportError:
-    from News.Common.build_ngram_terms import (
-        NGRAM_SEPARATOR,
-        OUTPUT_PATH as NGRAM_TERMS_PATH,
-        PROJECT_ROOT,
-    )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from News.Build_sentiment_label.Common.matrix_csr_utils import (
+    DEFAULT_TOKENIZED_NEWS_PATH,
+    NGRAM_SEPARATOR,
+    build_ngram_terms_with_summary,
+)
+from News.Build_sentiment_label.Common.ngram_filter import (
+    MAX_DF_RATIO,
+    MIN_DF_BY_NGRAM,
+)
+from News.Build_sentiment_label.Common.stopword_utils import (
+    DEFAULT_STOPWORDS_PATH,
+    has_stopword_boundary,
+    load_stopwords,
+)
+from News.Build_sentiment_label.Common.tf_df_utils import (
+    add_candidate_statistics,
+    infer_total_documents,
+    split_by_mask,
+    validate_ngram_terms,
+)
 
 
-INPUT_PATH = NGRAM_TERMS_PATH
-RESOURCES_DIR = PROJECT_ROOT / "News" / "Resources"
-OUTPUT_PATH = PROJECT_ROOT / "data_News" / "candidate_ngram_terms.parquet"
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "candidate_ngram_terms.csv"
-STOPWORDS_PATH = RESOURCES_DIR / "vietnamese-stopwords-dash.txt"
+SCRIPT_DIR = Path(__file__).resolve().parent
+LEXICON_DATA_DIR = SCRIPT_DIR / "data"
+RESOURCES_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Resources"
+
+INPUT_PATH = DEFAULT_TOKENIZED_NEWS_PATH
+OUTPUT_NGRAM_TERMS_PATH = LEXICON_DATA_DIR / "ngram_terms.parquet"
+OUTPUT_NGRAM_TERMS_CSV_PATH = LEXICON_DATA_DIR / "ngram_terms.csv"
+OUTPUT_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
+OUTPUT_CSV_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.csv"
+STOPWORDS_PATH = DEFAULT_STOPWORDS_PATH
 SENTIMENT_WORD_PATH = RESOURCES_DIR / "sentiment_word.txt"
-
-MAX_DF_RATIO = 0.22
-MIN_DF_BY_NGRAM = {1: 5000, 2: 200,}
-REQUIRED_COLUMNS = {"term", "ngram_n", "tf", "df"}
-
-
-def load_stopwords(path: Path = STOPWORDS_PATH) -> set[str]:
-    with open(path, encoding="utf-8") as file:
-        return {line.strip().casefold() for line in file if line.strip()}
 
 
 def load_sentiment_tokens(path: Path = SENTIMENT_WORD_PATH) -> set[str]:
@@ -51,104 +59,9 @@ def load_sentiment_tokens(path: Path = SENTIMENT_WORD_PATH) -> set[str]:
     return tokens
 
 
-def has_stopword_boundary(term: str, stopwords: set[str]) -> bool:
-    if not stopwords:
-        return False
-
-    tokens = str(term).split(NGRAM_SEPARATOR)
-    if not tokens:
-        return False
-
-    return tokens[0].casefold() in stopwords or tokens[-1].casefold() in stopwords
-
-
-def split_by_mask(df: pd.DataFrame, mask: pd.Series) -> tuple[pd.DataFrame, pd.DataFrame]:
-    failed_df = df.loc[mask].copy().reset_index(drop=True)
-    passed_df = df.loc[~mask].copy().reset_index(drop=True)
-    return passed_df, failed_df
-
-
-def infer_total_documents(ngram_terms_df: pd.DataFrame) -> int:
-    if ngram_terms_df.empty:
-        return 0
-    if "df_ratio" not in ngram_terms_df.columns:
-        raise ValueError("total_documents is required when df_ratio column is missing")
-
-    valid_df_ratio = ngram_terms_df["df_ratio"].gt(0)
-    if not valid_df_ratio.any():
-        return 0
-
-    estimates = (
-        ngram_terms_df.loc[valid_df_ratio, "df"]
-        / ngram_terms_df.loc[valid_df_ratio, "df_ratio"]
-    )
-    return int(round(estimates.median()))
-
-
-def validate_ngram_terms(ngram_terms_df: pd.DataFrame) -> None:
-    missing_columns = REQUIRED_COLUMNS.difference(ngram_terms_df.columns)
-    if missing_columns:
-        raise ValueError(f"Input n-gram terms must contain columns: {sorted(missing_columns)}")
-
-
-def add_candidate_statistics(
-    ngram_terms_df: pd.DataFrame,
-    total_documents: int,
-) -> pd.DataFrame:
-    out = ngram_terms_df.copy()
-    if "df_ratio" not in out.columns:
-        out["df_ratio"] = out["df"] / total_documents if total_documents else 0.0
-
-    out["avg_tf_per_doc"] = out["tf"] / out["df"]
-    out["candidate_score"] = out["tf"] * out["df"].apply(
-        lambda df: math.log((total_documents + 1) / (df + 1))
-    )
-    return out
-
-
-def build_min_df_mask(
-    term_stats: pd.DataFrame,
-    min_df_by_ngram: dict[int, int],
-    sentiment_tokens: set[str] | None = None,
-) -> pd.Series:
-    sentiment_tokens = sentiment_tokens or set()
-    min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
-    below_min_df_mask = term_stats["df"].lt(min_df_threshold)
-    if not sentiment_tokens:
-        return below_min_df_mask
-
-    sentiment_token_mask = build_sentiment_priority_mask(
-        term_stats,
-        sentiment_tokens=sentiment_tokens,
-    )
-    return below_min_df_mask & ~sentiment_token_mask
-
-
-def build_sentiment_min_df_keep_mask(
-    term_stats: pd.DataFrame,
-    min_df_by_ngram: dict[int, int],
-    sentiment_tokens: set[str] | None = None,
-) -> pd.Series:
-    sentiment_tokens = sentiment_tokens or set()
-    if not sentiment_tokens:
-        return pd.Series(False, index=term_stats.index)
-
-    min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
-    below_min_df_mask = term_stats["df"].lt(min_df_threshold)
-    sentiment_token_mask = build_sentiment_priority_mask(
-        term_stats,
-        sentiment_tokens=sentiment_tokens,
-    )
-    return below_min_df_mask & sentiment_token_mask
-
-
 def find_sentiment_tokens(term: str, sentiment_tokens: set[str]) -> set[str]:
     term_text = str(term).casefold()
     return {token for token in sentiment_tokens if token in term_text}
-
-
-def contains_sentiment_token(term: str, sentiment_tokens: set[str]) -> bool:
-    return bool(find_sentiment_tokens(term, sentiment_tokens))
 
 
 def build_sentiment_priority_mask(
@@ -187,6 +100,42 @@ def build_sentiment_priority_mask(
     )
 
 
+def build_min_df_mask(
+    term_stats: pd.DataFrame,
+    min_df_by_ngram: dict[int, int],
+    sentiment_tokens: set[str] | None = None,
+) -> pd.Series:
+    sentiment_tokens = sentiment_tokens or set()
+    min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
+    below_min_df_mask = term_stats["df"].lt(min_df_threshold)
+    if not sentiment_tokens:
+        return below_min_df_mask
+
+    sentiment_token_mask = build_sentiment_priority_mask(
+        term_stats,
+        sentiment_tokens=sentiment_tokens,
+    )
+    return below_min_df_mask & ~sentiment_token_mask
+
+
+def build_sentiment_min_df_keep_mask(
+    term_stats: pd.DataFrame,
+    min_df_by_ngram: dict[int, int],
+    sentiment_tokens: set[str] | None = None,
+) -> pd.Series:
+    sentiment_tokens = sentiment_tokens or set()
+    if not sentiment_tokens:
+        return pd.Series(False, index=term_stats.index)
+
+    min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
+    below_min_df_mask = term_stats["df"].lt(min_df_threshold)
+    sentiment_token_mask = build_sentiment_priority_mask(
+        term_stats,
+        sentiment_tokens=sentiment_tokens,
+    )
+    return below_min_df_mask & sentiment_token_mask
+
+
 def build_shadowed_sentiment_ngram1_mask(
     term_stats: pd.DataFrame,
     sentiment_tokens: set[str] | None = None,
@@ -213,7 +162,7 @@ def build_shadowed_sentiment_ngram1_mask(
     )
 
 
-def choose_candidate_ngram_terms(
+def choose_lexicon_candidate_terms(
     ngram_terms_df: pd.DataFrame,
     total_documents: int | None = None,
     min_df_by_ngram: dict[int, int] | None = None,
@@ -230,7 +179,7 @@ def choose_candidate_ngram_terms(
         else total_documents
     )
     term_stats = add_candidate_statistics(
-        ngram_terms_df=ngram_terms_df,
+        term_df=ngram_terms_df,
         total_documents=total_documents,
     )
     term_stats["rejection_reason"] = None
@@ -238,7 +187,11 @@ def choose_candidate_ngram_terms(
     if remove_stopwords:
         stopwords = stopwords or set()
         stopword_boundary_mask = term_stats["term"].apply(
-            lambda term: has_stopword_boundary(term, stopwords)
+            lambda term: has_stopword_boundary(
+                term,
+                stopwords=stopwords,
+                separator=NGRAM_SEPARATOR,
+            )
         )
     else:
         stopword_boundary_mask = pd.Series(False, index=term_stats.index)
@@ -284,17 +237,14 @@ def choose_candidate_ngram_terms(
         candidate_terms_df,
         sentiment_shadowed_ngram1_mask,
     )
-    sentiment_shadowed_ngram1_df["rejection_reason"] = (
-        "sentiment_shadowed_by_ngram_2"
-    )
+    sentiment_shadowed_ngram1_df["rejection_reason"] = "sentiment_shadowed_by_ngram_2"
 
     candidate_terms_df = candidate_terms_df.drop(columns=["rejection_reason"])
     candidate_terms_df = candidate_terms_df.sort_values(
         by=["candidate_score", "tf", "df", "ngram_n", "term"],
         ascending=[False, False, False, True, True],
         kind="mergesort",
-    )
-    candidate_terms_df = candidate_terms_df.reset_index(drop=True)
+    ).reset_index(drop=True)
 
     if not return_groups:
         return candidate_terms_df
@@ -310,7 +260,7 @@ def choose_candidate_ngram_terms(
     }
 
 
-def build_candidate_ngram_terms(
+def build_lexicon_candidate_terms(
     path: Path = INPUT_PATH,
     min_df_by_ngram: dict[int, int] | None = None,
     max_df_ratio: float = MAX_DF_RATIO,
@@ -319,10 +269,10 @@ def build_candidate_ngram_terms(
     sentiment_word_path: Path = SENTIMENT_WORD_PATH,
     total_documents: int | None = None,
 ) -> dict[str, pd.DataFrame]:
-    ngram_terms_df = pd.read_parquet(path)
+    ngram_terms_df, _ = build_ngram_terms_with_summary(path=path)
     stopwords = load_stopwords(stopwords_path) if remove_stopwords else set()
     sentiment_tokens = load_sentiment_tokens(sentiment_word_path)
-    return choose_candidate_ngram_terms(
+    return choose_lexicon_candidate_terms(
         ngram_terms_df=ngram_terms_df,
         total_documents=total_documents,
         min_df_by_ngram=min_df_by_ngram,
@@ -338,9 +288,18 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    result = build_candidate_ngram_terms()
+    result = build_lexicon_candidate_terms()
     candidate_terms_df = result["candidate_terms_df"]
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    result["all_ngram_terms_df"].drop(columns=["rejection_reason"]).to_parquet(
+        OUTPUT_NGRAM_TERMS_PATH,
+        index=False,
+    )
+    result["all_ngram_terms_df"].drop(columns=["rejection_reason"]).to_csv(
+        OUTPUT_NGRAM_TERMS_CSV_PATH,
+        index=False,
+        encoding="utf-8-sig",
+    )
     candidate_terms_df.to_parquet(OUTPUT_PATH, index=False)
     candidate_terms_df.to_csv(OUTPUT_CSV_PATH, index=False, encoding="utf-8-sig")
 
@@ -351,10 +310,7 @@ def main() -> None:
     print("Maximum df_ratio:", MAX_DF_RATIO)
     print("Output parquet:", OUTPUT_PATH)
     print("Output csv:", OUTPUT_CSV_PATH)
-    print(
-        "N-grams removed by stopword boundary:",
-        len(result["stopword_boundary_df"]),
-    )
+    print("N-grams removed by stopword boundary:", len(result["stopword_boundary_df"]))
     print(
         "N-grams kept below min_df because they contain sentiment tokens:",
         len(result["sentiment_min_df_keep_df"]),
@@ -363,17 +319,13 @@ def main() -> None:
         "Sentiment unigram terms skipped because n-gram 2 matched first:",
         len(result["sentiment_shadowed_ngram1_df"]),
     )
-    print(
-        "N-grams removed by min_df by n-gram:",
-        len(result["below_min_df_df"]),
-    )
-    print(
-        "N-grams removed by df_ratio > max_df_ratio:",
-        len(result["above_max_df_ratio_df"]),
-    )
+    print("N-grams removed by min_df by n-gram:", len(result["below_min_df_df"]))
+    print("N-grams removed by df_ratio > max_df_ratio:", len(result["above_max_df_ratio_df"]))
     print("Candidate n-gram terms:", len(candidate_terms_df))
     print(candidate_terms_df.head(30).to_string(index=False))
 
 
 if __name__ == "__main__":
     main()
+    print("Output n-gram terms parquet:", OUTPUT_NGRAM_TERMS_PATH)
+    print("Output n-gram terms csv:", OUTPUT_NGRAM_TERMS_CSV_PATH)

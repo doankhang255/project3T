@@ -1,12 +1,26 @@
 from __future__ import annotations
 
-from ast import literal_eval
 from collections import Counter
 from pathlib import Path
 import sys
 
 import numpy as np
 import pandas as pd
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from News.Build_sentiment_label.Common.matrix_csr_utils import (
+    NGRAM_SEPARATOR,
+    build_document_terms as build_common_document_terms,
+)
+from News.Build_sentiment_label.Common.stopword_utils import (
+    DEFAULT_STOPWORDS_PATH,
+    has_stopword_boundary,
+    load_stopwords,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -29,78 +43,41 @@ TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"
 NGRAM_RANGE = (1, 3)
 MIN_DF = 1
 MAX_DF_RATIO = 1.0
+REMOVE_STOPWORDS = True
 
 
-def parse_serialized_list(value: object) -> object:
-    if isinstance(value, (list, tuple, np.ndarray)):
-        return value
-    if pd.isna(value):
-        return []
-    if isinstance(value, str):
-        value = value.strip()
-        if not value:
-            return []
-        try:
-            return literal_eval(value)
-        except (SyntaxError, ValueError):
-            return value.split()
-    return []
+def should_remove_stopword_term(term: str, stopwords: set[str]) -> bool:
+    if not REMOVE_STOPWORDS or not stopwords:
+        return False
 
+    tokens = str(term).split(NGRAM_SEPARATOR)
+    if len(tokens) == 1:
+        return tokens[0].casefold() in stopwords
 
-def normalize_sentence_tokens(raw_value: object) -> list[list[str]]:
-    parsed_value = parse_serialized_list(raw_value)
-    if len(parsed_value) == 0:
-        return []
-
-    if all(isinstance(item, str) for item in parsed_value):
-        return [[str(item) for item in parsed_value if str(item).strip()]]
-
-    sentences: list[list[str]] = []
-    for raw_sentence in parsed_value:
-        if not isinstance(raw_sentence, (list, tuple, np.ndarray)):
-            continue
-        sentence_tokens = [
-            str(token).strip()
-            for token in raw_sentence
-            if str(token).strip()
-        ]
-        if sentence_tokens:
-            sentences.append(sentence_tokens)
-    return sentences
-
-
-def normalize_flat_tokens(raw_value: object) -> list[str]:
-    parsed_value = parse_serialized_list(raw_value)
-    if not isinstance(parsed_value, (list, tuple, np.ndarray)):
-        return []
-    return [str(token).strip() for token in parsed_value if str(token).strip()]
-
-
-def build_ngrams_from_tokens(tokens: list[str], ngram_n: int) -> list[str]:
-    if ngram_n <= 0 or len(tokens) < ngram_n:
-        return []
-    return [
-        " ".join(tokens[index : index + ngram_n])
-        for index in range(0, len(tokens) - ngram_n + 1)
-    ]
+    return has_stopword_boundary(
+        term,
+        stopwords=stopwords,
+        separator=NGRAM_SEPARATOR,
+    )
 
 
 def build_document_terms(row: pd.Series) -> list[str]:
-    if TOKENIZED_SENTENCES_COLUMN in row.index:
-        sentences = normalize_sentence_tokens(row[TOKENIZED_SENTENCES_COLUMN])
-    else:
-        sentences = []
-
-    if not sentences:
-        flat_tokens = normalize_flat_tokens(row[TOKENIZED_COLUMN])
-        sentences = [flat_tokens] if flat_tokens else []
-
-    terms: list[str] = []
     min_ngram, max_ngram = NGRAM_RANGE
-    for sentence_tokens in sentences:
-        for ngram_n in range(min_ngram, max_ngram + 1):
-            terms.extend(build_ngrams_from_tokens(sentence_tokens, ngram_n))
-    return terms
+
+    if TOKENIZED_SENTENCES_COLUMN in row.index:
+        terms = build_common_document_terms(
+            row[TOKENIZED_SENTENCES_COLUMN],
+            min_n=min_ngram,
+            max_n=max_ngram,
+        )
+        if terms:
+            return terms
+
+    return build_common_document_terms(
+        row[TOKENIZED_COLUMN],
+        min_n=min_ngram,
+        max_n=max_ngram,
+    )
 
 
 def load_tokenized_ground_truth() -> pd.DataFrame:
@@ -134,7 +111,11 @@ def build_document_term_counts(df: pd.DataFrame) -> list[Counter[str]]:
     return [Counter(terms) for terms in df["_document_terms"]]
 
 
-def build_vocabulary(term_counts_by_document: list[Counter[str]]) -> pd.DataFrame:
+def build_vocabulary(
+    term_counts_by_document: list[Counter[str]],
+    stopwords: set[str] | None = None,
+) -> pd.DataFrame:
+    stopwords = stopwords or set()
     total_documents = len(term_counts_by_document)
     total_tf_counter: Counter[str] = Counter()
     df_counter: Counter[str] = Counter()
@@ -146,13 +127,15 @@ def build_vocabulary(term_counts_by_document: list[Counter[str]]) -> pd.DataFram
     rows = []
     for term, document_frequency in df_counter.items():
         df_ratio = document_frequency / total_documents
+        if should_remove_stopword_term(term, stopwords):
+            continue
         if document_frequency < MIN_DF or df_ratio > MAX_DF_RATIO:
             continue
 
         rows.append(
             {
                 "term": term,
-                "ngram_n": term.count(" ") + 1,
+                "ngram_n": term.count(NGRAM_SEPARATOR) + 1,
                 "total_tf": int(total_tf_counter[term]),
                 "df": int(document_frequency),
                 "df_ratio": df_ratio,
@@ -268,7 +251,11 @@ def main() -> None:
 
     df = load_tokenized_ground_truth()
     term_counts_by_document = build_document_term_counts(df)
-    vocabulary_df = build_vocabulary(term_counts_by_document)
+    stopwords = load_stopwords(DEFAULT_STOPWORDS_PATH) if REMOVE_STOPWORDS else set()
+    vocabulary_df = build_vocabulary(
+        term_counts_by_document,
+        stopwords=stopwords,
+    )
     data, indices, indptr, shape, document_term_tf_df = build_tfidf_csr_arrays(
         term_counts_by_document,
         vocabulary_df,
@@ -293,6 +280,8 @@ def main() -> None:
     print("TF-IDF formula:")
     print("w_i,j = ((1 + log(tf_i,j)) / (1 + log(a_j))) * log(N / df_i)")
     print("N-gram range:", NGRAM_RANGE)
+    print("Remove stopwords:", REMOVE_STOPWORDS)
+    print("Stopwords path:", DEFAULT_STOPWORDS_PATH)
     print("Documents:", shape[0])
     print("Terms:", shape[1])
     print("Non-zero matrix values:", len(data))

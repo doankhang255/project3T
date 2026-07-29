@@ -12,14 +12,14 @@ try:
     from News.EDA_clean.EDA_raw_news import parse_publication_date_series
     from News.EDA_clean.EDA_raw_news import TEXT_COLUMNS
 except ImportError:
-    from EDA_raw_news import add_description_word_count
-    from EDA_raw_news import build_year_before_2010_rows
-    from EDA_raw_news import INPUT_PATH
-    from EDA_raw_news import load_input_data
-    from EDA_raw_news import NULL_LIKE_VALUES
-    from EDA_raw_news import normalize_text_columns
-    from EDA_raw_news import parse_publication_date_series
-    from EDA_raw_news import TEXT_COLUMNS
+    from News.EDA_clean.EDA_raw_news import add_description_word_count
+    from News.EDA_clean.EDA_raw_news import build_year_before_2010_rows
+    from News.EDA_clean.EDA_raw_news import INPUT_PATH
+    from News.EDA_clean.EDA_raw_news import load_input_data
+    from News.EDA_clean.EDA_raw_news import NULL_LIKE_VALUES
+    from News.EDA_clean.EDA_raw_news import normalize_text_columns
+    from News.EDA_clean.EDA_raw_news import parse_publication_date_series
+    from News.EDA_clean.EDA_raw_news import TEXT_COLUMNS
 
 
 def normalize_domain_column(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
