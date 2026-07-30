@@ -16,9 +16,12 @@ from News.Build_sentiment_label.Common.matrix_csr_utils import (
     NGRAM_SEPARATOR,
     build_document_terms as build_common_document_terms,
 )
+from News.Build_sentiment_label.Common.ngram_filter import (
+    choose_ngram_terms,
+    scaled_min_df_by_ngram,
+)
 from News.Build_sentiment_label.Common.stopword_utils import (
     DEFAULT_STOPWORDS_PATH,
-    has_stopword_boundary,
     load_stopwords,
 )
 
@@ -41,24 +44,17 @@ TOKENIZED_COLUMN = "Tokenize_content"
 TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"
 
 NGRAM_RANGE = (1, 3)
-MIN_DF = 1
-MAX_DF_RATIO = 1.0
 REMOVE_STOPWORDS = True
 
-
-def should_remove_stopword_term(term: str, stopwords: set[str]) -> bool:
-    if not REMOVE_STOPWORDS or not stopwords:
-        return False
-
-    tokens = str(term).split(NGRAM_SEPARATOR)
-    if len(tokens) == 1:
-        return tokens[0].casefold() in stopwords
-
-    return has_stopword_boundary(
-        term,
-        stopwords=stopwords,
-        separator=NGRAM_SEPARATOR,
-    )
+# Ratios instead of fixed counts: the ground-truth set keeps growing as more
+# rows get labeled in Label Studio, so a hardcoded min_df tuned for today's
+# row count would silently stop filtering anything once the corpus outgrows
+# it (this is exactly how the project ended up with hundreds of thousands of
+# near-useless candidate terms before). MIN_DF_FLOOR still guarantees a term
+# must appear in at least 2 documents no matter how small the corpus is.
+ML_MIN_DF_RATIO_BY_NGRAM = {1: 0.02, 2: 0.013, 3: 0.013}
+ML_MIN_DF_FLOOR = 2
+ML_MAX_DF_RATIO = 0.85
 
 
 def build_document_terms(row: pd.Series) -> list[str]:
@@ -111,42 +107,52 @@ def build_document_term_counts(df: pd.DataFrame) -> list[Counter[str]]:
     return [Counter(terms) for terms in df["_document_terms"]]
 
 
-def build_vocabulary(
+def build_ngram_terms_dataframe(
     term_counts_by_document: list[Counter[str]],
-    stopwords: set[str] | None = None,
 ) -> pd.DataFrame:
-    stopwords = stopwords or set()
-    total_documents = len(term_counts_by_document)
     total_tf_counter: Counter[str] = Counter()
     df_counter: Counter[str] = Counter()
-
     for term_counts in term_counts_by_document:
         total_tf_counter.update(term_counts)
         df_counter.update(term_counts.keys())
 
-    rows = []
-    for term, document_frequency in df_counter.items():
-        df_ratio = document_frequency / total_documents
-        if should_remove_stopword_term(term, stopwords):
-            continue
-        if document_frequency < MIN_DF or df_ratio > MAX_DF_RATIO:
-            continue
+    terms = list(df_counter.keys())
+    return pd.DataFrame(
+        {
+            "term": terms,
+            "ngram_n": [term.count(NGRAM_SEPARATOR) + 1 for term in terms],
+            "tf": [total_tf_counter[term] for term in terms],
+            "df": [df_counter[term] for term in terms],
+        }
+    )
 
-        rows.append(
-            {
-                "term": term,
-                "ngram_n": term.count(NGRAM_SEPARATOR) + 1,
-                "total_tf": int(total_tf_counter[term]),
-                "df": int(document_frequency),
-                "df_ratio": df_ratio,
-                "idf": float(np.log(total_documents / document_frequency)),
-            }
-        )
 
-    vocabulary_df = pd.DataFrame(rows)
-    if vocabulary_df.empty:
+def build_vocabulary(
+    term_counts_by_document: list[Counter[str]],
+    total_documents: int,
+    stopwords: set[str] | None = None,
+) -> pd.DataFrame:
+    ngram_terms_df = build_ngram_terms_dataframe(term_counts_by_document)
+    min_df_by_ngram = scaled_min_df_by_ngram(
+        total_documents=total_documents,
+        min_df_ratio_by_ngram=ML_MIN_DF_RATIO_BY_NGRAM,
+        floor=ML_MIN_DF_FLOOR,
+    )
+    candidate_terms_df = choose_ngram_terms(
+        ngram_terms_df=ngram_terms_df,
+        total_documents=total_documents,
+        min_df_by_ngram=min_df_by_ngram,
+        max_df_ratio=ML_MAX_DF_RATIO,
+        remove_stopwords=REMOVE_STOPWORDS,
+        stopwords=stopwords,
+    )
+    if candidate_terms_df.empty:
         raise ValueError("No terms left after vocabulary filtering.")
 
+    vocabulary_df = candidate_terms_df.rename(columns={"tf": "total_tf"})[
+        ["term", "ngram_n", "total_tf", "df", "df_ratio"]
+    ].copy()
+    vocabulary_df["idf"] = np.log(total_documents / vocabulary_df["df"])
     vocabulary_df = vocabulary_df.sort_values(
         ["ngram_n", "df", "total_tf", "term"],
         ascending=[True, False, False, True],
@@ -254,6 +260,7 @@ def main() -> None:
     stopwords = load_stopwords(DEFAULT_STOPWORDS_PATH) if REMOVE_STOPWORDS else set()
     vocabulary_df = build_vocabulary(
         term_counts_by_document,
+        total_documents=len(df),
         stopwords=stopwords,
     )
     data, indices, indptr, shape, document_term_tf_df = build_tfidf_csr_arrays(
@@ -277,9 +284,17 @@ def main() -> None:
         encoding="utf-8-sig",
     )
 
+    min_df_by_ngram = scaled_min_df_by_ngram(
+        total_documents=len(df),
+        min_df_ratio_by_ngram=ML_MIN_DF_RATIO_BY_NGRAM,
+        floor=ML_MIN_DF_FLOOR,
+    )
+
     print("TF-IDF formula:")
     print("w_i,j = ((1 + log(tf_i,j)) / (1 + log(a_j))) * log(N / df_i)")
     print("N-gram range:", NGRAM_RANGE)
+    print("Min df by n-gram (scaled from ratio):", min_df_by_ngram)
+    print("Max df_ratio:", ML_MAX_DF_RATIO)
     print("Remove stopwords:", REMOVE_STOPWORDS)
     print("Stopwords path:", DEFAULT_STOPWORDS_PATH)
     print("Documents:", shape[0])

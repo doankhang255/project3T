@@ -3,17 +3,14 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 import ast
-import sys
 from typing import Iterable
 
 import pandas as pd
-from scipy.sparse import csr_matrix
-from sklearn.feature_extraction.text import CountVectorizer
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_TOKENIZED_NEWS_PATH = (
-    PROJECT_ROOT / "data_News" / "data_tokenized" / "equity_news_tokenized_vncorenlp.parquet"
+    PROJECT_ROOT / "data_news" / "data_tokenized" / "equity_news_tokenized_vncorenlp.parquet"
 )
 
 TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"
@@ -238,84 +235,3 @@ def build_ngram_terms_with_summary(
     return ngram_terms_df, summary
 
 
-def build_ngram_terms(
-    path: Path = DEFAULT_TOKENIZED_NEWS_PATH,
-    tokenized_column: str = TOKENIZED_SENTENCES_COLUMN,
-    min_n: int = DEFAULT_MIN_N,
-    max_n: int = DEFAULT_MAX_N,
-) -> pd.DataFrame:
-    ngram_terms_df, _ = build_ngram_terms_with_summary(
-        path=path,
-        tokenized_column=tokenized_column,
-        min_n=min_n,
-        max_n=max_n,
-    )
-    return ngram_terms_df
-
-
-def build_term_document_matrix(
-    path: Path = DEFAULT_TOKENIZED_NEWS_PATH,
-    tokenized_column: str = TOKENIZED_SENTENCES_COLUMN,
-    min_df: int = 2,
-    min_n: int = DEFAULT_MIN_N,
-    max_n: int = DEFAULT_MAX_N,
-) -> tuple[csr_matrix, list[str], CountVectorizer]:
-    df, selected_tokenized_column = load_tokenized_documents(
-        path=path,
-        tokenized_column=tokenized_column,
-    )
-    document_terms = df[selected_tokenized_column].apply(
-        lambda raw_tokens: build_document_terms(raw_tokens, min_n=min_n, max_n=max_n)
-    )
-
-    vectorizer = CountVectorizer(
-        analyzer=lambda terms: terms,
-        lowercase=False,
-        min_df=min_df,
-        dtype="int32",
-    )
-    term_document_matrix = vectorizer.fit_transform(document_terms)
-    terms = vectorizer.get_feature_names_out().tolist()
-    return term_document_matrix, terms, vectorizer
-
-
-def build_tf_df_dataframe(
-    term_document_matrix: csr_matrix,
-    terms: list[str],
-    total_documents: int | None = None,
-) -> pd.DataFrame:
-    total_documents = total_documents or term_document_matrix.shape[0]
-    tf = term_document_matrix.sum(axis=0).A1
-    df = term_document_matrix.astype(bool).sum(axis=0).A1
-
-    out = pd.DataFrame(
-        {
-            "term": terms,
-            "ngram_n": [term.count(NGRAM_SEPARATOR) + 1 for term in terms],
-            "tf": tf,
-            "df": df,
-            "df_ratio": df / total_documents if total_documents else 0.0,
-        }
-    )
-    return out.sort_values(
-        by=["tf", "df", "ngram_n", "term"],
-        ascending=[False, False, True, True],
-        kind="mergesort",
-    ).reset_index(drop=True)
-
-
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-
-    term_document_matrix, terms, _ = build_term_document_matrix()
-    tf_df = build_tf_df_dataframe(term_document_matrix, terms)
-
-    print(type(term_document_matrix))
-    print("Matrix shape:", term_document_matrix.shape)
-    print("Non-zero values:", term_document_matrix.nnz)
-    print(tf_df.head(20).to_string(index=False))
-
-
-if __name__ == "__main__":
-    main()
