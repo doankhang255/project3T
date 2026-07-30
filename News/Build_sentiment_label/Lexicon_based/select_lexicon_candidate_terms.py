@@ -17,7 +17,6 @@ from News.Build_sentiment_label.Common.matrix_csr_utils import (
 )
 from News.Build_sentiment_label.Common.ngram_filter import (
     MAX_DF_RATIO,
-    MIN_DF_BY_NGRAM,
 )
 from News.Build_sentiment_label.Common.stopword_utils import (
     DEFAULT_STOPWORDS_PATH,
@@ -43,6 +42,10 @@ OUTPUT_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
 OUTPUT_CSV_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.csv"
 STOPWORDS_PATH = DEFAULT_STOPWORDS_PATH
 SENTIMENT_WORD_PATH = RESOURCES_DIR / "sentiment_word.txt"
+LEXICON_MIN_N = 2
+LEXICON_MAX_N = 3
+LEXICON_MIN_DF_BY_NGRAM = {2: 200, 3: 50}
+KEEP_LOW_DF_SENTIMENT_TERMS = False
 
 
 def load_sentiment_tokens(path: Path = SENTIMENT_WORD_PATH) -> set[str]:
@@ -105,9 +108,12 @@ def build_min_df_mask(
     min_df_by_ngram: dict[int, int],
     sentiment_tokens: set[str] | None = None,
 ) -> pd.Series:
-    sentiment_tokens = sentiment_tokens or set()
     min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
     below_min_df_mask = term_stats["df"].lt(min_df_threshold)
+    if not KEEP_LOW_DF_SENTIMENT_TERMS:
+        return below_min_df_mask
+
+    sentiment_tokens = sentiment_tokens or set()
     if not sentiment_tokens:
         return below_min_df_mask
 
@@ -123,6 +129,9 @@ def build_sentiment_min_df_keep_mask(
     min_df_by_ngram: dict[int, int],
     sentiment_tokens: set[str] | None = None,
 ) -> pd.Series:
+    if not KEEP_LOW_DF_SENTIMENT_TERMS:
+        return pd.Series(False, index=term_stats.index)
+
     sentiment_tokens = sentiment_tokens or set()
     if not sentiment_tokens:
         return pd.Series(False, index=term_stats.index)
@@ -134,32 +143,6 @@ def build_sentiment_min_df_keep_mask(
         sentiment_tokens=sentiment_tokens,
     )
     return below_min_df_mask & sentiment_token_mask
-
-
-def build_shadowed_sentiment_ngram1_mask(
-    term_stats: pd.DataFrame,
-    sentiment_tokens: set[str] | None = None,
-    preferred_ngram_n: int = 2,
-    fallback_ngram_n: int = 1,
-) -> pd.Series:
-    sentiment_tokens = sentiment_tokens or set()
-    if not sentiment_tokens:
-        return pd.Series(False, index=term_stats.index)
-
-    matched_tokens = term_stats["term"].apply(
-        lambda term: find_sentiment_tokens(term, sentiment_tokens)
-    )
-    preferred_tokens: set[str] = set()
-    for tokens in matched_tokens.loc[term_stats["ngram_n"].eq(preferred_ngram_n)]:
-        preferred_tokens.update(tokens)
-
-    if not preferred_tokens:
-        return pd.Series(False, index=term_stats.index)
-
-    return (
-        term_stats["ngram_n"].eq(fallback_ngram_n)
-        & matched_tokens.apply(lambda tokens: bool(tokens.intersection(preferred_tokens)))
-    )
 
 
 def choose_lexicon_candidate_terms(
@@ -202,7 +185,7 @@ def choose_lexicon_candidate_terms(
     )
     stopword_boundary_df["rejection_reason"] = "stopword_boundary"
 
-    min_df_by_ngram = min_df_by_ngram or MIN_DF_BY_NGRAM
+    min_df_by_ngram = min_df_by_ngram or LEXICON_MIN_DF_BY_NGRAM
     below_min_df_mask = build_min_df_mask(
         non_stopword_df,
         min_df_by_ngram=min_df_by_ngram,
@@ -229,16 +212,6 @@ def choose_lexicon_candidate_terms(
     )
     above_max_df_ratio_df["rejection_reason"] = "above_max_df_ratio"
 
-    sentiment_shadowed_ngram1_mask = build_shadowed_sentiment_ngram1_mask(
-        candidate_terms_df,
-        sentiment_tokens=sentiment_tokens,
-    )
-    candidate_terms_df, sentiment_shadowed_ngram1_df = split_by_mask(
-        candidate_terms_df,
-        sentiment_shadowed_ngram1_mask,
-    )
-    sentiment_shadowed_ngram1_df["rejection_reason"] = "sentiment_shadowed_by_ngram_2"
-
     candidate_terms_df = candidate_terms_df.drop(columns=["rejection_reason"])
     candidate_terms_df = candidate_terms_df.sort_values(
         by=["candidate_score", "tf", "df", "ngram_n", "term"],
@@ -253,7 +226,6 @@ def choose_lexicon_candidate_terms(
         "all_ngram_terms_df": term_stats.reset_index(drop=True),
         "stopword_boundary_df": stopword_boundary_df,
         "sentiment_min_df_keep_df": sentiment_min_df_keep_df,
-        "sentiment_shadowed_ngram1_df": sentiment_shadowed_ngram1_df,
         "below_min_df_df": below_min_df_df,
         "above_max_df_ratio_df": above_max_df_ratio_df,
         "candidate_terms_df": candidate_terms_df,
@@ -269,7 +241,11 @@ def build_lexicon_candidate_terms(
     sentiment_word_path: Path = SENTIMENT_WORD_PATH,
     total_documents: int | None = None,
 ) -> dict[str, pd.DataFrame]:
-    ngram_terms_df, _ = build_ngram_terms_with_summary(path=path)
+    ngram_terms_df, _ = build_ngram_terms_with_summary(
+        path=path,
+        min_n=LEXICON_MIN_N,
+        max_n=LEXICON_MAX_N,
+    )
     stopwords = load_stopwords(stopwords_path) if remove_stopwords else set()
     sentiment_tokens = load_sentiment_tokens(sentiment_word_path)
     return choose_lexicon_candidate_terms(
@@ -306,18 +282,18 @@ def main() -> None:
     print("Input n-gram terms:", INPUT_PATH)
     print("Stopwords path:", STOPWORDS_PATH)
     print("Sentiment word path:", SENTIMENT_WORD_PATH)
-    print("Minimum df by n-gram:", MIN_DF_BY_NGRAM)
+    print("N-gram range:", f"{LEXICON_MIN_N} to {LEXICON_MAX_N}")
+    print("Minimum df by n-gram:", LEXICON_MIN_DF_BY_NGRAM)
+    print("Keep low-df sentiment terms:", KEEP_LOW_DF_SENTIMENT_TERMS)
     print("Maximum df_ratio:", MAX_DF_RATIO)
+    print("Output n-gram terms parquet:", OUTPUT_NGRAM_TERMS_PATH)
+    print("Output n-gram terms csv:", OUTPUT_NGRAM_TERMS_CSV_PATH)
     print("Output parquet:", OUTPUT_PATH)
     print("Output csv:", OUTPUT_CSV_PATH)
     print("N-grams removed by stopword boundary:", len(result["stopword_boundary_df"]))
     print(
         "N-grams kept below min_df because they contain sentiment tokens:",
         len(result["sentiment_min_df_keep_df"]),
-    )
-    print(
-        "Sentiment unigram terms skipped because n-gram 2 matched first:",
-        len(result["sentiment_shadowed_ngram1_df"]),
     )
     print("N-grams removed by min_df by n-gram:", len(result["below_min_df_df"]))
     print("N-grams removed by df_ratio > max_df_ratio:", len(result["above_max_df_ratio_df"]))
@@ -327,5 +303,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    print("Output n-gram terms parquet:", OUTPUT_NGRAM_TERMS_PATH)
-    print("Output n-gram terms csv:", OUTPUT_NGRAM_TERMS_CSV_PATH)

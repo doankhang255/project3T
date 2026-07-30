@@ -12,17 +12,20 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = Path(__file__).resolve().parent
 LEXICON_DATA_DIR = SCRIPT_DIR / "data"
-
-INPUT_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
-MODEL_PATH = (
+MODEL_CACHE_DIR = (
     PROJECT_ROOT
     / "News"
-    / "Process_sentiment_label"
+    / "Build_sentiment_label"
+    / "Transfer_Learning"
+    / "Model_Output"
     / "hub"
     / "models--wonrax--phobert-base-vietnamese-sentiment"
     / "snapshots"
-    / "9076a5896971b5d551588fe8a51c722c89731d36"
 )
+MODEL_SNAPSHOT_ID = "9076a5896971b5d551588fe8a51c722c89731d36"
+
+INPUT_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
+MODEL_PATH = MODEL_CACHE_DIR / MODEL_SNAPSHOT_ID
 
 OUTPUT_DICTIONARY_PARQUET_PATH = (
     LEXICON_DATA_DIR / "candidate_ngram_terms_dictionary.parquet"
@@ -59,7 +62,7 @@ def load_candidate_terms(path: Path = INPUT_PATH) -> pd.DataFrame:
     out["term"] = out["term"].astype("string").fillna("").str.strip()
     out["term_norm"] = out["term"].apply(normalize_term)
     out["ngram_n"] = pd.to_numeric(out["ngram_n"], errors="coerce").astype("Int64")
-    out = out.loc[out["term_norm"].ne("") & out["ngram_n"].isin([1, 2])].copy()
+    out = out.loc[out["term_norm"].ne("") & out["ngram_n"].isin([2, 3])].copy()
     return out.reset_index(drop=True)
 
 

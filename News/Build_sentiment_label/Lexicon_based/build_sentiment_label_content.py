@@ -6,20 +6,25 @@ import sys
 import pandas as pd
 from tqdm.auto import tqdm
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 try:
-    from News.Common.build_ngram_terms import (
+    from News.Build_sentiment_label.Common.matrix_csr_utils import (
         normalize_sentence_token_lists,
     )
 except ImportError:
-    from News.Common.build_ngram_terms import normalize_sentence_token_lists
+    from News.Build_sentiment_label.Common.matrix_csr_utils import normalize_sentence_token_lists
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_DIR = Path(__file__).resolve().parent
 LEXICON_DATA_DIR = SCRIPT_DIR / "data"
+DATA_NEWS_DIR = PROJECT_ROOT / "data_News"
+TOKENIZED_DATA_DIR = DATA_NEWS_DIR / "data_tokenized"
 
 DICTIONARY_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms_dictionary.csv"
-INPUT_PATH = PROJECT_ROOT / "data_News" / "equity_news_tokenized_vncorenlp.parquet"
+INPUT_PATH = TOKENIZED_DATA_DIR / "equity_news_tokenized_vncorenlp.parquet"
 OUTPUT_PARQUET_PATH = LEXICON_DATA_DIR / "equity_news_content_sentiment_ratios.parquet"
 OUTPUT_SAMPLE_CSV_PATH = (LEXICON_DATA_DIR / "equity_news_content_sentiment_ratios_sample.csv")
 
@@ -68,7 +73,7 @@ def load_sentiment_dictionary(
     df["term"] = df["term"].apply(normalize_term)
     df["ngram_n"] = pd.to_numeric(df["ngram_n"], errors="coerce").astype("Int64")
     df["sentiment_label"] = df["sentiment_label"].apply(normalize_label)
-    df = df.loc[df["term"].ne("") & df["ngram_n"].isin([1, 2])].copy()
+    df = df.loc[df["term"].ne("") & df["ngram_n"].isin([2, 3])].copy()
 
     conflicting_terms = (
         df.groupby("term")["sentiment_label"].nunique().loc[lambda values: values.gt(1)]
@@ -93,8 +98,8 @@ def count_labeled_content_tokens(
     token_counts = {"positive": 0, "negative": 0, "neutral": 0}
     term_counts = {"positive": 0, "negative": 0, "neutral": 0}
 
-    unigram_dictionary = dictionary_by_ngram.get(1, {})
     bigram_dictionary = dictionary_by_ngram.get(2, {})
+    trigram_dictionary = dictionary_by_ngram.get(3, {})
 
     for sentence_tokens in normalize_sentence_token_lists(raw_sentences):
         tokens = [
@@ -105,6 +110,15 @@ def count_labeled_content_tokens(
 
         index = 0
         while index < len(tokens):
+            if index + 2 < len(tokens):
+                trigram = f"{tokens[index]} {tokens[index + 1]} {tokens[index + 2]}"
+                trigram_label = trigram_dictionary.get(trigram)
+                if trigram_label is not None:
+                    token_counts[trigram_label] += 3
+                    term_counts[trigram_label] += 1
+                    index += 3
+                    continue
+
             if index + 1 < len(tokens):
                 bigram = f"{tokens[index]} {tokens[index + 1]}"
                 bigram_label = bigram_dictionary.get(bigram)
@@ -113,11 +127,6 @@ def count_labeled_content_tokens(
                     term_counts[bigram_label] += 1
                     index += 2
                     continue
-
-            unigram_label = unigram_dictionary.get(tokens[index])
-            if unigram_label is not None:
-                token_counts[unigram_label] += 1
-                term_counts[unigram_label] += 1
 
             index += 1
 

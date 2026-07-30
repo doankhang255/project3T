@@ -1,11 +1,18 @@
 from __future__ import annotations
 import ast
+from pathlib import Path
+import sys
+
 import pandas as pd
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from News.EDA_clean.EDA_raw_news import add_description_word_count
     from News.EDA_clean.EDA_raw_news import build_year_before_2010_rows
-    from News.EDA_clean.EDA_raw_news import INPUT_PATH
     from News.EDA_clean.EDA_raw_news import load_input_data
     from News.EDA_clean.EDA_raw_news import NULL_LIKE_VALUES
     from News.EDA_clean.EDA_raw_news import normalize_text_columns
@@ -14,12 +21,16 @@ try:
 except ImportError:
     from News.EDA_clean.EDA_raw_news import add_description_word_count
     from News.EDA_clean.EDA_raw_news import build_year_before_2010_rows
-    from News.EDA_clean.EDA_raw_news import INPUT_PATH
     from News.EDA_clean.EDA_raw_news import load_input_data
     from News.EDA_clean.EDA_raw_news import NULL_LIKE_VALUES
     from News.EDA_clean.EDA_raw_news import normalize_text_columns
     from News.EDA_clean.EDA_raw_news import parse_publication_date_series
     from News.EDA_clean.EDA_raw_news import TEXT_COLUMNS
+
+
+DATA_NEWS_DIR = PROJECT_ROOT / "data_News"
+INPUT_PATH = DATA_NEWS_DIR / "dataset_news.parquet"
+OUTPUT_PATH = DATA_NEWS_DIR / "clean_news.parquet"
 
 
 def normalize_domain_column(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -116,6 +127,11 @@ def main() -> None:
     input_rows = len(raw_df)
     clean_news_df = build_clean_news(normalized_df)
 
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    clean_news_df.to_parquet(OUTPUT_PATH, index=False)
+
+    print("Input path:", INPUT_PATH)
+    print("Output path:", OUTPUT_PATH)
     print("Input rows:", input_rows)
     print("Clean news rows:", len(clean_news_df))
 
