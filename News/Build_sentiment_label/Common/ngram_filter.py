@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 import sys
+from typing import Iterable
 
 import pandas as pd
 
@@ -32,23 +33,46 @@ def scaled_min_df_by_ngram(
     }
 
 
-def load_sentiment_tokens(path: Path) -> set[str]:
-    text = path.read_text(encoding="utf-8")
-    tokens: set[str] = set()
-    for raw_item in text.replace("\n", ",").split(","):
-        item = raw_item.strip().casefold()
-        if not item:
-            continue
+def load_sentiment_tokens(path: Path | Iterable[Path]) -> set[str]:
+    paths = [path] if isinstance(path, Path) else list(path)
 
-        tokens.add(item)
-        tokens.add("_".join(item.split()))
+    tokens: set[str] = set()
+    for single_path in paths:
+        text = single_path.read_text(encoding="utf-8")
+        for raw_item in text.replace("\n", ",").split(","):
+            item = raw_item.strip().casefold()
+            if not item:
+                continue
+
+            tokens.add(item)
+            tokens.add("_".join(item.split()))
 
     return tokens
 
 
-def find_sentiment_tokens(term: str, sentiment_tokens: set[str]) -> set[str]:
-    term_text = str(term).casefold()
-    return {token for token in sentiment_tokens if token in term_text}
+def find_sentiment_tokens(
+    term: str,
+    sentiment_tokens: set[str],
+    separator: str = NGRAM_SEPARATOR,
+) -> set[str]:
+    """Tim sentiment token khop theo dung ranh gioi token, khong phai substring
+    ky tu tho. Vd "am" khong duoc phep khop ben trong "lam_dong"/"tam_ly" chi vi
+    chuoi ky tu trung nhau - phai la 1 token (hoac day token lien tiep) doc lap.
+    """
+    term_parts = str(term).casefold().split(separator)
+    matched: set[str] = set()
+
+    for sentiment_token in sentiment_tokens:
+        seed_parts = sentiment_token.split(separator)
+        window = len(seed_parts)
+        if window == 0 or window > len(term_parts):
+            continue
+        for start in range(len(term_parts) - window + 1):
+            if term_parts[start : start + window] == seed_parts:
+                matched.add(sentiment_token)
+                break
+
+    return matched
 
 
 def build_sentiment_priority_mask(

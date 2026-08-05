@@ -35,7 +35,9 @@ OUTPUT_NGRAM_TERMS_CSV_PATH = LEXICON_DATA_DIR / "ngram_terms.csv"
 OUTPUT_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
 OUTPUT_CSV_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.csv"
 STOPWORDS_PATH = DEFAULT_STOPWORDS_PATH
-SENTIMENT_WORD_PATH = RESOURCES_DIR / "sentiment_word.txt"
+POSITIVE_SEED_PATH = RESOURCES_DIR / "positive_word.txt"
+NEGATIVE_SEED_PATH = RESOURCES_DIR / "negative_word.txt"
+SENTIMENT_WORD_PATHS = [POSITIVE_SEED_PATH, NEGATIVE_SEED_PATH]
 LEXICON_MIN_N = 2
 LEXICON_MAX_N = 3
 LEXICON_MIN_DF_RATIO_BY_NGRAM = {2: 0.0016, 3: 0.0004}
@@ -51,7 +53,7 @@ def build_lexicon_candidate_terms(
     max_df_ratio: float = LEXICON_MAX_DF_RATIO,
     remove_stopwords: bool = True,
     stopwords_path: Path = STOPWORDS_PATH,
-    sentiment_word_path: Path = SENTIMENT_WORD_PATH,
+    sentiment_word_path: Path | list[Path] = SENTIMENT_WORD_PATHS,
     total_documents: int | None = None,
 ) -> dict[str, pd.DataFrame]:
     ngram_terms_df, ngram_summary = build_ngram_terms_with_summary(
@@ -104,7 +106,7 @@ def main() -> None:
 
     print("Input n-gram terms:", INPUT_PATH)
     print("Stopwords path:", STOPWORDS_PATH)
-    print("Sentiment word path:", SENTIMENT_WORD_PATH)
+    print("Sentiment word paths:", SENTIMENT_WORD_PATHS)
     print("N-gram range:", f"{LEXICON_MIN_N} to {LEXICON_MAX_N}")
     print("Total documents:", result["total_documents"])
     print("Minimum df ratio by n-gram:", LEXICON_MIN_DF_RATIO_BY_NGRAM)
