@@ -5,14 +5,13 @@ import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.logistic_regression import (
+from News.Build_sentiment_label.Traditional_ML.model.common import (
     DATA_DIR,
     INPUT_CSR_NPZ_PATH,
     MAX_FEATURES,
@@ -29,29 +28,35 @@ from News.Build_sentiment_label.Traditional_ML.logistic_regression import (
 )
 
 
-OUTPUT_METRICS_PATH = DATA_DIR / "random_forest_metrics.csv"
-OUTPUT_PREDICTIONS_PATH = DATA_DIR / "random_forest_predictions.csv"
-OUTPUT_CONFUSION_MATRIX_PATH = DATA_DIR / "random_forest_confusion_matrix.csv"
-OUTPUT_TOP_FEATURES_PATH = DATA_DIR / "random_forest_top_features.csv"
+OUTPUT_METRICS_PATH = DATA_DIR / "logistic_regression_metrics.csv"
+OUTPUT_PREDICTIONS_PATH = DATA_DIR / "logistic_regression_predictions.csv"
+OUTPUT_CONFUSION_MATRIX_PATH = DATA_DIR / "logistic_regression_confusion_matrix.csv"
+OUTPUT_TOP_FEATURES_PATH = DATA_DIR / "logistic_regression_top_features.csv"
 
-N_ESTIMATORS = 300
+LOGISTIC_C = 1.0
+MAX_ITER = 5000
 
 
-def build_base_forest(random_state: int) -> RandomForestClassifier:
-    return RandomForestClassifier(
-        n_estimators=N_ESTIMATORS,
+def build_base_logistic_regression(random_state: int) -> LogisticRegression:
+    return LogisticRegression(
+        C=LOGISTIC_C,
+        max_iter=MAX_ITER,
         class_weight="balanced",
         random_state=random_state,
-        n_jobs=-1,
     )
 
 
-def cross_validate_random_forest(
+def cross_validate_logistic_regression(
     x: np.ndarray,
     y: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
+    min_class_count = int(np.bincount(y, minlength=len(VALID_LABELS)).min())
+    n_splits = min(N_SPLITS, min_class_count)
+    if n_splits < 2:
+        raise ValueError("Each class needs at least 2 rows for cross-validation.")
+
     probabilities = np.zeros((len(y), len(VALID_LABELS)), dtype=np.float64)
-    folds = build_stratified_folds(y, n_splits=N_SPLITS)
+    folds = build_stratified_folds(y, n_splits=n_splits)
     all_indices = np.arange(len(y))
 
     for fold_id, validation_indices in enumerate(folds, start=1):
@@ -59,12 +64,12 @@ def cross_validate_random_forest(
         train_mask[validation_indices] = False
         train_indices = all_indices[train_mask]
 
-        model = build_base_forest(random_state=RANDOM_SEED + fold_id)
+        model = build_base_logistic_regression(random_state=RANDOM_SEED + fold_id)
         model.fit(x[train_indices], y[train_indices])
         assert list(model.classes_) == list(range(len(VALID_LABELS)))
         probabilities[validation_indices] = model.predict_proba(x[validation_indices])
         print(
-            f"Fold {fold_id}/{N_SPLITS}: "
+            f"Fold {fold_id}/{n_splits}: "
             f"train={len(train_indices)}, validation={len(validation_indices)}"
         )
 
@@ -74,31 +79,31 @@ def cross_validate_random_forest(
 
 def build_top_features(
     x: np.ndarray,
-    vocabulary: pd.DataFrame,
     y: np.ndarray,
+    vocabulary: pd.DataFrame,
     top_n: int = 40,
 ) -> pd.DataFrame:
-    # feature_importances_ is a single global ranking (impurity decrease),
-    # not per-class like the coefficient-based models — noted in output.
-    model = build_base_forest(random_state=RANDOM_SEED + 999)
+    model = build_base_logistic_regression(random_state=RANDOM_SEED + 999)
     model.fit(x, y)
-
-    importances = model.feature_importances_
-    top_indices = np.argsort(importances)[-top_n:][::-1]
+    assert list(model.classes_) == list(range(len(VALID_LABELS)))
 
     rows = []
-    for rank, feature_index in enumerate(top_indices, start=1):
-        vocab_row = vocabulary.iloc[int(feature_index)]
-        rows.append(
-            {
-                "rank": rank,
-                "selected_feature_id": int(feature_index),
-                "term_id": int(vocab_row["term_id"]),
-                "term": vocab_row["term"],
-                "ngram_n": int(vocab_row["ngram_n"]),
-                "feature_importance": float(importances[feature_index]),
-            }
-        )
+    for label_id, label in enumerate(VALID_LABELS):
+        top_indices = np.argsort(model.coef_[label_id])[-top_n:][::-1]
+        for rank, feature_index in enumerate(top_indices, start=1):
+            vocab_row = vocabulary.iloc[int(feature_index)]
+            rows.append(
+                {
+                    "label": label,
+                    "rank": rank,
+                    "selected_feature_id": int(feature_index),
+                    "term_id": int(vocab_row["term_id"]),
+                    "term": vocab_row["term"],
+                    "ngram_n": int(vocab_row["ngram_n"]),
+                    "coefficient": float(model.coef_[label_id, feature_index]),
+                    "bias": float(model.intercept_[label_id]),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -114,15 +119,15 @@ def main() -> None:
     )
     y = encode_labels(document_index["ground_truth_label"])
 
-    print("Model: Random Forest")
+    print("Model: Logistic Regression (scikit-learn)")
     print("Input matrix:", INPUT_CSR_NPZ_PATH)
     print("Documents:", x_selected.shape[0])
+    print("Original features:", x.shape[1])
     print("Selected features:", x_selected.shape[1])
-    print("Trees:", N_ESTIMATORS)
     print("Label counts:")
     print(document_index["ground_truth_label"].value_counts().to_string())
 
-    probabilities, predictions = cross_validate_random_forest(x_selected, y)
+    probabilities, predictions = cross_validate_logistic_regression(x_selected, y)
     metrics_df = compute_metrics(y, predictions)
     prediction_df = build_prediction_output(document_index, probabilities, predictions)
 
@@ -132,12 +137,16 @@ def main() -> None:
         columns=[f"pred_{label}" for label in VALID_LABELS],
     ).reset_index(names="true_label")
 
-    top_features_df = build_top_features(x_selected, selected_vocabulary, y)
+    top_features_df = build_top_features(x_selected, y, selected_vocabulary)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     metrics_df.to_csv(OUTPUT_METRICS_PATH, index=False, encoding="utf-8-sig")
     prediction_df.to_csv(OUTPUT_PREDICTIONS_PATH, index=False, encoding="utf-8-sig")
-    confusion_df.to_csv(OUTPUT_CONFUSION_MATRIX_PATH, index=False, encoding="utf-8-sig")
+    confusion_df.to_csv(
+        OUTPUT_CONFUSION_MATRIX_PATH,
+        index=False,
+        encoding="utf-8-sig",
+    )
     top_features_df.to_csv(OUTPUT_TOP_FEATURES_PATH, index=False, encoding="utf-8-sig")
 
     print("\nMetrics:")
@@ -148,6 +157,7 @@ def main() -> None:
     print("Output predictions:", OUTPUT_PREDICTIONS_PATH)
     print("Output confusion matrix:", OUTPUT_CONFUSION_MATRIX_PATH)
     print("Output top features:", OUTPUT_TOP_FEATURES_PATH)
+    print("Selected feature source ids:", selected_indices[:10].tolist(), "...")
 
 
 if __name__ == "__main__":

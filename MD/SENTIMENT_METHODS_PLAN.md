@@ -21,7 +21,7 @@ Tên gọi:
 Lexicon-based sentiment classification
 Dictionary-based sentiment scoring
 LIWC / VADER / Loughran-McDonald style
-```
+```=
 
 Ý tưởng:
 

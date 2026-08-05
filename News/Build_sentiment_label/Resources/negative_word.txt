@@ -1,0 +1,8 @@
+lỗ, thua_lỗ, âm, lỗ lũy kế, thất_thu, hụt, lỗ ròng, sụt giảm, giảm, đi xuống,
+lao dốc, suy_giảm, thu_hẹp, giảm_sút, giảm mạnh, co lại, tụt dốc, giảm sâu,
+rơi mạnh, trượt dốc, giảm sốc, xuống dốc, tiêu_cực, bi_quan, bất_lợi, xấu,
+suy_yếu, kém, ảm đạm, suy, suy_thoái, đình_trệ, trì_trệ, khó_khăn, thách_thức,
+áp_lực, bế tắc, gian_nan, rủi_ro, nguy_cơ, bất_ổn, tổn_thất, nguy_hiểm,
+bất_trắc, rút vốn, cắt_giảm, giảm bớt, tinh_giản, tiết giảm, cắt bỏ, sai_phạm,
+vi_phạm, gian_lận, bất_thường, sai_sót, phạm quy, mất giá, bán_tháo,
+áp_lực bán, phá_sản, nợ xấu, pha loãng
