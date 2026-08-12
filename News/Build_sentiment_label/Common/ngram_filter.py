@@ -55,10 +55,6 @@ def find_sentiment_tokens(
     sentiment_tokens: set[str],
     separator: str = NGRAM_SEPARATOR,
 ) -> set[str]:
-    """Tim sentiment token khop theo dung ranh gioi token, khong phai substring
-    ky tu tho. Vd "am" khong duoc phep khop ben trong "lam_dong"/"tam_ly" chi vi
-    chuoi ky tu trung nhau - phai la 1 token (hoac day token lien tiep) doc lap.
-    """
     term_parts = str(term).casefold().split(separator)
     matched: set[str] = set()
 

@@ -50,6 +50,11 @@ SEED_MIN_DF = 20
 LABEL_Z_THRESHOLD = 0.5
 MIN_SEED_MATCHES_EACH_SIDE = 1
 
+# Duoi nguong nay, PMI duoc tinh tu qua it bai (df thap) nen do tin cay thap.
+# Khong xoa term khoi ket qua - chi danh dau qua cot pmi_confidence de biet
+# nhan nao dang tin, nhan nao can can trong (vi du chi dua tren 1 bai bao).
+PMI_CONFIDENCE_MIN_DF = 20
+
 
 def load_seed_words(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
@@ -112,6 +117,7 @@ def resolve_seed_real_forms(
 def load_candidate_terms(
     path: Path = CANDIDATE_TERMS_PATH,
     ngram_range: tuple[int, int] = CANDIDATE_NGRAM_RANGE,
+    min_candidate_df: int | None = None,
 ) -> pd.DataFrame:
     df = pd.read_parquet(path)
     required_columns = {"term", "ngram_n", "df", "tf"}
@@ -120,8 +126,10 @@ def load_candidate_terms(
         raise ValueError(f"Candidate terms file missing columns: {sorted(missing_columns)}")
 
     min_n, max_n = ngram_range
-    out = df.loc[df["ngram_n"].between(min_n, max_n)].reset_index(drop=True)
-    return out
+    out = df.loc[df["ngram_n"].between(min_n, max_n)]
+    if min_candidate_df is not None:
+        out = out.loc[out["df"].ge(min_candidate_df)]
+    return out.reset_index(drop=True)
 
 
 def build_binary_document_term_matrix(
@@ -163,6 +171,30 @@ def compute_pmi(
 
     pmi = np.where(co_df > 0, pmi, np.nan)
     return pmi
+
+
+def build_embedded_seed_exclusion_mask(
+    candidate_terms: list[str],
+    real_forms: list[str],
+    separator: str = NGRAM_SEPARATOR,
+) -> np.ndarray:
+    """True o (i, j) neu real_forms[j] la 1 day token con lien tiep nam ben
+    trong candidate_terms[i] (vd seed "giam" long trong candidate "giam lo").
+    Dem 2 dau bang separator de bat dung ranh gioi token, tranh khop nham
+    theo ky tu tho. Dung de loai tung cap (candidate, real_form) bi long khoi
+    PMI, thay vi loai ca candidate hay ca seed - cac seed khac khong long
+    trong candidate van duoc tinh PMI binh thuong.
+    """
+    padded_candidates = pd.Series(
+        [f"{separator}{term}{separator}" for term in candidate_terms]
+    )
+    mask = np.zeros((len(candidate_terms), len(real_forms)), dtype=bool)
+    for form_idx, form in enumerate(real_forms):
+        padded_form = f"{separator}{form}{separator}"
+        mask[:, form_idx] = padded_candidates.str.contains(
+            padded_form, regex=False
+        ).to_numpy()
+    return mask
 
 
 def compute_semantic_orientation(
@@ -215,6 +247,7 @@ def build_pmi_dictionary(
     candidate_terms_path: Path = CANDIDATE_TERMS_PATH,
     positive_seed_path: Path = POSITIVE_SEED_PATH,
     negative_seed_path: Path = NEGATIVE_SEED_PATH,
+    min_candidate_df: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     news_df, tokenized_column = load_tokenized_documents(
         path=tokenized_path,
@@ -247,7 +280,9 @@ def build_pmi_dictionary(
         {form for forms in negative_resolved_df["real_forms"] for form in forms}
     )
 
-    all_candidate_terms_df = load_candidate_terms(candidate_terms_path)
+    all_candidate_terms_df = load_candidate_terms(
+        candidate_terms_path, min_candidate_df=min_candidate_df
+    )
 
     # Mot candidate co the trung voi chinh 1 seed (vd "vuot ke_hoach" vua la seed
     # positive, vua lot vao candidate list vi ca 2 deu tach n-gram tu cung corpus).
@@ -304,14 +339,22 @@ def build_pmi_dictionary(
         cols: np.ndarray,
         form_to_seed: dict[str, str],
         resolved_df: pd.DataFrame,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, int]:
         if not real_forms:
-            return np.empty((len(candidate_terms), 0))
+            return np.empty((len(candidate_terms), 0)), 0
 
         co_df_forms = (matrix[:, candidate_cols].T @ matrix[:, cols]).toarray().astype(float)
         form_df = matrix_df[cols].astype(float)
 
         pmi_forms = compute_pmi(co_df_forms, candidate_df_array, form_df, total_documents)
+
+        # Loai tung cap (candidate, real_form) ma real_form bi long ben trong
+        # candidate (vd seed "giam" long trong candidate "giam lo"): cap nay
+        # dong xuat hien ~100% nen PMI se bi thoi phong vo nghia, khong phan
+        # anh lien ket sentiment thuc. Cac seed khac khong long trong candidate
+        # do van duoc giu de tinh PMI binh thuong.
+        embedded_mask = build_embedded_seed_exclusion_mask(candidate_terms, real_forms)
+        pmi_forms = np.where(embedded_mask, np.nan, pmi_forms)
 
         seed_ids = np.array([form_to_seed[form] for form in real_forms])
         unique_seeds = resolved_df["seed"].tolist()
@@ -322,13 +365,18 @@ def build_pmi_dictionary(
                 continue
             with np.errstate(invalid="ignore"):
                 pmi_by_seed[:, seed_idx] = np.nanmax(pmi_forms[:, form_mask], axis=1)
-        return pmi_by_seed
+        return pmi_by_seed, int(embedded_mask.sum())
 
-    pmi_positive = build_seed_pmi(
+    pmi_positive, excluded_positive_pairs = build_seed_pmi(
         positive_real_forms, positive_cols, positive_form_to_seed, positive_resolved_df
     )
-    pmi_negative = build_seed_pmi(
+    pmi_negative, excluded_negative_pairs = build_seed_pmi(
         negative_real_forms, negative_cols, negative_form_to_seed, negative_resolved_df
+    )
+    print(
+        "[thong ke] Cap (candidate, seed real-form) bi loai vi seed long trong "
+        f"candidate: {excluded_positive_pairs} (positive) + "
+        f"{excluded_negative_pairs} (negative)"
     )
 
     so_df = compute_semantic_orientation(pmi_positive, pmi_negative)
@@ -339,6 +387,11 @@ def build_pmi_dictionary(
     pmi_result_df["so_score_z"] = so_z.reset_index(drop=True)
     pmi_result_df["sentiment_label"] = labels.reset_index(drop=True)
     pmi_result_df["label_source"] = "pmi"
+    # df thap -> PMI tinh tu qua it bai, do tin cay thap. Khong xoa term, chi
+    # danh dau de biet nhan nao dang tin, nhan nao can can trong khi su dung.
+    pmi_result_df["pmi_confidence"] = np.where(
+        pmi_result_df["df"].ge(PMI_CONFIDENCE_MIN_DF), "reliable", "low"
+    )
 
     seed_overlap_result_df = seed_overlap_df.copy()
     positive_real_forms_set = set(positive_real_forms)
@@ -348,6 +401,8 @@ def build_pmi_dictionary(
     for column in ["pos_pmi_mean", "neg_pmi_mean", "pos_seed_matches", "neg_seed_matches", "so_score", "so_score_z"]:
         seed_overlap_result_df[column] = np.nan
     seed_overlap_result_df["label_source"] = "seed_direct"
+    # Nhan gan thang tu seed, khong qua PMI, nen coi la dang tin cay.
+    seed_overlap_result_df["pmi_confidence"] = "reliable"
 
     result_df = pd.concat([pmi_result_df, seed_overlap_result_df], ignore_index=True)
 
@@ -375,6 +430,8 @@ def main() -> None:
     print("Candidate terms scored:", len(dictionary_df))
     print("Label counts:")
     print(dictionary_df["sentiment_label"].value_counts(dropna=False).to_string())
+    print("Confidence counts:")
+    print(dictionary_df["pmi_confidence"].value_counts(dropna=False).to_string())
     print("\nSeed resolution:")
     print(seed_resolution_df.to_string(index=False))
 

@@ -1,7 +1,7 @@
-lãi, lợi_nhuận, sinh lời, có lời, có lãi, lãi ròng, lãi gộp, thu lãi, tăng,
-tăng_trưởng, đi lên, leo dốc, nhích lên, bứt lên, gia_tăng, cải_thiện, mở_rộng,
-phục_hồi, hồi_phục, tăng_tốc, phát_triển, bứt phá, khởi_sắc, vượt, vượt qua,
-vượt mốc, vượt kỳ_vọng, cao hơn, tích_cực, khả_quan, lạc_quan, thuận_lợi, tốt,
-thúc_đẩy, kích_thích, khuyến_khích, tạo đà, tích lũy, tăng vọt, tăng mạnh,
-bùng_nổ, lập đỉnh, vượt đỉnh, hút vốn, hấp_dẫn, vượt kế_hoạch, vượt dự_báo,
-nâng hạng
+lãi, lợi_nhuận, sinh_lời, có_lời, có_lãi, lãi_ròng, lãi_gộp, thu_lãi, tăng,
+tăng_trưởng, đi_lên, leo_dốc, nhích_lên, bứt_lên, gia_tăng, cải_thiện, mở_rộng,
+phục_hồi, hồi_phục, tăng_tốc, phát_triển, bứt_phá, khởi_sắc, vượt, vượt_qua,
+vượt_mốc, vượt_kỳ_vọng, cao_hơn, tích_cực, khả_quan, lạc_quan, thuận_lợi, tốt,
+thúc_đẩy, kích_thích, khuyến_khích, tạo_đà, tích_lũy, tăng_vọt, tăng_mạnh,
+bùng_nổ, lập_đỉnh, vượt_đỉnh, hút_vốn, hấp_dẫn, vượt_kế_hoạch, vượt_dự_báo,
+nâng_hạng

@@ -84,8 +84,6 @@ nguyên tỷ lệ 3 class), không có tập test riêng vì dữ liệu quá nh
   3. Naive Bayes           F1 = 0.578   Accuracy = 0.599
   4. SVM                   F1 = 0.556   Accuracy = 0.625
 
-File chi tiết: Traditional_ML/data/traditional_ml_model_comparison.csv
-
 
 4. NHẬN XÉT
 ----------------------------------------------------------------
