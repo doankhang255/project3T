@@ -1,0 +1,127 @@
+---
+title: "Hướng dẫn gán nhãn dữ liệu - Project3T"
+lang: vi
+format:
+  pdf:
+    documentclass: article
+    geometry: margin=1in
+    mainfont: "Noto Sans"
+    pdf-engine: xelatex
+    toc: true
+    colorlinks: true
+---
+
+Tài liệu này hướng dẫn người tham gia gán nhãn (annotator) trên hệ thống
+Label Studio đang chạy tại: **https://project3t-production.up.railway.app/**
+
+## 1. Mục tiêu
+
+Mục tiêu của việc gán nhãn `ground_truth_sentiment`:
+
+1. Tạo **tập nhãn chuẩn do con người xác nhận** để đo độ chính xác thực tế
+
+2. Xa hơn: cải thiện độ tin cậy của **Equity Sentiment Index**, phục vụ phân
+   tích tương quan/hồi quy với chỉ số VN-Index.
+3. Chỉ tiêu số lượng: **1,000–5,000 bài** được gán nhãn ground truth.
+
+## 2. Nhãn
+
+Mỗi task hiển thị **nội dung bài báo** và Annotator cần chọn:
+
+- **Positive** — tin tích cực cho doanh nghiệp/cổ phiếu (tăng trưởng, lãi
+  tăng, cổ đông lớn mua vào, vượt kế hoạch, ký được hợp đồng lớn...).
+- **Negative** — tin tiêu cực (thua lỗ, giảm doanh thu/lợi nhuận, bán tháo,
+  không hoàn thành kế hoạch, bị phạt/kiện tụng...).
+- **Neutral** — tin trung tính, chỉ mang tính thông báo/thống kê, không rõ
+  tích cực hay tiêu cực (VD: công bố lịch họp ĐHĐCĐ, báo cáo định kỳ không
+  có biến động đáng kể).
+
+Kèm theo mỗi nhãn là **Độ tin cậy (Confidence, 0–100)** — mức độ chắc chắn
+của annotator với lựa chọn của mình (mặc định 80, kéo thanh trượt để điều
+chỉnh).
+
+## 3. Quy trình Annotation
+
+### Cách vào:
+1. Truy cập https://project3t-production.up.railway.app/
+2. Đăng nhập bằng tài khoản được cấp.
+3. Chọn project **ground_truth_sentiment**.
+4. Bấm **Label All Tasks** để bắt đầu.
+
+### Nhiệm vụ:
+1. Đọc nội dung bài báo.
+2. Chọn nhãn cảm xúc **thực sự đúng** theo bạn phù hợp với ngữ cảnh tài chính 
+3. Kéo thanh trượt **Độ tin cậy (0–100)** để thể hiện mức độ chắc chắn.
+4. Bấm **Submit** để xác nhận và chuyển sang bài tiếp theo.
+
+### Nguyên tắc khi phân vân:
+- Đánh giá theo **tác động thực tế đến doanh nghiệp/cổ phiếu được nhắc tới**,
+  không đánh giá theo văn phong hay từ ngữ đơn thuần.
+- Nếu bài có cả tin tốt lẫn tin xấu, có thể bấm **Skip**
+- **Tin tổng hợp nhiều doanh nghiệp** (VD: điểm tin thị trường, so sánh nhiều
+  mã cổ phiếu cùng lúc):
+  - Nếu tất cả doanh nghiệp được nhắc đều **cùng một xu hướng** (cùng
+    tăng/cùng giảm) → vẫn gán nhãn theo xu hướng chung đó.
+  - Nếu kết quả **trái chiều** giữa các doanh nghiệp (một số tăng, một số
+    giảm) và không có doanh nghiệp nào là trọng tâm rõ ràng → bấm **Skip**,
+    vì một nhãn duy nhất không phản ánh đúng cho bất kỳ mã cổ phiếu cụ thể
+    nào, gán bừa sẽ gây nhiễu cho tập ground truth.
+  - Nếu bài có **1 doanh nghiệp chính làm chủ thể** (thường nêu ở tiêu đề),
+    các doanh nghiệp khác chỉ được nhắc để so sánh/bối cảnh → gán theo
+    sentiment của doanh nghiệp chính, bỏ qua phần phụ.
+- Nếu bài không đọc được / nội dung lỗi / không liên quan tài chính-chứng
+  khoán → bấm **Skip**.
+
+### Sơ đồ quy trình:
+
+{{< pagebreak >}}
+
+```{mermaid}
+%%| fig-height: 6.5
+flowchart TD
+    A["Đăng nhập → chọn project<br/>ground_truth_sentiment → Label All Tasks"] --> B["Đọc bài báo +<br/>xem nhãn model dự đoán (tham khảo)"]
+    B --> C{"Hợp lệ và xác định được<br/>đối tượng đánh giá rõ ràng?"}
+    C -- "Không" --> SKIP["Skip"]
+    C -- Có --> D{"Xác định cảm xúc"}
+    D -- "Tin tốt nổi bật hơn" --> E["Positive"]
+    D -- "Tin xấu nổi bật hơn" --> F["Negative"]
+    D -- "Không rõ" --> G["Neutral"]
+    E --> H["Kéo Confidence 0-100<br/>+ Submit"]
+    F --> H
+    G --> H
+    SKIP --> I["Task tiếp theo<br/>(lặp lại từ bước đọc bài báo)"]
+    H --> I
+```
+
+*(Không hợp lệ = lỗi/không liên quan/tin trái chiều không rõ trọng tâm — xem
+chi tiết ở phần "Nguyên tắc khi phân vân" phía trên. Quy trình lặp lại cho
+đến khi hết task trong queue.)*
+
+## 4. Tiêu chí Quality Review
+
+> Đây là quy trình **đề xuất** (hiện repo chưa có sẵn quy trình QA tự động),
+> áp dụng khi số lượng annotator > 1 hoặc khi cần kiểm tra chất lượng trước
+> khi dùng tập ground truth để train model.
+
+- **Spot-check ngẫu nhiên**: định kỳ (VD: mỗi 500 task hoàn thành), admin
+  lấy mẫu ngẫu nhiên ~10% annotation đã Submit để review lại tính hợp lý của
+  nhãn.
+- **Ưu tiên review các trường hợp**:
+  - Độ tin cậy (confidence) thấp (< 50) — annotator tự đánh giá là không
+    chắc chắn.
+  - Nhãn con người **khác hoàn toàn** so với nhãn model dự đoán (Positive ↔
+    Negative) — cần xác nhận đây là model sai hay annotator gán nhầm.
+  - Task bị Skip nhiều lần liên tiếp bởi nhiều annotator khác nhau — có thể
+    do dữ liệu lỗi/nhiễu, cần loại khỏi tập.
+- **Theo dõi theo từng annotator**:
+  - Tỷ lệ Skip quá cao (VD: > 30%) so với mặt bằng chung → xem lại có phải
+    do task thực sự khó, hay annotator chưa hiểu rõ tiêu chí.
+  - Tốc độ gán nhãn bất thường (quá nhanh so với độ dài bài báo) → khả năng
+    gán ẩu, cần review lại mẫu ngẫu nhiên của người đó.
+- **Đo độ đồng thuận (Inter-Annotator Agreement)**: khi có ≥ 2 annotator,
+  bật `overlap` cho một tập con nhỏ (VD: 5–10% task) để cùng gán nhãn độc
+  lập, sau đó tính tỷ lệ đồng thuận (agreement rate) — làm căn cứ đánh giá
+  độ tin cậy chung của tập ground truth.
+- **Tiêu chí chấp nhận trước khi dùng để train model**: tỷ lệ Skip toàn bộ
+  project không vượt quá ngưỡng đặt trước (VD: 20%), và đã spot-check xong
+  toàn bộ các trường hợp bị flag ở trên.

@@ -1,0 +1,37 @@
+pandoc 
+  to: latex
+  output-file: ANNOTATION_GUIDE.tex
+  standalone: true
+  pdf-engine: xelatex
+  variables:
+    graphics: true
+    tables: true
+  default-image-extension: pdf
+  toc: true
+  
+metadata
+  block-headings: true
+  engines:
+    - path: C:\Users\doank\AppData\Local\Apps\Quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+  title: Hướng dẫn gán nhãn dữ liệu - Project3T
+  lang: vi
+  documentclass: article
+  geometry: margin=1in
+  mainfont: Noto Sans
+  colorlinks: true
+  
+
+Rendering PDF
+running xelatex - 1
+  This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)
+   restricted \write18 enabled.
+  entering extended mode
+  
+running xelatex - 2
+  This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)
+   restricted \write18 enabled.
+  entering extended mode
+  
+
+Output created: ANNOTATION_GUIDE.pdf
+
