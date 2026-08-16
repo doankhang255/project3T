@@ -1,0 +1,12 @@
+thua_lỗ, bất_lợi, gây_hiểu_lầm, kiện_tụng, gian_lận, bỏ_sót_thông_tin,
+thiếu_sót, điểm_yếu, suy_giảm_giá_trị, thâm_hụt, không_thể, thất_bại,
+trình_bày_lại, chấm_dứt_hợp_đồng, hạn_chế_bất_lợi, suy_giảm, biến_động_mạnh,
+vỡ_nợ, khiếu_nại, bồi_thường_thiệt_hại_kiện, khó_khăn, bị_phạt,
+thanh_lý_bắt_buộc, chưa_thanh_toán, nghi_ngờ_đáng_kể, vi_phạm, trì_hoãn,
+thiếu_hụt, phá_sản, chịu_tổn_hại, lo_ngại, ngừng_hoạt_động, tái_cấu_trúc,
+báo_cáo_sai, bị_cáo_buộc, tồi_tệ, bào_chữa, ngoài_dự_kiến, hủy_bỏ, bị_đe_dọa,
+gián_đoạn, mất_khả_năng_thu_hồi, xung_đột, tranh_chấp, thách_thức,
+không_được_phép, chịu_thiệt_hại, lỗi_thời, buộc_phải_từ_chức, tốn_kém,
+xuống_dốc, không_thành_công, sơ_suất, thảm_họa, bị_bác_bỏ, sai_phạm,
+không_nhất_quán, chưa_giải_quyết, tịch_thu_tài_sản, xiết_nợ, xâm_phạm,
+bỏ_lỡ_thời_hạn, suy_thoái, vấn_đề_phát_sinh

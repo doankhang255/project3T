@@ -1,0 +1,5 @@
+chắc_chắn, nhất_định, bắt_buộc, phải, tuyệt_đối, luôn_luôn, cao_nhất,
+tốt_nhất, mạnh_mẽ_nhất, hoàn_toàn, tất_yếu, dứt_khoát, kiên_quyết,
+quyết_liệt, khẳng_định, cam_kết_chắc_chắn, đảm_bảo_chắc_chắn, rõ_ràng,
+không_nghi_ngờ_gì, hiển_nhiên, đương_nhiên, luôn_đúng, vượt_trội_nhất,
+dẫn_đầu, số_một, duy_nhất, tối_đa, tối_ưu_nhất

@@ -1,0 +1,9 @@
+kiện, khởi_kiện, kiện_tụng, tố_tụng, tranh_chấp, vụ_kiện, khởi_kiện_tập_thể,
+nguyên_đơn, bị_đơn, bị_cáo, tòa_án, phiên_tòa, xét_xử, thẩm_phán, luật_sư,
+phán_quyết, bản_án, kháng_cáo, kháng_nghị, tố_cáo, khiếu_nại, khiếu_kiện,
+cáo_buộc, buộc_tội, truy_tố, khởi_tố, điều_tra, cơ_quan_điều_tra, thanh_tra,
+xử_phạt, chế_tài, quy_định_pháp_luật, nghị_định, thông_tư, pháp_lý,
+vi_phạm_pháp_luật, bồi_thường, đền_bù, phạt_hành_chính, cưỡng_chế,
+thi_hành_án, giấy_triệu_tập, trọng_tài, hòa_giải, tịch_thu, niêm_phong,
+phong_tỏa_tài_sản, truy_cứu_trách_nhiệm_hình_sự, vi_phạm_bản_quyền,
+quyền_sở_hữu_trí_tuệ

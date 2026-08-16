@@ -1,0 +1,7 @@
+không_chắc_chắn, chưa_chắc_chắn, bất_định, mơ_hồ, chưa_rõ_ràng, không_rõ_ràng,
+mập_mờ, ước_tính, gần_đúng, xấp_xỉ, khoảng, tương_đối, có_thể, phụ_thuộc,
+phụ_thuộc_vào, tùy_thuộc, tùy_theo, biến_động, dao_động, thất_thường,
+bấp_bênh, khó_lường, khó_dự_đoán, khó_đoán_định, không_lường_trước, bất_ngờ,
+tình_huống_bất_ngờ, rủi_ro_tiềm_ẩn, dự_phòng, giả_định, kịch_bản,
+khả_năng_xảy_ra, chưa_xác_định, chưa_được_xác_nhận, đang_chờ, đang_xem_xét,
+treo, tạm_hoãn, chưa_ngã_ngũ, chưa_kết_luận, thiếu_minh_bạch, chưa_có_cơ_sở

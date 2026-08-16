@@ -16,7 +16,6 @@ from News.Build_sentiment_label.Common.matrix_csr_utils import (
 )
 from News.Build_sentiment_label.Common.ngram_filter import (
     choose_ngram_terms,
-    load_sentiment_tokens,
     scaled_min_df_by_ngram,
 )
 from News.Build_sentiment_label.Common.stopword_utils import (
@@ -27,7 +26,6 @@ from News.Build_sentiment_label.Common.stopword_utils import (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 LEXICON_DATA_DIR = SCRIPT_DIR / "data"
-RESOURCES_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Resources"
 
 INPUT_PATH = DEFAULT_TOKENIZED_NEWS_PATH
 OUTPUT_NGRAM_TERMS_PATH = LEXICON_DATA_DIR / "ngram_terms.parquet"
@@ -35,15 +33,11 @@ OUTPUT_NGRAM_TERMS_CSV_PATH = LEXICON_DATA_DIR / "ngram_terms.csv"
 OUTPUT_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
 OUTPUT_CSV_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.csv"
 STOPWORDS_PATH = DEFAULT_STOPWORDS_PATH
-POSITIVE_SEED_PATH = RESOURCES_DIR / "positive_word.txt"
-NEGATIVE_SEED_PATH = RESOURCES_DIR / "negative_word.txt"
-SENTIMENT_WORD_PATHS = [POSITIVE_SEED_PATH, NEGATIVE_SEED_PATH]
 LEXICON_MIN_N = 2
 LEXICON_MAX_N = 3
-LEXICON_MIN_DF_RATIO_BY_NGRAM = {2: 0.0016, 3: 0.0004}
-LEXICON_MIN_DF_FLOOR = 20
-LEXICON_MAX_DF_RATIO = 0.22
-KEEP_LOW_DF_SENTIMENT_TERMS = True
+LEXICON_MIN_DF_RATIO_BY_NGRAM = {2: 0.000387, 3: 0.000126}
+LEXICON_MIN_DF_FLOOR = 16
+LEXICON_MAX_DF_RATIO = 0.08
 
 
 def build_lexicon_candidate_terms(
@@ -53,7 +47,6 @@ def build_lexicon_candidate_terms(
     max_df_ratio: float = LEXICON_MAX_DF_RATIO,
     remove_stopwords: bool = True,
     stopwords_path: Path = STOPWORDS_PATH,
-    sentiment_word_path: Path | list[Path] = SENTIMENT_WORD_PATHS,
     total_documents: int | None = None,
 ) -> dict[str, pd.DataFrame]:
     ngram_terms_df, ngram_summary = build_ngram_terms_with_summary(
@@ -68,7 +61,6 @@ def build_lexicon_candidate_terms(
         floor=min_df_floor,
     )
     stopwords = load_stopwords(stopwords_path) if remove_stopwords else set()
-    sentiment_tokens = load_sentiment_tokens(sentiment_word_path)
     result = choose_ngram_terms(
         ngram_terms_df=ngram_terms_df,
         total_documents=total_documents,
@@ -76,8 +68,6 @@ def build_lexicon_candidate_terms(
         max_df_ratio=max_df_ratio,
         remove_stopwords=remove_stopwords,
         stopwords=stopwords,
-        sentiment_tokens=sentiment_tokens,
-        keep_low_df_sentiment_terms=KEEP_LOW_DF_SENTIMENT_TERMS,
         return_groups=True,
     )
     result["total_documents"] = total_documents
@@ -106,22 +96,16 @@ def main() -> None:
 
     print("Input n-gram terms:", INPUT_PATH)
     print("Stopwords path:", STOPWORDS_PATH)
-    print("Sentiment word paths:", SENTIMENT_WORD_PATHS)
     print("N-gram range:", f"{LEXICON_MIN_N} to {LEXICON_MAX_N}")
     print("Total documents:", result["total_documents"])
     print("Minimum df ratio by n-gram:", LEXICON_MIN_DF_RATIO_BY_NGRAM)
     print("Minimum df by n-gram (scaled):", result["min_df_by_ngram"])
-    print("Keep low-df sentiment terms:", KEEP_LOW_DF_SENTIMENT_TERMS)
     print("Maximum df_ratio:", LEXICON_MAX_DF_RATIO)
     print("Output n-gram terms parquet:", OUTPUT_NGRAM_TERMS_PATH)
     print("Output n-gram terms csv:", OUTPUT_NGRAM_TERMS_CSV_PATH)
     print("Output parquet:", OUTPUT_PATH)
     print("Output csv:", OUTPUT_CSV_PATH)
     print("N-grams removed by stopword boundary:", len(result["stopword_boundary_df"]))
-    print(
-        "N-grams kept below min_df because they contain sentiment tokens:",
-        len(result["sentiment_min_df_keep_df"]),
-    )
     print("N-grams removed by min_df by n-gram:", len(result["below_min_df_df"]))
     print("N-grams removed by df_ratio > max_df_ratio:", len(result["above_max_df_ratio_df"]))
     print("Candidate n-gram terms:", len(candidate_terms_df))

@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 from pathlib import Path
 import sys
-from typing import Iterable
 
 import pandas as pd
 
@@ -33,114 +32,12 @@ def scaled_min_df_by_ngram(
     }
 
 
-def load_sentiment_tokens(path: Path | Iterable[Path]) -> set[str]:
-    paths = [path] if isinstance(path, Path) else list(path)
-
-    tokens: set[str] = set()
-    for single_path in paths:
-        text = single_path.read_text(encoding="utf-8")
-        for raw_item in text.replace("\n", ",").split(","):
-            item = raw_item.strip().casefold()
-            if not item:
-                continue
-
-            tokens.add(item)
-            tokens.add("_".join(item.split()))
-
-    return tokens
-
-
-def find_sentiment_tokens(
-    term: str,
-    sentiment_tokens: set[str],
-    separator: str = NGRAM_SEPARATOR,
-) -> set[str]:
-    term_parts = str(term).casefold().split(separator)
-    matched: set[str] = set()
-
-    for sentiment_token in sentiment_tokens:
-        seed_parts = sentiment_token.split(separator)
-        window = len(seed_parts)
-        if window == 0 or window > len(term_parts):
-            continue
-        for start in range(len(term_parts) - window + 1):
-            if term_parts[start : start + window] == seed_parts:
-                matched.add(sentiment_token)
-                break
-
-    return matched
-
-
-def build_sentiment_priority_mask(
-    term_stats: pd.DataFrame,
-    sentiment_tokens: set[str] | None = None,
-    preferred_ngram_n: int = 2,
-    fallback_ngram_n: int = 1,
-) -> pd.Series:
-    sentiment_tokens = sentiment_tokens or set()
-    if not sentiment_tokens:
-        return pd.Series(False, index=term_stats.index)
-
-    matched_tokens = term_stats["term"].apply(
-        lambda term: find_sentiment_tokens(term, sentiment_tokens)
-    )
-    preferred_tokens: set[str] = set()
-    for tokens in matched_tokens.loc[term_stats["ngram_n"].eq(preferred_ngram_n)]:
-        preferred_tokens.update(tokens)
-
-    def is_priority_match(index: int) -> bool:
-        tokens = matched_tokens.loc[index]
-        if not tokens:
-            return False
-
-        ngram_n = term_stats.at[index, "ngram_n"]
-        if ngram_n == preferred_ngram_n:
-            return True
-        if ngram_n == fallback_ngram_n:
-            return bool(tokens.difference(preferred_tokens))
-
-        return True
-
-    return pd.Series(
-        (is_priority_match(index) for index in term_stats.index),
-        index=term_stats.index,
-    )
-
-
 def build_min_df_mask(
     term_stats: pd.DataFrame,
     min_df_by_ngram: dict[int, int],
-    sentiment_tokens: set[str] | None = None,
-    keep_low_df_sentiment_terms: bool = False,
 ) -> pd.Series:
     min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
-    below_min_df_mask = term_stats["df"].lt(min_df_threshold)
-    if not keep_low_df_sentiment_terms or not sentiment_tokens:
-        return below_min_df_mask
-
-    sentiment_token_mask = build_sentiment_priority_mask(
-        term_stats,
-        sentiment_tokens=sentiment_tokens,
-    )
-    return below_min_df_mask & ~sentiment_token_mask
-
-
-def build_sentiment_min_df_keep_mask(
-    term_stats: pd.DataFrame,
-    min_df_by_ngram: dict[int, int],
-    sentiment_tokens: set[str] | None = None,
-    keep_low_df_sentiment_terms: bool = False,
-) -> pd.Series:
-    if not keep_low_df_sentiment_terms or not sentiment_tokens:
-        return pd.Series(False, index=term_stats.index)
-
-    min_df_threshold = term_stats["ngram_n"].map(min_df_by_ngram).fillna(0)
-    below_min_df_mask = term_stats["df"].lt(min_df_threshold)
-    sentiment_token_mask = build_sentiment_priority_mask(
-        term_stats,
-        sentiment_tokens=sentiment_tokens,
-    )
-    return below_min_df_mask & sentiment_token_mask
+    return term_stats["df"].lt(min_df_threshold)
 
 
 def choose_ngram_terms(
@@ -150,8 +47,6 @@ def choose_ngram_terms(
     total_documents: int | None = None,
     remove_stopwords: bool = True,
     stopwords: set[str] | None = None,
-    sentiment_tokens: set[str] | None = None,
-    keep_low_df_sentiment_terms: bool = False,
     return_groups: bool = False,
 ) -> pd.DataFrame | dict[str, pd.DataFrame]:
     validate_ngram_terms(ngram_terms_df)
@@ -187,23 +82,12 @@ def choose_ngram_terms(
     below_min_df_mask = build_min_df_mask(
         non_stopword_df,
         min_df_by_ngram=min_df_by_ngram,
-        sentiment_tokens=sentiment_tokens,
-        keep_low_df_sentiment_terms=keep_low_df_sentiment_terms,
-    )
-    sentiment_min_df_keep_mask = build_sentiment_min_df_keep_mask(
-        non_stopword_df,
-        min_df_by_ngram=min_df_by_ngram,
-        sentiment_tokens=sentiment_tokens,
-        keep_low_df_sentiment_terms=keep_low_df_sentiment_terms,
     )
     min_df_pass_df, below_min_df_df = split_by_mask(
         non_stopword_df,
         below_min_df_mask,
     )
     below_min_df_df["rejection_reason"] = "below_min_df_by_ngram"
-    sentiment_min_df_keep_df = non_stopword_df.loc[
-        sentiment_min_df_keep_mask
-    ].copy().reset_index(drop=True)
 
     above_max_df_ratio_mask = min_df_pass_df["df_ratio"].gt(max_df_ratio)
     candidate_terms_df, above_max_df_ratio_df = split_by_mask(
@@ -225,7 +109,6 @@ def choose_ngram_terms(
     return {
         "all_ngram_terms_df": term_stats.reset_index(drop=True),
         "stopword_boundary_df": stopword_boundary_df,
-        "sentiment_min_df_keep_df": sentiment_min_df_keep_df,
         "below_min_df_df": below_min_df_df,
         "above_max_df_ratio_df": above_max_df_ratio_df,
         "candidate_terms_df": candidate_terms_df,
