@@ -26,20 +26,27 @@ from News.Build_sentiment_label.Common.matrix_csr_utils import (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 LEXICON_DATA_DIR = SCRIPT_DIR / "data"
-# Resources/ da duoc doi ten/chuyen vao Seed_set_Prepare/manual_seed/ (xem
-# Seed_set_Prepare/lexicon_md_pipeline.ipynb) - cap nhat lai duong dan cho
-# khop, giu nguyen y nghia goc: day la seed thu cong don le, KHONG phai
-# final_seed/ (ban da gop voi Master Dictionary + loc df=0).
-RESOURCES_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Seed_set_Prepare" / "manual_seed"
 
 INPUT_TOKENIZED_PATH = DEFAULT_TOKENIZED_NEWS_PATH
 CANDIDATE_TERMS_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
-POSITIVE_SEED_PATH = RESOURCES_DIR / "positive_word.txt"
-NEGATIVE_SEED_PATH = RESOURCES_DIR / "negative_word.txt"
 
-OUTPUT_DICTIONARY_PARQUET_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms_dictionary_pmi.parquet"
-OUTPUT_DICTIONARY_CSV_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms_dictionary_pmi.csv"
-OUTPUT_SEED_RESOLUTION_CSV_PATH = LEXICON_DATA_DIR / "pmi_seed_resolution.csv"
+# 7 danh muc cua Loughran-McDonald, khop voi ten file trong
+# Seed_set_Prepare/final_seed/{category}_word.txt. KHONG con ghep cap doi lap
+# (positive vs negative) nhu ban PMI nhi phan truoc - moi danh muc la 1 co
+# doc lap, 1 candidate co the thuoc 0, 1 hoac nhieu danh muc cung luc, dung
+# tinh than 7 danh sach doc lap cua Loughran-McDonald goc.
+CATEGORY_NAMES = [
+    "negative",
+    "positive",
+    "uncertainty",
+    "litigious",
+    "strong_modal",
+    "weak_modal",
+    "constraining",
+]
+FINAL_SEED_DIR = (
+    PROJECT_ROOT / "News" / "Build_sentiment_label" / "Seed_set_Prepare" / "final_seed"
+)
 
 SEED_MIN_N = 1
 SEED_MAX_N = 3
@@ -49,16 +56,12 @@ CANDIDATE_NGRAM_RANGE = (2, 3)
 # (dong bo voi LEXICON_MIN_DF_FLOOR ben select_lexicon_candidate_terms.py).
 SEED_MIN_DF = 20
 
-# So_score = mean(PMI toi seed positive) - mean(PMI toi seed negative).
-# Nguong gan nhan duoc tinh theo do lech chuan cua so_score tren toan bo candidate
-# (giong cach lam sentiment_index_z o buoc Build_sentiment_index), thay vi mot
-# nguong tuyet doi co dinh, vi thang gia tri PMI phu thuoc vao corpus.
+# Nguong z-score de gan mot candidate vao 1 danh muc (tren phan phoi diem cua
+# CHINH danh muc do qua toan bo candidate), giong cach lam sentiment_index_z o
+# buoc Build_sentiment_index, thay vi mot nguong tuyet doi co dinh.
 LABEL_Z_THRESHOLD = 0.5
-MIN_SEED_MATCHES_EACH_SIDE = 1
 
-# Duoi nguong nay, PMI duoc tinh tu qua it bai (df thap) nen do tin cay thap.
-# Khong xoa term khoi ket qua - chi danh dau qua cot pmi_confidence de biet
-# nhan nao dang tin, nhan nao can can trong (vi du chi dua tren 1 bai bao).
+# Duoi nguong nay, PMI duoc tinh tu qua it bai/cau (df thap) nen do tin cay thap.
 PMI_CONFIDENCE_MIN_DF = 20
 
 # ------------------------------------------------------------------
@@ -72,7 +75,7 @@ CONTEXT_WINDOW_SENTENCE = "sentence"
 
 # ------------------------------------------------------------------
 # 3 bien the cong thuc PMI (xem giai thich chi tiet trong compute_pmi va
-# compute_cds_smoothed_seed_df). "plain" la cong thuc PMI goc, dung cho v1/v2.
+# compute_cds_smoothed_seed_df). "plain" la cong thuc PMI goc.
 # ------------------------------------------------------------------
 PMI_VARIANT_PLAIN = "plain"
 PMI_VARIANT_PMI_K = "pmi_k"
@@ -98,12 +101,6 @@ def explode_documents_to_sentences(tokenized_documents: list) -> list[list[str]]
     """Tach moi document thanh danh sach cac cau rieng le, dung khi
     context_window="sentence". Moi cau tro thanh 1 "don vi" doc lap de tinh
     df/tf/dong-xuat-hien, thay vi ca bai la 1 don vi.
-
-    Dung chung normalize_sentence_token_lists de xu ly nhat quan voi cach
-    corpus da duoc tach cau that (vd cot Tokenize_content_sentences cua file
-    VNCoreNLP) - neu 1 "document" chi la list token phang (khong co cau that,
-    vd file underthesea) thi ham nay tra ve dung 1 "cau" bang ca bai, khong
-    tach duoc gi them.
     """
     sentences: list[list[str]] = []
     for raw_document_tokens in tokenized_documents:
@@ -125,17 +122,11 @@ def resolve_seed_real_forms(
 
     `total_units` + `max_df_ratio`: neu duoc truyen, loai them ca seed QUA PHO
     BIEN (df_ratio > max_df_ratio) khoi buoc tinh PMI - doi xung voi ngat
-    duoi `min_df` da co san. Seed qua pho bien (vd xuat hien trong hon 10% so
-    don vi) it co gia tri phan biet sentiment, tuong tu ly do can chan tran
-    df_ratio cho candidate.
+    duoi `min_df` da co san.
     """
     working_df = corpus_ngram_terms_df.copy()
     working_df["seed_key"] = working_df["term"].apply(normalize_for_seed_matching)
 
-    # Chuan hoa ca seed doc tu file giong het cach chuan hoa term tu corpus, vi
-    # file seed co the dang viet toan bo gach duoi ("vuot_ke_hoach") hoac dang
-    # "that" theo tokenizer (khoang trang giua token, gach duoi trong tu ghep,
-    # vd "vuot ke_hoach") - ca 2 deu phai quy ve cung 1 dang de so khop duoc.
     seed_set = {normalize_for_seed_matching(word) for word in seed_words}
     matched_df = working_df.loc[working_df["seed_key"].isin(seed_set)].copy()
 
@@ -205,9 +196,7 @@ def build_binary_document_term_matrix(
     max_n: int = CANDIDATE_NGRAM_RANGE[1],
 ):
     """Xay ma tran nhi phan (co/khong xuat hien) theo tung "don vi" trong
-    `tokenized_units`. Don vi la document (hanh vi goc) hoac sentence (sau khi
-    da explode_documents_to_sentences) tuy context_window - ham nay khong can
-    biet no dang xu ly don vi nao, chi nhan list token va tao n-gram ben trong.
+    `tokenized_units`. Don vi la document hoac sentence tuy context_window.
     """
     unit_terms = [
         build_document_terms(raw_tokens, min_n=min_n, max_n=max_n)
@@ -239,22 +228,18 @@ def compute_pmi(
     de loai khoi trung binh thay vi coi la bang chung "rat tieu cuc".
 
     3 bien the (chon qua `variant`):
-    - "plain": cong thuc goc o tren, dung cho build_sentiment_dictionary_pmi
-      (v1) va _v2. Khong sua doi gi.
-    - "pmi_k": PMI^k (Daille 1994) - cong them (k-1)*log2(P(x,y)) vao PMI goc.
-      P(x,y) <= 1 nen log2(P(x,y)) <= 0 - cap co qua it lan dong xuat hien
-      thuc te (P(x,y) rat nho) bi phat cang nang, du ty le co_df/df cao. Day
-      la cach "discount tan suat" ma khong can nguong cat cung nhu SEED_MIN_DF.
-    - "add_alpha": cong pseudo-count `alpha` vao ca 3 so dem (co_df, df_term,
-      df_seed) truoc khi tinh ty le, kieu Laplace smoothing. Ket qua la KHONG
-      con cap nao bi NaN nua (kha ca_df=0 cung ra 1 gia tri am huu han) - so
-      voi "plain"/"pmi_k" (loai cap co_df=0 khoi trung binh), add_alpha coi
-      "chua tung dong xuat hien" la bang chung sentiment TRAI CHIEU yeu, chu
-      khong phai "thieu du lieu".
-    - "cds": khong xu ly gi them o day - ham goi (build_seed_pmi) da tinh san
-      `seed_df` theo phien ban lam min (xem compute_cds_smoothed_seed_df)
-      truoc khi truyen vao, nen chi can dung lai cong thuc "plain" voi
-      seed_df da duoc thay the.
+    - "plain": cong thuc goc o tren.
+    - "pmi_k": PMI^k (Daille 1994) - cong them (k-1)*log2(P(x,y)) vao PMI goc,
+      phat cap co qua it lan dong xuat hien thuc te du ty le co_df/df cao.
+    - "add_alpha": cong pseudo-count `alpha` vao ca 3 so dem truoc khi tinh ty
+      le, kieu Laplace smoothing. KHONG con cap nao bi NaN - ca cap co_df=0
+      cung ra 1 gia tri am huu han, duoc coi la bang chung sentiment trai
+      chieu YEU thay vi "thieu du lieu". Day la ly do add_alpha luon tinh
+      trung binh tren TOAN BO seed (khong bi loai tru vi thieu match), it bi
+      nhieu boi hien tuong phuong sai mau nho hon plain/pmi_k/cds.
+    - "cds": khong xu ly gi them o day - ham goi da tinh san `seed_df` theo
+      phien ban lam min (xem compute_cds_smoothed_seed_df) truoc khi truyen
+      vao, nen chi can dung lai cong thuc "plain" voi seed_df da thay the.
     """
     with np.errstate(divide="ignore", invalid="ignore"):
         if variant == PMI_VARIANT_ADD_ALPHA:
@@ -279,20 +264,11 @@ def compute_cds_smoothed_seed_df(
     resolved_df: pd.DataFrame,
     beta: float = CDS_BETA_DEFAULT,
 ) -> dict[str, float]:
-    """Lam phang do lech tan suat GIUA CAC SEED trong CUNG 1 nhom cuc
-    (positive hoac negative rieng), kieu context distribution smoothing cua
-    Levy, Goldberg & Dagan (2015) ap dung cho word2vec: nang df cua seed len
-    luy thua `beta` (< 1) truoc khi dung lam mau so trong PMI - seed hiem
-    trong nhom duoc "nang" ty trong tuong doi len, seed pho bien trong nhom bi
-    "ha" ty trong xuong, tranh 1 seed pho bien qua muc lan at ket qua trung
-    binh cua ca nhom.
-
-    Khac voi ban goc cua Levy et al. (lam phang tren TOAN BO tu vung dung de
-    negative sampling), o day chi lam phang NOI BO trong 1 nhom cuc (positive
-    hoac negative) vi seed set chi la vai chuc tu co dinh, khong phai tu vung
-    day du. Gia tri tra ve duoc quy lai ve dung tong df goc cua nhom (khong
-    chi la ty trong 0-1) de van dung truc tiep duoc trong cong thuc PMI chuan
-    (thay cho df_seed goc) ma khong lam lech don vi/thang do.
+    """Lam phang do lech tan suat GIUA CAC SEED trong CUNG 1 danh muc, kieu
+    context distribution smoothing cua Levy, Goldberg & Dagan (2015) ap dung
+    cho word2vec: nang df cua seed len luy thua `beta` (< 1) truoc khi dung
+    lam mau so trong PMI. Gia tri tra ve duoc quy lai ve dung tong df goc cua
+    danh muc de van dung truc tiep duoc trong cong thuc PMI chuan.
     """
     seeds = resolved_df["seed"].tolist()
     raw_df = resolved_df["df"].to_numpy(dtype=float)
@@ -309,10 +285,8 @@ def build_embedded_seed_exclusion_mask(
 ) -> np.ndarray:
     """True o (i, j) neu real_forms[j] la 1 day token con lien tiep nam ben
     trong candidate_terms[i] (vd seed "giam" long trong candidate "giam lo").
-    Dem 2 dau bang separator de bat dung ranh gioi token, tranh khop nham
-    theo ky tu tho. Dung de loai tung cap (candidate, real_form) bi long khoi
-    PMI, thay vi loai ca candidate hay ca seed - cac seed khac khong long
-    trong candidate van duoc tinh PMI binh thuong.
+    Dung de loai tung cap (candidate, real_form) bi long khoi PMI, thay vi
+    loai ca candidate hay ca seed.
     """
     padded_candidates = pd.Series(
         [f"{separator}{term}{separator}" for term in candidate_terms]
@@ -326,72 +300,44 @@ def build_embedded_seed_exclusion_mask(
     return mask
 
 
-def compute_semantic_orientation(
-    pmi_positive: np.ndarray,
-    pmi_negative: np.ndarray,
-) -> pd.DataFrame:
-    with np.errstate(invalid="ignore"):
-        pos_mean = np.nanmean(pmi_positive, axis=1)
-        neg_mean = np.nanmean(pmi_negative, axis=1)
-
-    pos_matches = np.sum(~np.isnan(pmi_positive), axis=1)
-    neg_matches = np.sum(~np.isnan(pmi_negative), axis=1)
-
-    so_score = np.where(
-        (pos_matches >= MIN_SEED_MATCHES_EACH_SIDE) & (neg_matches >= MIN_SEED_MATCHES_EACH_SIDE),
-        np.nan_to_num(pos_mean, nan=0.0) - np.nan_to_num(neg_mean, nan=0.0),
-        np.nan,
-    )
-
-    return pd.DataFrame(
-        {
-            "pos_pmi_mean": pos_mean,
-            "neg_pmi_mean": neg_mean,
-            "pos_seed_matches": pos_matches,
-            "neg_seed_matches": neg_matches,
-            "so_score": so_score,
-        }
-    )
+# ============================================================
+# PMI DA DANH MUC (multi-category, khong ghep cap doi lap)
+# ============================================================
+#
+# Khac voi ban PMI nhi phan (positive vs negative, so_score = hieu 2 cuc),
+# 7 danh muc Loughran-McDonald KHONG phai cac cap doi lap cua nhau - 1
+# candidate co the vua "negative" vua "litigious" vua "uncertainty" cung luc.
+# Vi vay moi danh muc duoc cham diem DOC LAP: category_score(candidate) =
+# trung binh PMI(candidate, seed) tren toan bo seed CUA CHINH danh muc do
+# (khong tru di danh muc nao khac), roi chuan hoa z-score tren toan bo
+# candidate DE RIENG cho danh muc do.
+#
+# compute_multi_category_pmi() lam phan NANG (build ma tran, tinh PMI cho
+# tung cap candidate-seed) CHI 1 LAN. aggregate_category_labels() lam phan
+# NHE (gop theo min_seed_matches + z_threshold) - co the goi lai nhieu lan
+# voi cac nguong khac nhau MA KHONG can tinh lai PMI, de tien thu nghiem.
 
 
-def assign_label_from_so_score(so_score: pd.Series, z_threshold: float = LABEL_Z_THRESHOLD) -> pd.Series:
-    valid = so_score.dropna()
-    mean = valid.mean() if len(valid) else 0.0
-    std = valid.std(ddof=0) if len(valid) > 1 else 0.0
-
-    if std == 0 or np.isnan(std):
-        so_z = pd.Series(0.0, index=so_score.index)
-    else:
-        so_z = (so_score - mean) / std
-
-    labels = pd.Series("neutral", index=so_score.index)
-    labels = labels.mask(so_score.isna(), "neutral")
-    labels = labels.mask(so_z.ge(z_threshold), "positive")
-    labels = labels.mask(so_z.le(-z_threshold), "negative")
-    return labels, so_z
-
-
-def build_pmi_dictionary(
+def compute_multi_category_pmi(
     tokenized_path: Path = INPUT_TOKENIZED_PATH,
     candidate_terms_path: Path = CANDIDATE_TERMS_PATH,
-    positive_seed_path: Path = POSITIVE_SEED_PATH,
-    negative_seed_path: Path = NEGATIVE_SEED_PATH,
+    seed_dir: Path = FINAL_SEED_DIR,
+    categories: list[str] = CATEGORY_NAMES,
     min_candidate_df: int | None = None,
-    context_window: str = CONTEXT_WINDOW_DOCUMENT,
-    pmi_variant: str = PMI_VARIANT_PLAIN,
+    context_window: str = CONTEXT_WINDOW_SENTENCE,
+    pmi_variant: str = PMI_VARIANT_ADD_ALPHA,
     pmi_k: float = PMI_K_DEFAULT,
     smoothing_alpha: float = SMOOTHING_ALPHA_DEFAULT,
     cds_beta: float = CDS_BETA_DEFAULT,
     max_df_ratio: float | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    seed_min_df: int = SEED_MIN_DF,
+) -> dict:
     news_df, tokenized_column = load_tokenized_documents(
         path=tokenized_path,
         tokenized_column=TOKENIZED_SENTENCES_COLUMN,
     )
     tokenized_documents = news_df[tokenized_column].tolist()
 
-    # context_window quyet dinh "don vi" dung de dem dong-xuat-hien: nguyen
-    # document (hanh vi goc, v1/v2) hoac tach nho thanh tung sentence rieng.
     if context_window == CONTEXT_WINDOW_SENTENCE:
         unit_documents = explode_documents_to_sentences(tokenized_documents)
     else:
@@ -413,53 +359,52 @@ def build_pmi_dictionary(
             max_n=SEED_MAX_N,
         )
 
-    positive_seed_words = load_seed_words(positive_seed_path)
-    negative_seed_words = load_seed_words(negative_seed_path)
+    print(f"Tong don vi ({context_window}):", total_units)
 
-    positive_resolved_df = resolve_seed_real_forms(
-        positive_seed_words, corpus_ngram_terms_df, total_units=total_units, max_df_ratio=max_df_ratio
-    )
-    negative_resolved_df = resolve_seed_real_forms(
-        negative_seed_words, corpus_ngram_terms_df, total_units=total_units, max_df_ratio=max_df_ratio
-    )
-
-    positive_resolved_df["polarity"] = "positive"
-    negative_resolved_df["polarity"] = "negative"
-    seed_resolution_df = pd.concat([positive_resolved_df, negative_resolved_df], ignore_index=True)
-
-    positive_real_forms = sorted(
-        {form for forms in positive_resolved_df["real_forms"] for form in forms}
-    )
-    negative_real_forms = sorted(
-        {form for forms in negative_resolved_df["real_forms"] for form in forms}
-    )
+    # Resolve seed cho tung danh muc rieng (moi danh muc 1 file seed rieng).
+    category_resolved: dict[str, pd.DataFrame] = {}
+    category_real_forms: dict[str, list[str]] = {}
+    for category in categories:
+        seed_words = load_seed_words(seed_dir / f"{category}_word.txt")
+        resolved_df = resolve_seed_real_forms(
+            seed_words,
+            corpus_ngram_terms_df,
+            min_df=seed_min_df,
+            total_units=total_units,
+            max_df_ratio=max_df_ratio,
+        )
+        category_resolved[category] = resolved_df
+        real_forms = sorted({form for forms in resolved_df["real_forms"] for form in forms})
+        category_real_forms[category] = real_forms
+        print(f"[{category}] {len(resolved_df)}/{len(seed_words)} seed du dieu kien tinh PMI")
 
     all_candidate_terms_df = load_candidate_terms(
         candidate_terms_path, min_candidate_df=min_candidate_df
     )
 
-    # Mot candidate co the trung voi chinh 1 seed (vd "vuot ke_hoach" vua la seed
-    # positive, vua lot vao candidate list vi ca 2 deu tach n-gram tu cung corpus).
-    # Neu de PMI tinh binh thuong, no se tu so sanh voi chinh no (co_df = df cua
-    # chinh no), sinh ra PMI = log2(N/df) - mot con so lon vo nghia, khong phan
-    # anh sentiment. Cac term nay da duoc con nguoi xac nhan nhan qua seed roi nen
-    # gan thang nhan theo seed, khong dua qua PMI nua.
-    seed_terms_all = set(positive_real_forms) | set(negative_real_forms)
+    # Mot candidate co the trung voi chinh 1 seed CUA BAT KY danh muc nao.
+    # Cung logic nhu ban nhi phan: gan thang nhan cho danh muc do (khong qua
+    # PMI, tranh tu so sanh voi chinh no), loai khoi tap candidate tinh PMI.
+    seed_terms_all: set[str] = set()
+    term_to_seed_categories: dict[str, list[str]] = {}
+    for category, real_forms in category_real_forms.items():
+        for form in real_forms:
+            seed_terms_all.add(form)
+            term_to_seed_categories.setdefault(form, []).append(category)
+
     overlap_mask = all_candidate_terms_df["term"].isin(seed_terms_all)
     seed_overlap_df = all_candidate_terms_df.loc[overlap_mask].reset_index(drop=True)
     candidate_terms_df = all_candidate_terms_df.loc[~overlap_mask].reset_index(drop=True)
 
     if not seed_overlap_df.empty:
         print(
-            f"[canh bao] {len(seed_overlap_df)} candidate trung voi seed, "
-            "gan thang nhan theo seed thay vi tinh PMI: "
-            f"{sorted(seed_overlap_df['term'].tolist())}"
+            f"[canh bao] {len(seed_overlap_df)} candidate trung voi seed cua it "
+            "nhat 1 danh muc, gan thang nhan theo danh muc do thay vi tinh PMI."
         )
 
     candidate_terms = candidate_terms_df["term"].tolist()
-
     combined_vocabulary = list(
-        dict.fromkeys(candidate_terms + positive_real_forms + negative_real_forms)
+        dict.fromkeys(candidate_terms + sorted(seed_terms_all))
     )
 
     matrix = build_binary_document_term_matrix(
@@ -468,18 +413,12 @@ def build_pmi_dictionary(
         min_n=SEED_MIN_N,
         max_n=CANDIDATE_NGRAM_RANGE[1],
     )
-
     term_to_col = {term: idx for idx, term in enumerate(combined_vocabulary)}
-    candidate_cols = np.array([term_to_col[term] for term in candidate_terms])
-    positive_cols = np.array([term_to_col[term] for term in positive_real_forms]) if positive_real_forms else np.array([], dtype=int)
-    negative_cols = np.array([term_to_col[term] for term in negative_real_forms]) if negative_real_forms else np.array([], dtype=int)
-
     matrix_unit_df = np.asarray(matrix.sum(axis=0)).ravel()
 
-    # Chan tran df_ratio cho candidate: candidate qua pho bien (xuat hien o
-    # ty le don vi > max_df_ratio) it co gia tri phan biet sentiment - loai
-    # khoi buoc tinh PMI (khong xoa khoi candidate_ngram_terms.parquet goc).
-    candidate_df_all = matrix_unit_df[candidate_cols].astype(float)
+    candidate_cols_all = np.array([term_to_col[term] for term in candidate_terms])
+    candidate_df_all = matrix_unit_df[candidate_cols_all].astype(float)
+
     if max_df_ratio is not None:
         candidate_ratio_all = candidate_df_all / total_units
         keep_mask = candidate_ratio_all <= max_df_ratio
@@ -495,30 +434,43 @@ def build_pmi_dictionary(
 
     candidate_terms_df = candidate_terms_df.loc[keep_mask].reset_index(drop=True)
     candidate_terms = candidate_terms_df["term"].tolist()
-    candidate_cols = candidate_cols[keep_mask]
+    candidate_cols = candidate_cols_all[keep_mask]
     candidate_df_array = candidate_df_all[keep_mask]
 
-    positive_form_to_seed: dict[str, str] = {}
-    for _, row in positive_resolved_df.iterrows():
-        for form in row["real_forms"]:
-            positive_form_to_seed[form] = row["seed"]
+    # QUAN TRONG: candidate_df_array la df cua candidate O CAP DON VI DANG DUNG
+    # (cau/tai lieu), KHAC voi cot "df" san co trong candidate_terms_df (do la
+    # df cap TAI LIEU tu file candidate_ngram_terms.parquet, luon co san du
+    # context_window la gi). Candidate hiem o cap don vi bi PMI (dac biet
+    # add_alpha) thoi phong diem DEU tren moi danh muc - can gia tri nay o
+    # buoc aggregate_category_labels() de loc rieng, khong dua vao cot "df" cu.
+    candidate_terms_df = candidate_terms_df.copy()
+    candidate_terms_df["candidate_unit_df"] = candidate_df_array
 
-    negative_form_to_seed: dict[str, str] = {}
-    for _, row in negative_resolved_df.iterrows():
-        for form in row["real_forms"]:
-            negative_form_to_seed[form] = row["seed"]
+    category_pmi_by_seed: dict[str, tuple[np.ndarray, list[str]]] = {}
+    for category in categories:
+        resolved_df = category_resolved[category]
+        real_forms = category_real_forms[category]
+        unique_seeds = resolved_df["seed"].tolist()
 
-    def build_seed_pmi(
-        real_forms: list[str],
-        cols: np.ndarray,
-        form_to_seed: dict[str, str],
-        resolved_df: pd.DataFrame,
-    ) -> tuple[np.ndarray, int]:
         if not real_forms:
-            return np.empty((len(candidate_terms), 0)), 0
+            category_pmi_by_seed[category] = (
+                np.empty((len(candidate_terms), 0)),
+                unique_seeds,
+            )
+            continue
 
+        cols = np.array([term_to_col[form] for form in real_forms])
         co_df_forms = (matrix[:, candidate_cols].T @ matrix[:, cols]).toarray().astype(float)
         raw_form_df = matrix_unit_df[cols].astype(float)
+
+        # Anh xa moi dang thuc te (real form) ve dung seed goc cua no - dung
+        # vong lap tuong minh (khong dung comprehension + walrus) de tranh loi
+        # pham vi bien kho hieu khi 1 ten bien duoc dung o nhieu comprehension
+        # ke nhau trong cung 1 ham.
+        form_to_seed: dict[str, str] = {}
+        for _, row in resolved_df.iterrows():
+            for form in row["real_forms"]:
+                form_to_seed[form] = row["seed"]
 
         if pmi_variant == PMI_VARIANT_CDS:
             cds_seed_df = compute_cds_smoothed_seed_df(resolved_df, beta=cds_beta)
@@ -536,16 +488,10 @@ def build_pmi_dictionary(
             alpha=smoothing_alpha,
         )
 
-        # Loai tung cap (candidate, real_form) ma real_form bi long ben trong
-        # candidate (vd seed "giam" long trong candidate "giam lo"): cap nay
-        # dong xuat hien ~100% nen PMI se bi thoi phong vo nghia, khong phan
-        # anh lien ket sentiment thuc. Cac seed khac khong long trong candidate
-        # do van duoc giu de tinh PMI binh thuong.
         embedded_mask = build_embedded_seed_exclusion_mask(candidate_terms, real_forms)
         pmi_forms = np.where(embedded_mask, np.nan, pmi_forms)
 
         seed_ids = np.array([form_to_seed[form] for form in real_forms])
-        unique_seeds = resolved_df["seed"].tolist()
         pmi_by_seed = np.full((len(candidate_terms), len(unique_seeds)), np.nan)
         for seed_idx, seed in enumerate(unique_seeds):
             form_mask = seed_ids == seed
@@ -553,76 +499,131 @@ def build_pmi_dictionary(
                 continue
             with np.errstate(invalid="ignore"):
                 pmi_by_seed[:, seed_idx] = np.nanmax(pmi_forms[:, form_mask], axis=1)
-        return pmi_by_seed, int(embedded_mask.sum())
 
-    pmi_positive, excluded_positive_pairs = build_seed_pmi(
-        positive_real_forms, positive_cols, positive_form_to_seed, positive_resolved_df
+        category_pmi_by_seed[category] = (pmi_by_seed, unique_seeds)
+
+    return {
+        "candidate_terms_df": candidate_terms_df,
+        "category_pmi_by_seed": category_pmi_by_seed,
+        "category_resolved": category_resolved,
+        "seed_overlap_df": seed_overlap_df,
+        "term_to_seed_categories": term_to_seed_categories,
+        "categories": categories,
+        "pmi_variant": pmi_variant,
+        "context_window": context_window,
+    }
+
+
+def aggregate_category_labels(
+    result: dict,
+    min_seed_matches: int = 1,
+    z_threshold: float = LABEL_Z_THRESHOLD,
+    min_candidate_unit_df: int | None = None,
+    center_on_candidate_mean: bool = True,
+) -> pd.DataFrame:
+    """Ap dung 1 bo nguong (min_seed_matches, z_threshold, min_candidate_unit_df)
+    len ket qua PMI da tinh san trong `result` (tu compute_multi_category_pmi).
+    Tach rieng khoi buoc tinh PMI (nang nhat) de thu nhieu nguong khac nhau
+    nhanh, khong can build lai ma tran / tinh lai PMI moi lan doi nguong.
+
+    `min_candidate_unit_df`: loai candidate qua hiem O CAP DON VI DANG DUNG
+    (candidate_unit_df, xem compute_multi_category_pmi) truoc khi tinh z-score.
+    Da kiem chung: chi loc theo df KHONG du de sua loi "1 candidate bi gan ca
+    7 category" - ty le nay hau nhu khong doi du nang nguong (xem
+    center_on_candidate_mean ben duoi de biet nguyen nhan that).
+
+    `center_on_candidate_mean`: (mac dinh BAT) voi add_alpha, so hang
+    1/(candidate_df+alpha) trong cong thuc PMI la CHUNG cho ca 7 category cua
+    CUNG 1 candidate - candidate cang hiem thi diem RAW cang bi doi len DEU o
+    moi category, khong lien quan gi den sentiment that. O ban PMI nhi phan
+    (so_score = mean(PMI_pos) - mean(PMI_neg)) so hang nay tu trieu tieu vi bi
+    tru; ban da category doc lap khong co phep tru nao nen bias lo ra. Da kiem
+    chung tren du lieu that: tuong quan giua candidate_unit_df va diem RAW
+    trung binh 7 category la -0,56 (rat manh). Cach sua: voi tung candidate,
+    tru di DIEM TRUNG BINH CUA CHINH NO tren ca 7 category truoc khi chuan hoa
+    z-score - mo phong dung phep tru da hoat dong tot o ban nhi phan, ap dung
+    cho N category thay vi 2. Sau khi ap dung, candidate bi gan ca 7 (hoac 6)
+    category cung luc bien mat hoan toan tren du lieu that (tu 20.712 candidate
+    xuong 0).
+    """
+    candidate_terms_df = result["candidate_terms_df"]
+    categories = result["categories"]
+
+    if min_candidate_unit_df is not None:
+        keep_mask = (candidate_terms_df["candidate_unit_df"] >= min_candidate_unit_df).to_numpy()
+    else:
+        keep_mask = np.ones(len(candidate_terms_df), dtype=bool)
+
+    out = candidate_terms_df.loc[keep_mask].reset_index(drop=True)
+
+    # Pass 1: tinh raw_score (+ matches) cho ca 7 category truoc, chua chuan
+    # hoa z-score - can du 7 cot nay cung luc de tinh diem trung bien theo
+    # HANG (theo candidate) o buoc center_on_candidate_mean ben duoi.
+    raw_scores: dict[str, np.ndarray] = {}
+    match_counts: dict[str, np.ndarray] = {}
+    for category in categories:
+        pmi_by_seed_full, unique_seeds = result["category_pmi_by_seed"][category]
+        pmi_by_seed = pmi_by_seed_full[keep_mask]
+        if pmi_by_seed.shape[1] == 0:
+            raw_scores[category] = np.full(len(out), np.nan)
+            match_counts[category] = np.zeros(len(out), dtype=int)
+            continue
+
+        matches = np.sum(~np.isnan(pmi_by_seed), axis=1)
+        with np.errstate(invalid="ignore"):
+            raw_mean = np.nanmean(pmi_by_seed, axis=1)
+        raw_scores[category] = np.where(matches >= min_seed_matches, raw_mean, np.nan)
+        match_counts[category] = matches
+
+    if center_on_candidate_mean:
+        score_matrix = np.column_stack([raw_scores[c] for c in categories])
+        with np.errstate(invalid="ignore"):
+            row_mean = np.nanmean(score_matrix, axis=1)
+    else:
+        row_mean = np.zeros(len(out))
+
+    # Pass 2: tru di diem trung binh hang (neu bat), roi moi chuan hoa
+    # z-score TREN COT (qua toan bo candidate) cho tung category.
+    for category in categories:
+        score = raw_scores[category] - row_mean
+
+        valid = score[~np.isnan(score)]
+        mean = valid.mean() if len(valid) else 0.0
+        std = valid.std(ddof=0) if len(valid) > 1 else 0.0
+        if std == 0 or np.isnan(std):
+            z = np.zeros_like(score)
+        else:
+            z = (score - mean) / std
+        z = np.where(np.isnan(score), np.nan, z)
+
+        out[f"{category}_score"] = raw_scores[category]
+        out[f"{category}_score_centered"] = score
+        out[f"{category}_z"] = z
+        out[f"{category}_matches"] = match_counts[category]
+        out[f"{category}_flag"] = z >= z_threshold
+
+    # candidate trung voi seed cua 1 hay nhieu danh muc: gan flag=True thang
+    # cho danh muc do (khong qua PMI), cac danh muc khac de NaN/False vi
+    # khong tinh PMI cho nhom nay.
+    seed_overlap_df = result["seed_overlap_df"]
+    term_to_seed_categories = result["term_to_seed_categories"]
+    if not seed_overlap_df.empty:
+        overlap_rows = seed_overlap_df.copy()
+        for category in categories:
+            overlap_rows[f"{category}_score"] = np.nan
+            overlap_rows[f"{category}_z"] = np.nan
+            overlap_rows[f"{category}_matches"] = 0
+            overlap_rows[f"{category}_flag"] = False
+        for idx, term in overlap_rows["term"].items():
+            for category in term_to_seed_categories.get(term, []):
+                overlap_rows.at[idx, f"{category}_flag"] = True
+        overlap_rows["label_source"] = "seed_direct"
+        out["label_source"] = "pmi"
+        out = pd.concat([out, overlap_rows], ignore_index=True)
+    else:
+        out["label_source"] = "pmi"
+
+    out["pmi_confidence"] = np.where(
+        out["df"].ge(PMI_CONFIDENCE_MIN_DF), "reliable", "low"
     )
-    pmi_negative, excluded_negative_pairs = build_seed_pmi(
-        negative_real_forms, negative_cols, negative_form_to_seed, negative_resolved_df
-    )
-    print(
-        "[thong ke] Cap (candidate, seed real-form) bi loai vi seed long trong "
-        f"candidate: {excluded_positive_pairs} (positive) + "
-        f"{excluded_negative_pairs} (negative)"
-    )
-
-    so_df = compute_semantic_orientation(pmi_positive, pmi_negative)
-    labels, so_z = assign_label_from_so_score(so_df["so_score"])
-
-    pmi_result_df = candidate_terms_df.copy()
-    pmi_result_df = pd.concat([pmi_result_df.reset_index(drop=True), so_df.reset_index(drop=True)], axis=1)
-    pmi_result_df["so_score_z"] = so_z.reset_index(drop=True)
-    pmi_result_df["sentiment_label"] = labels.reset_index(drop=True)
-    pmi_result_df["label_source"] = "pmi"
-    # df thap -> PMI tinh tu qua it bai, do tin cay thap. Khong xoa term, chi
-    # danh dau de biet nhan nao dang tin, nhan nao can can trong khi su dung.
-    pmi_result_df["pmi_confidence"] = np.where(
-        pmi_result_df["df"].ge(PMI_CONFIDENCE_MIN_DF), "reliable", "low"
-    )
-
-    seed_overlap_result_df = seed_overlap_df.copy()
-    positive_real_forms_set = set(positive_real_forms)
-    seed_overlap_result_df["sentiment_label"] = seed_overlap_result_df["term"].apply(
-        lambda term: "positive" if term in positive_real_forms_set else "negative"
-    )
-    for column in ["pos_pmi_mean", "neg_pmi_mean", "pos_seed_matches", "neg_seed_matches", "so_score", "so_score_z"]:
-        seed_overlap_result_df[column] = np.nan
-    seed_overlap_result_df["label_source"] = "seed_direct"
-    # Nhan gan thang tu seed, khong qua PMI, nen coi la dang tin cay.
-    seed_overlap_result_df["pmi_confidence"] = "reliable"
-
-    result_df = pd.concat([pmi_result_df, seed_overlap_result_df], ignore_index=True)
-
-    return result_df, seed_resolution_df
-
-
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-
-    dictionary_df, seed_resolution_df = build_pmi_dictionary()
-
-    LEXICON_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    dictionary_df.to_parquet(OUTPUT_DICTIONARY_PARQUET_PATH, index=False)
-    dictionary_df.to_csv(OUTPUT_DICTIONARY_CSV_PATH, index=False, encoding="utf-8-sig")
-    seed_resolution_df.to_csv(OUTPUT_SEED_RESOLUTION_CSV_PATH, index=False, encoding="utf-8-sig")
-
-    print("Input tokenized corpus:", INPUT_TOKENIZED_PATH)
-    print("Candidate terms:", CANDIDATE_TERMS_PATH)
-    print("Positive seed file:", POSITIVE_SEED_PATH)
-    print("Negative seed file:", NEGATIVE_SEED_PATH)
-    print("Output dictionary parquet:", OUTPUT_DICTIONARY_PARQUET_PATH)
-    print("Output dictionary csv:", OUTPUT_DICTIONARY_CSV_PATH)
-    print("Output seed resolution csv:", OUTPUT_SEED_RESOLUTION_CSV_PATH)
-    print("Candidate terms scored:", len(dictionary_df))
-    print("Label counts:")
-    print(dictionary_df["sentiment_label"].value_counts(dropna=False).to_string())
-    print("Confidence counts:")
-    print(dictionary_df["pmi_confidence"].value_counts(dropna=False).to_string())
-    print("\nSeed resolution:")
-    print(seed_resolution_df.to_string(index=False))
-
-
-if __name__ == "__main__":
-    main()
+    return out
