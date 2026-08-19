@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-RESOURCES_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Resources"
+RESOURCES_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Seed_set_Prepare" / "final_seed"
 DEFAULT_STOPWORDS_PATH = RESOURCES_DIR / "vietnamese-stopwords-dash.txt"
 
 

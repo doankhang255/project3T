@@ -1,0 +1,8 @@
+xấp_xỉ, rủi_ro, rủi_ro_cao, cho_rằng, giả_định, không_chắc_chắn, dự_kiến,
+tình_huống_bất_ngờ, đang_chờ_xử_lý, phụ_thuộc, biến_động, biến_động_mạnh,
+thay_đổi_thất_thường, điều_chỉnh_lại, dự_báo, khó_dự_đoán, còn_nghi_vấn,
+khả_năng_xảy_ra, chưa_xác_định, tài_sản_vô_hình, sơ_bộ,
+không_xác_định_thời_hạn, bất_ngờ, bất_thường, có_điều_kiện, bất_ổn, cần_làm_rõ,
+biện_pháp_phòng_ngừa, đánh_giá_lại, ngoài_kế_hoạch, chưa_được_chứng_minh,
+không_thể_xác_định, mơ_hồ, được_cho_là, ít_có_khả_năng,
+không_thể_đánh_giá_được, thay_đổi_điều_khoản

@@ -1,5 +1,5 @@
 ---
-title: "Hướng dẫn gán nhãn dữ liệu - Project3T"
+title: "Quy trình gán nhãn cảm xúc cho bài báo tài chính (article sentiment)"
 lang: vi
 format:
   pdf:
@@ -7,12 +7,12 @@ format:
     geometry: margin=1in
     mainfont: "Noto Sans"
     pdf-engine: xelatex
-    toc: true
+    toc: false
     colorlinks: true
 ---
 
-Tài liệu này hướng dẫn người tham gia gán nhãn (annotator) trên hệ thống
-Label Studio đang chạy tại: **https://project3t-production.up.railway.app/**
+Tài liệu này hướng dẫn người tham gia gán nhãn (annotator) trên hệ thống questlab
+
 
 ## 1. Mục tiêu
 
@@ -96,6 +96,21 @@ flowchart TD
 *(Không hợp lệ = lỗi/không liên quan/tin trái chiều không rõ trọng tâm — xem
 chi tiết ở phần "Nguyên tắc khi phân vân" phía trên. Quy trình lặp lại cho
 đến khi hết task trong queue.)*
+
+### Xử lý task bị Skip
+
+Một task bị Skip **không bị loại bỏ ngay** — hệ thống xử lý theo 2 hướng tùy
+số lần bị Skip:
+
+- **Mới bị Skip bởi 1 annotator**: task tự động quay lại hàng đợi để
+  **annotator thứ 2 kiểm tra lại** (không loại bỏ). Trong lúc chờ người thứ 2
+  xử lý, task được **đánh dấu (flag)** để tiện theo dõi.
+  - Nếu annotator thứ 2 gán nhãn thành công (không Skip) → task được tính
+    bình thường, nhãn của annotator thứ 2 là kết quả cuối cùng.
+- **Bị Skip bởi cả 2 annotator** (annotator thứ 2 kiểm tra lại nhưng cũng
+  Skip): xác nhận đây là task không thể gán nhãn được (dữ liệu lỗi, nội dung
+  mơ hồ, hoặc không đủ thông tin) → **loại bỏ hẳn khỏi tập ground truth khi
+  xuất file**, không tính vào kết quả cuối cùng.
 
 ## 4. Tiêu chí Quality Review
 

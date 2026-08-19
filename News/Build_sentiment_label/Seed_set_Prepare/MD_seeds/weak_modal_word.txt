@@ -1,0 +1,3 @@
+có_thể, có_thể_sẽ, có_lẽ_sẽ, tùy_thuộc_vào, phụ_thuộc_vào, không_chắc_chắn,
+dường_như, có_vẻ_như, gần_như, đôi_khi, thỉnh_thoảng, phần_nào,
+cho_thấy_khả_năng, gợi_ý_rằng, có_lẽ, hình_như, hiếm_khi

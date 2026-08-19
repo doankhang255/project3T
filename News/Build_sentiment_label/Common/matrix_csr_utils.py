@@ -10,7 +10,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_TOKENIZED_NEWS_PATH = (
-    PROJECT_ROOT / "data_news" / "data_tokenized" / "equity_news_tokenized_underthesea.parquet"
+    PROJECT_ROOT / "data_news" / "data_tokenized" / "equity_news_tokenized_vncorenlp.parquet"
 )
 
 TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"

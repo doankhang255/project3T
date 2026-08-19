@@ -1,0 +1,8 @@
+pháp_lý, hợp_pháp, bất_hợp_pháp, sửa_đổi, quy_định, cơ_quan_quản_lý, luật_pháp,
+lập_pháp, kiện_tụng, vụ_kiện, hợp_đồng, dàn_xếp_giải_quyết, tòa_án, tư_pháp,
+khiếu_nại, chấp_thuận, luật_sư, vi_phạm_hợp_đồng, ban_hành,
+bồi_thường_thiệt_hại, trợ_cấp_thôi_việc, cáo_buộc, làm_chứng, kháng_cáo,
+được_diễn_giải_theo, có_hiệu_lực_thi_hành, không_thể_thi_hành, hình_sự, bị_đơn,
+trọng_tài, nguyên_đơn, đơn_kiện, không_thể_hủy_ngang, bảo_lãnh, lệnh_cấm,
+cố_ý_vi_phạm, phán_quyết, gây_bất_lợi, sắc_lệnh, thu_hồi, bồi_thẩm_đoàn,
+hành_vi_gây_thiệt_hại, hủy_bỏ_hợp_đồng, thừa_nhận
