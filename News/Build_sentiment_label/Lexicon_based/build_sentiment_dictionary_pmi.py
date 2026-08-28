@@ -56,14 +56,6 @@ CANDIDATE_NGRAM_RANGE = (2, 3)
 # (dong bo voi LEXICON_MIN_DF_FLOOR ben select_lexicon_candidate_terms.py).
 SEED_MIN_DF = 20
 
-# Nguong z-score de gan mot candidate vao 1 danh muc (tren phan phoi diem cua
-# CHINH danh muc do qua toan bo candidate), giong cach lam sentiment_index_z o
-# buoc Build_sentiment_index, thay vi mot nguong tuyet doi co dinh.
-LABEL_Z_THRESHOLD = 0.5
-
-# Duoi nguong nay, PMI duoc tinh tu qua it bai/cau (df thap) nen do tin cay thap.
-PMI_CONFIDENCE_MIN_DF = 20
-
 # ------------------------------------------------------------------
 # Context window: don vi dung de dem dong-xuat-hien (co_df). "document" la
 # hanh vi goc (nguyen ca bai). "sentence" tach moi bai thanh cac cau rieng
@@ -73,18 +65,9 @@ PMI_CONFIDENCE_MIN_DF = 20
 CONTEXT_WINDOW_DOCUMENT = "document"
 CONTEXT_WINDOW_SENTENCE = "sentence"
 
-# ------------------------------------------------------------------
-# 3 bien the cong thuc PMI (xem giai thich chi tiet trong compute_pmi va
-# compute_cds_smoothed_seed_df). "plain" la cong thuc PMI goc.
-# ------------------------------------------------------------------
-PMI_VARIANT_PLAIN = "plain"
-PMI_VARIANT_PMI_K = "pmi_k"
-PMI_VARIANT_ADD_ALPHA = "add_alpha"
-PMI_VARIANT_CDS = "cds"
-
-PMI_K_DEFAULT = 3.0
+# Alpha (pseudo-count) mac dinh cho add-alpha (Laplace) smoothing trong
+# compute_pmi - xem giai thich chi tiet tai do.
 SMOOTHING_ALPHA_DEFAULT = 1.0
-CDS_BETA_DEFAULT = 0.7
 
 
 def load_seed_words(path: Path) -> list[str]:
@@ -218,64 +201,23 @@ def compute_pmi(
     candidate_df: np.ndarray,
     seed_df: np.ndarray,
     total_units: int,
-    variant: str = PMI_VARIANT_PLAIN,
-    k: float = PMI_K_DEFAULT,
     alpha: float = SMOOTHING_ALPHA_DEFAULT,
 ) -> np.ndarray:
-    """PMI(term, seed) = log2( (co_df * N) / (df_term * df_seed) ).
+    """PMI(term, seed) voi add-alpha (Laplace) smoothing:
 
-    Tra ve NaN cho cap khong dong xuat hien lan nao (co_df = 0) thay vi -inf,
-    de loai khoi trung binh thay vi coi la bang chung "rat tieu cuc".
+        log2( ((co_df+alpha) * N) / ((df_term+alpha) * (df_seed+alpha)) )
 
-    3 bien the (chon qua `variant`):
-    - "plain": cong thuc goc o tren.
-    - "pmi_k": PMI^k (Daille 1994) - cong them (k-1)*log2(P(x,y)) vao PMI goc,
-      phat cap co qua it lan dong xuat hien thuc te du ty le co_df/df cao.
-    - "add_alpha": cong pseudo-count `alpha` vao ca 3 so dem truoc khi tinh ty
-      le, kieu Laplace smoothing. KHONG con cap nao bi NaN - ca cap co_df=0
-      cung ra 1 gia tri am huu han, duoc coi la bang chung sentiment trai
-      chieu YEU thay vi "thieu du lieu". Day la ly do add_alpha luon tinh
-      trung binh tren TOAN BO seed (khong bi loai tru vi thieu match), it bi
-      nhieu boi hien tuong phuong sai mau nho hon plain/pmi_k/cds.
-    - "cds": khong xu ly gi them o day - ham goi da tinh san `seed_df` theo
-      phien ban lam min (xem compute_cds_smoothed_seed_df) truoc khi truyen
-      vao, nen chi can dung lai cong thuc "plain" voi seed_df da thay the.
+    Cong pseudo-count `alpha` vao ca 3 so dem truoc khi tinh ty le, nen KHONG
+    BAO GIO ra NaN - ca cap chua tung dong xuat hien cung nhau (co_df=0) van
+    ra 1 gia tri am huu han, duoc coi la bang chung sentiment trai chieu YEU
+    thay vi "thieu du lieu". Nho vay diem trung binh luon tinh duoc tren
+    TOAN BO seed cua 1 danh muc, khong bi loai tru vi thieu match.
     """
     with np.errstate(divide="ignore", invalid="ignore"):
-        if variant == PMI_VARIANT_ADD_ALPHA:
-            co = co_df + alpha
-            candidate_smoothed = candidate_df[:, None] + alpha
-            seed_smoothed = seed_df[None, :] + alpha
-            return np.log2((co * total_units) / (candidate_smoothed * seed_smoothed))
-
-        numerator = co_df * total_units
-        denominator = candidate_df[:, None] * seed_df[None, :]
-        pmi = np.log2(numerator / denominator)
-        pmi = np.where(co_df > 0, pmi, np.nan)
-
-        if variant == PMI_VARIANT_PMI_K:
-            p_xy = np.where(co_df > 0, co_df / total_units, np.nan)
-            pmi = pmi + (k - 1) * np.log2(p_xy)
-
-        return pmi
-
-
-def compute_cds_smoothed_seed_df(
-    resolved_df: pd.DataFrame,
-    beta: float = CDS_BETA_DEFAULT,
-) -> dict[str, float]:
-    """Lam phang do lech tan suat GIUA CAC SEED trong CUNG 1 danh muc, kieu
-    context distribution smoothing cua Levy, Goldberg & Dagan (2015) ap dung
-    cho word2vec: nang df cua seed len luy thua `beta` (< 1) truoc khi dung
-    lam mau so trong PMI. Gia tri tra ve duoc quy lai ve dung tong df goc cua
-    danh muc de van dung truc tiep duoc trong cong thuc PMI chuan.
-    """
-    seeds = resolved_df["seed"].tolist()
-    raw_df = resolved_df["df"].to_numpy(dtype=float)
-    smoothed = raw_df**beta
-    share = smoothed / smoothed.sum()
-    effective_df = share * raw_df.sum()
-    return dict(zip(seeds, effective_df))
+        co = co_df + alpha
+        candidate_smoothed = candidate_df[:, None] + alpha
+        seed_smoothed = seed_df[None, :] + alpha
+        return np.log2((co * total_units) / (candidate_smoothed * seed_smoothed))
 
 
 def build_embedded_seed_exclusion_mask(
@@ -309,13 +251,13 @@ def build_embedded_seed_exclusion_mask(
 # candidate co the vua "negative" vua "litigious" vua "uncertainty" cung luc.
 # Vi vay moi danh muc duoc cham diem DOC LAP: category_score(candidate) =
 # trung binh PMI(candidate, seed) tren toan bo seed CUA CHINH danh muc do
-# (khong tru di danh muc nao khac), roi chuan hoa z-score tren toan bo
-# candidate DE RIENG cho danh muc do.
+# (khong tru di danh muc nao khac).
 #
 # compute_multi_category_pmi() lam phan NANG (build ma tran, tinh PMI cho
-# tung cap candidate-seed) CHI 1 LAN. aggregate_category_labels() lam phan
-# NHE (gop theo min_seed_matches + z_threshold) - co the goi lai nhieu lan
-# voi cac nguong khac nhau MA KHONG can tinh lai PMI, de tien thu nghiem.
+# tung cap candidate-seed) CHI 1 LAN, tra ve PMI THO chua gan nhan. Buoc gop
+# thanh nhan (percentile + centering 2 chieu) nam o
+# aggregate_category_labels_percentile() trong build_sentiment_dictionary_pmi_bootstrap.py
+# - tach rieng de doi nguong percentile nhieu lan MA KHONG can tinh lai PMI.
 
 
 def compute_multi_category_pmi(
@@ -325,10 +267,7 @@ def compute_multi_category_pmi(
     categories: list[str] = CATEGORY_NAMES,
     min_candidate_df: int | None = None,
     context_window: str = CONTEXT_WINDOW_SENTENCE,
-    pmi_variant: str = PMI_VARIANT_ADD_ALPHA,
-    pmi_k: float = PMI_K_DEFAULT,
     smoothing_alpha: float = SMOOTHING_ALPHA_DEFAULT,
-    cds_beta: float = CDS_BETA_DEFAULT,
     max_df_ratio: float | None = None,
     seed_min_df: int = SEED_MIN_DF,
 ) -> dict:
@@ -442,9 +381,9 @@ def compute_multi_category_pmi(
     # df cap TAI LIEU tu file candidate_ngram_terms.parquet, luon co san du
     # context_window la gi). Candidate hiem o cap don vi bi PMI (dac biet
     # add_alpha) thoi phong diem DEU tren moi danh muc - can gia tri nay o
-    # buoc aggregate_category_labels() de loc rieng, khong dua vao cot "df" cu.
+    # buoc aggregate_category_labels_percentile() de loc rieng, khong dua vao cot "df" cu.
     candidate_terms_df = candidate_terms_df.copy()
-    candidate_terms_df["candidate_unit_df"] = candidate_df_array
+    candidate_terms_df["candidate_unit_st"] = candidate_df_array
 
     category_pmi_by_seed: dict[str, tuple[np.ndarray, list[str]]] = {}
     for category in categories:
@@ -472,19 +411,11 @@ def compute_multi_category_pmi(
             for form in row["real_forms"]:
                 form_to_seed[form] = row["seed"]
 
-        if pmi_variant == PMI_VARIANT_CDS:
-            cds_seed_df = compute_cds_smoothed_seed_df(resolved_df, beta=cds_beta)
-            form_df = np.array([cds_seed_df[form_to_seed[form]] for form in real_forms], dtype=float)
-        else:
-            form_df = raw_form_df
-
         pmi_forms = compute_pmi(
             co_df_forms,
             candidate_df_array,
-            form_df,
+            raw_form_df,
             total_units,
-            variant=pmi_variant,
-            k=pmi_k,
             alpha=smoothing_alpha,
         )
 
@@ -509,121 +440,5 @@ def compute_multi_category_pmi(
         "seed_overlap_df": seed_overlap_df,
         "term_to_seed_categories": term_to_seed_categories,
         "categories": categories,
-        "pmi_variant": pmi_variant,
         "context_window": context_window,
     }
-
-
-def aggregate_category_labels(
-    result: dict,
-    min_seed_matches: int = 1,
-    z_threshold: float = LABEL_Z_THRESHOLD,
-    min_candidate_unit_df: int | None = None,
-    center_on_candidate_mean: bool = True,
-) -> pd.DataFrame:
-    """Ap dung 1 bo nguong (min_seed_matches, z_threshold, min_candidate_unit_df)
-    len ket qua PMI da tinh san trong `result` (tu compute_multi_category_pmi).
-    Tach rieng khoi buoc tinh PMI (nang nhat) de thu nhieu nguong khac nhau
-    nhanh, khong can build lai ma tran / tinh lai PMI moi lan doi nguong.
-
-    `min_candidate_unit_df`: loai candidate qua hiem O CAP DON VI DANG DUNG
-    (candidate_unit_df, xem compute_multi_category_pmi) truoc khi tinh z-score.
-    Da kiem chung: chi loc theo df KHONG du de sua loi "1 candidate bi gan ca
-    7 category" - ty le nay hau nhu khong doi du nang nguong (xem
-    center_on_candidate_mean ben duoi de biet nguyen nhan that).
-
-    `center_on_candidate_mean`: (mac dinh BAT) voi add_alpha, so hang
-    1/(candidate_df+alpha) trong cong thuc PMI la CHUNG cho ca 7 category cua
-    CUNG 1 candidate - candidate cang hiem thi diem RAW cang bi doi len DEU o
-    moi category, khong lien quan gi den sentiment that. O ban PMI nhi phan
-    (so_score = mean(PMI_pos) - mean(PMI_neg)) so hang nay tu trieu tieu vi bi
-    tru; ban da category doc lap khong co phep tru nao nen bias lo ra. Da kiem
-    chung tren du lieu that: tuong quan giua candidate_unit_df va diem RAW
-    trung binh 7 category la -0,56 (rat manh). Cach sua: voi tung candidate,
-    tru di DIEM TRUNG BINH CUA CHINH NO tren ca 7 category truoc khi chuan hoa
-    z-score - mo phong dung phep tru da hoat dong tot o ban nhi phan, ap dung
-    cho N category thay vi 2. Sau khi ap dung, candidate bi gan ca 7 (hoac 6)
-    category cung luc bien mat hoan toan tren du lieu that (tu 20.712 candidate
-    xuong 0).
-    """
-    candidate_terms_df = result["candidate_terms_df"]
-    categories = result["categories"]
-
-    if min_candidate_unit_df is not None:
-        keep_mask = (candidate_terms_df["candidate_unit_df"] >= min_candidate_unit_df).to_numpy()
-    else:
-        keep_mask = np.ones(len(candidate_terms_df), dtype=bool)
-
-    out = candidate_terms_df.loc[keep_mask].reset_index(drop=True)
-
-    # Pass 1: tinh raw_score (+ matches) cho ca 7 category truoc, chua chuan
-    # hoa z-score - can du 7 cot nay cung luc de tinh diem trung bien theo
-    # HANG (theo candidate) o buoc center_on_candidate_mean ben duoi.
-    raw_scores: dict[str, np.ndarray] = {}
-    match_counts: dict[str, np.ndarray] = {}
-    for category in categories:
-        pmi_by_seed_full, unique_seeds = result["category_pmi_by_seed"][category]
-        pmi_by_seed = pmi_by_seed_full[keep_mask]
-        if pmi_by_seed.shape[1] == 0:
-            raw_scores[category] = np.full(len(out), np.nan)
-            match_counts[category] = np.zeros(len(out), dtype=int)
-            continue
-
-        matches = np.sum(~np.isnan(pmi_by_seed), axis=1)
-        with np.errstate(invalid="ignore"):
-            raw_mean = np.nanmean(pmi_by_seed, axis=1)
-        raw_scores[category] = np.where(matches >= min_seed_matches, raw_mean, np.nan)
-        match_counts[category] = matches
-
-    if center_on_candidate_mean:
-        score_matrix = np.column_stack([raw_scores[c] for c in categories])
-        with np.errstate(invalid="ignore"):
-            row_mean = np.nanmean(score_matrix, axis=1)
-    else:
-        row_mean = np.zeros(len(out))
-
-    # Pass 2: tru di diem trung binh hang (neu bat), roi moi chuan hoa
-    # z-score TREN COT (qua toan bo candidate) cho tung category.
-    for category in categories:
-        score = raw_scores[category] - row_mean
-
-        valid = score[~np.isnan(score)]
-        mean = valid.mean() if len(valid) else 0.0
-        std = valid.std(ddof=0) if len(valid) > 1 else 0.0
-        if std == 0 or np.isnan(std):
-            z = np.zeros_like(score)
-        else:
-            z = (score - mean) / std
-        z = np.where(np.isnan(score), np.nan, z)
-
-        out[f"{category}_score"] = raw_scores[category]
-        out[f"{category}_score_centered"] = score
-        out[f"{category}_z"] = z
-        out[f"{category}_matches"] = match_counts[category]
-        out[f"{category}_flag"] = z >= z_threshold
-
-    # candidate trung voi seed cua 1 hay nhieu danh muc: gan flag=True thang
-    # cho danh muc do (khong qua PMI), cac danh muc khac de NaN/False vi
-    # khong tinh PMI cho nhom nay.
-    seed_overlap_df = result["seed_overlap_df"]
-    term_to_seed_categories = result["term_to_seed_categories"]
-    if not seed_overlap_df.empty:
-        overlap_rows = seed_overlap_df.copy()
-        for category in categories:
-            overlap_rows[f"{category}_score"] = np.nan
-            overlap_rows[f"{category}_z"] = np.nan
-            overlap_rows[f"{category}_matches"] = 0
-            overlap_rows[f"{category}_flag"] = False
-        for idx, term in overlap_rows["term"].items():
-            for category in term_to_seed_categories.get(term, []):
-                overlap_rows.at[idx, f"{category}_flag"] = True
-        overlap_rows["label_source"] = "seed_direct"
-        out["label_source"] = "pmi"
-        out = pd.concat([out, overlap_rows], ignore_index=True)
-    else:
-        out["label_source"] = "pmi"
-
-    out["pmi_confidence"] = np.where(
-        out["df"].ge(PMI_CONFIDENCE_MIN_DF), "reliable", "low"
-    )
-    return out

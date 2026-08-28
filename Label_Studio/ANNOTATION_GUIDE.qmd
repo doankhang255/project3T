@@ -1,49 +1,65 @@
 ---
 title: "Quy trình gán nhãn cảm xúc cho bài báo tài chính (article sentiment)"
+subtitle: "Ground Truth Sentiment Annotation Workflow"
+author: "Doãn Khang"
 lang: vi
 format:
   pdf:
     documentclass: article
     geometry: margin=1in
-    mainfont: "Noto Sans"
+    mainfont: "Times New Roman"
     pdf-engine: xelatex
-    toc: false
+    toc: true
     colorlinks: true
 ---
 
-Tài liệu này hướng dẫn người tham gia gán nhãn (annotator) trên hệ thống questlab
+{{< pagebreak >}}
 
+## 1. Mô tả tổng quan quy trình gán nhãn dữ liệu
 
-## 1. Mục tiêu
+Bài toán chỉ có 1 bước: gán nhãn cảm xúc (Positive/Negative/Neutral) trực
+tiếp cho từng bài báo.
+
+### 1.1 Luồng dữ liệu
+
+![](img/luong_du_lieu.png){fig-align="center" width=55%}
+
+### 1.2 Thông tin project
+
+| Thành phần | Mô tả |
+|---|---|
+| Tên project | `ground_truth_sentiment` |
+| Nhãn cần gán | `Positive` / `Negative` / `Neutral` + `Confidence (0–100)` |
+| Chỉ tiêu số lượng | 1,000–5,000 bài gán nhãn ground truth |
+| Output | Export JSON/CSV |
+
+## 2. Mục tiêu
 
 Mục tiêu của việc gán nhãn `ground_truth_sentiment`:
 
-1. Tạo **tập nhãn chuẩn do con người xác nhận** để đo độ chính xác thực tế
-
+1. Tạo **tập nhãn chuẩn do con người xác nhận** để đo độ chính xác thực tế của model.
 2. Xa hơn: cải thiện độ tin cậy của **Equity Sentiment Index**, phục vụ phân
    tích tương quan/hồi quy với chỉ số VN-Index.
 3. Chỉ tiêu số lượng: **1,000–5,000 bài** được gán nhãn ground truth.
 
-## 2. Nhãn
+## 3. Nhãn (Labels)
 
-Mỗi task hiển thị **nội dung bài báo** và Annotator cần chọn:
+Mỗi task hiển thị **nội dung bài báo** và Annotator cần chọn một trong ba nhãn:
 
-- **Positive** — tin tích cực cho doanh nghiệp/cổ phiếu (tăng trưởng, lãi
-  tăng, cổ đông lớn mua vào, vượt kế hoạch, ký được hợp đồng lớn...).
-- **Negative** — tin tiêu cực (thua lỗ, giảm doanh thu/lợi nhuận, bán tháo,
-  không hoàn thành kế hoạch, bị phạt/kiện tụng...).
-- **Neutral** — tin trung tính, chỉ mang tính thông báo/thống kê, không rõ
-  tích cực hay tiêu cực (VD: công bố lịch họp ĐHĐCĐ, báo cáo định kỳ không
-  có biến động đáng kể).
+| Nhãn | Mô tả |
+|---|---|
+| **Positive** | Tin tích cực cho doanh nghiệp/cổ phiếu (tăng trưởng, lãi tăng, cổ đông lớn mua vào, vượt kế hoạch, ký được hợp đồng lớn...) |
+| **Negative** | Tin tiêu cực (thua lỗ, giảm doanh thu/lợi nhuận, bán tháo, không hoàn thành kế hoạch, bị phạt/kiện tụng...) |
+| **Neutral** | Tin trung tính, chỉ mang tính thông báo/thống kê, không rõ tích cực hay tiêu cực (VD: công bố lịch họp ĐHĐCĐ, báo cáo định kỳ không có biến động đáng kể) |
 
 Kèm theo mỗi nhãn là **Độ tin cậy (Confidence, 0–100)** — mức độ chắc chắn
 của annotator với lựa chọn của mình (mặc định 80, kéo thanh trượt để điều
 chỉnh).
 
-## 3. Quy trình Annotation
+## 4. Quy trình Annotation
 
 ### Cách vào:
-1. Truy cập https://project3t-production.up.railway.app/
+1. Truy cập **QuestLab**
 2. Đăng nhập bằng tài khoản được cấp.
 3. Chọn project **ground_truth_sentiment**.
 4. Bấm **Label All Tasks** để bắt đầu.
@@ -76,22 +92,7 @@ chỉnh).
 
 {{< pagebreak >}}
 
-```{mermaid}
-%%| fig-height: 6.5
-flowchart TD
-    A["Đăng nhập → chọn project<br/>ground_truth_sentiment → Label All Tasks"] --> B["Đọc bài báo +<br/>xem nhãn model dự đoán (tham khảo)"]
-    B --> C{"Hợp lệ và xác định được<br/>đối tượng đánh giá rõ ràng?"}
-    C -- "Không" --> SKIP["Skip"]
-    C -- Có --> D{"Xác định cảm xúc"}
-    D -- "Tin tốt nổi bật hơn" --> E["Positive"]
-    D -- "Tin xấu nổi bật hơn" --> F["Negative"]
-    D -- "Không rõ" --> G["Neutral"]
-    E --> H["Kéo Confidence 0-100<br/>+ Submit"]
-    F --> H
-    G --> H
-    SKIP --> I["Task tiếp theo<br/>(lặp lại từ bước đọc bài báo)"]
-    H --> I
-```
+![](img/so_do_quy_trinh.png){fig-align="center" width=65%}
 
 *(Không hợp lệ = lỗi/không liên quan/tin trái chiều không rõ trọng tâm — xem
 chi tiết ở phần "Nguyên tắc khi phân vân" phía trên. Quy trình lặp lại cho
@@ -112,7 +113,55 @@ số lần bị Skip:
   mơ hồ, hoặc không đủ thông tin) → **loại bỏ hẳn khỏi tập ground truth khi
   xuất file**, không tính vào kết quả cuối cùng.
 
-## 4. Tiêu chí Quality Review
+## 5. Mẫu gán nhãn (Labeling Config)
+
+Giao diện gán nhãn sử dụng **Choices** để chọn nhãn cảm xúc và **Number** (slider) để
+kéo thả độ tin cậy (0–100, mặc định 80). Cấu hình dưới đây mang tính **tham khảo** —
+nếu khác với giao diện thực tế trên Label Studio, cấu hình trong **Project Settings ▸
+Labeling Interface** là chuẩn.
+
+```xml
+<View>
+    <Header value="Bài báo"/>
+
+    <Text
+        name="content"
+        value="$content"/>
+
+    <Header value="Chọn cảm xúc"/>
+
+    <Choices
+        name="sentiment"
+        toName="content"
+        choice="single"
+        required="true">
+
+        <Choice value="Positive"/>
+        <Choice value="Negative"/>
+        <Choice value="Neutral"/>
+
+    </Choices>
+
+    <Header value="Độ tin cậy (Confidence)"/>
+
+    <Text
+        name="confidence_desc"
+        value="0 = Đoán mò | 50 = Khá chắc chắn | 100 = Hoàn toàn chắc chắn"/>
+
+    <Number
+        name="confidence"
+        toName="content"
+        min="0"
+        max="100"
+        step="5"
+        defaultValue="80"
+        slider="true"
+        required="true"/>
+
+</View>
+```
+
+## 6. Tiêu chí Quality Review
 
 > Đây là quy trình **đề xuất** (hiện repo chưa có sẵn quy trình QA tự động),
 > áp dụng khi số lượng annotator > 1 hoặc khi cần kiểm tra chất lượng trước
@@ -124,8 +173,6 @@ số lần bị Skip:
 - **Ưu tiên review các trường hợp**:
   - Độ tin cậy (confidence) thấp (< 50) — annotator tự đánh giá là không
     chắc chắn.
-  - Nhãn con người **khác hoàn toàn** so với nhãn model dự đoán (Positive ↔
-    Negative) — cần xác nhận đây là model sai hay annotator gán nhầm.
   - Task bị Skip nhiều lần liên tiếp bởi nhiều annotator khác nhau — có thể
     do dữ liệu lỗi/nhiễu, cần loại khỏi tập.
 - **Theo dõi theo từng annotator**:
@@ -140,3 +187,26 @@ số lần bị Skip:
 - **Tiêu chí chấp nhận trước khi dùng để train model**: tỷ lệ Skip toàn bộ
   project không vượt quá ngưỡng đặt trước (VD: 20%), và đã spot-check xong
   toàn bộ các trường hợp bị flag ở trên.
+
+## 7. Checklist quy trình
+
+### 7.1 Trước khi bắt đầu
+
+- Task đã được import đầy đủ vào project **ground_truth_sentiment**.
+- Labeling Interface đã cấu hình đúng (nhãn Positive/Negative/Neutral + Confidence slider).
+- Annotator đã được cấp tài khoản đăng nhập.
+- Annotator đã đọc và hiểu rõ **Mục 3 (Nhãn)** và phần **"Nguyên tắc khi phân vân"** ở Mục 4.
+- Đã thống nhất chỉ tiêu số lượng bài và deadline (nếu có) với annotator.
+
+### 7.2 Trong quá trình annotation
+
+- Theo dõi tiến độ qua QuestLab dashboard (số task đã Submit / còn lại / Skip).
+- Định kỳ spot-check theo tiêu chí ở **Mục 6**.
+- Giải đáp thắc mắc của annotator với các bài khó xác định (tin trái chiều, nhiều doanh nghiệp...).
+
+### 7.3 Sau khi annotation
+
+- Export dữ liệu đã gán nhãn (JSON/CSV) từ QuestLab.
+- Loại bỏ các task bị Skip bởi cả 2 annotator, theo quy tắc ở phần **"Xử lý task bị Skip"**.
+- Spot-check/QA toàn bộ trường hợp bị flag theo **Mục 6** trước khi coi là ground truth chính thức.
+- Dùng tập ground truth để đo độ chính xác của model hiện tại và/hoặc cải thiện **Equity Sentiment Index**.

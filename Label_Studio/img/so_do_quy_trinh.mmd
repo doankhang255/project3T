@@ -1,0 +1,13 @@
+flowchart TD
+    A["Đăng nhập → chọn project<br/>ground_truth_sentiment → Label All Tasks"] --> B["Đọc nội dung bài báo"]
+    B --> C{"Hợp lệ và xác định được<br/>đối tượng đánh giá rõ ràng?"}
+    C -- "Không" --> SKIP["Skip"]
+    C -- Có --> D{"Xác định cảm xúc"}
+    D -- "Tin tốt nổi bật hơn" --> E["Positive"]
+    D -- "Tin xấu nổi bật hơn" --> F["Negative"]
+    D -- "Không rõ" --> G["Neutral"]
+    E --> H["Kéo Confidence 0-100<br/>+ Submit"]
+    F --> H
+    G --> H
+    SKIP --> I["Task tiếp theo<br/>(lặp lại từ bước đọc bài báo)"]
+    H --> I

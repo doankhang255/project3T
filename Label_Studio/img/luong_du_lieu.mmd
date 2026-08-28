@@ -1,0 +1,5 @@
+flowchart TD
+    A["Tin tức tài chính<br/>(đã xử lý)"] --> C["Import vào Label Studio<br/>(kèm nhãn dự đoán tham khảo)"]
+    C --> D["Annotator gán nhãn<br/>ground truth"]
+    D --> E["Export JSON/CSV"]
+    E --> F["Đánh giá & cải thiện<br/>Sentiment Index"]
