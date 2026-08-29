@@ -179,7 +179,14 @@ Labeling Interface** là chuẩn.
   - Tỷ lệ Skip quá cao (VD: > 30%) so với mặt bằng chung → xem lại có phải
     do task thực sự khó, hay annotator chưa hiểu rõ tiêu chí.
   - Tốc độ gán nhãn bất thường (quá nhanh so với độ dài bài báo) → khả năng
-    gán ẩu, cần review lại mẫu ngẫu nhiên của người đó.
+    gán ẩu, cần review lại mẫu ngẫu nhiên của người đó. Căn cứ định lượng là
+    trường **`lead_time`** — số giây Label Studio **tự động ghi lại cho mỗi
+    annotation**, tính từ lúc task hiện ra đến lúc annotator bấm Submit. Quy
+    ước: annotation có `lead_time` dưới ~20 giây (với bài báo dài vài đoạn)
+    bị coi là gán ẩu và đưa vào diện review; nếu nhãn sai thì loại bỏ và
+    không tính công lượt đó. Lưu ý `lead_time` có thể bị thổi phồng nếu
+    annotator mở task rồi để đó làm việc khác, nên chỉ dùng làm tín hiệu sàng
+    lọc, không phải bằng chứng tuyệt đối.
 - **Đo độ đồng thuận (Inter-Annotator Agreement)**: khi có ≥ 2 annotator,
   bật `overlap` cho một tập con nhỏ (VD: 5–10% task) để cùng gán nhãn độc
   lập, sau đó tính tỷ lệ đồng thuận (agreement rate) — làm căn cứ đánh giá
@@ -210,3 +217,64 @@ Labeling Interface** là chuẩn.
 - Loại bỏ các task bị Skip bởi cả 2 annotator, theo quy tắc ở phần **"Xử lý task bị Skip"**.
 - Spot-check/QA toàn bộ trường hợp bị flag theo **Mục 6** trước khi coi là ground truth chính thức.
 - Dùng tập ground truth để đo độ chính xác của model hiện tại và/hoặc cải thiện **Equity Sentiment Index**.
+
+{{< pagebreak >}}
+
+## 8. Chi phí và thời gian dự kiến (tham khảo)
+
+Ước tính cho mục tiêu **5.000 bài**, mỗi bài được **2 annotator** gán độc lập.
+
+### 8.1 Giả định
+
+| Tham số | Giá trị |
+|---|---|
+| Số bài | 5.000 |
+| Số annotator / bài | 2 |
+| Tổng số lượt gán | 10.000 |
+| Đơn giá | 300đ / lượt |
+| Tốc độ giả định | 30 giây / lượt |
+| Số annotator làm song song | 2 |
+
+### 8.2 Chi phí
+
+| Khoản | Cách tính | Tiền |
+|---|---|---|
+| Gán nhãn chính | 10.000 lượt × 300đ | 3.000.000đ |
+| Dự phòng Skip + requeue (~10%) | ~1.000 lượt × 300đ | ~300.000đ |
+| Re-label các ca bị QA loại (~5%) | ~500 lượt × 300đ | ~150.000đ |
+| **Tổng nên chuẩn bị** | | **~3,3–3,5 triệu đồng** |
+
+3 triệu là con số "sạch"; thực tế luôn phát sinh lượt lặp lại do Skip và QA.
+
+### 8.3 Thời gian
+
+Ở tốc độ 30 giây/lượt:
+
+- Tổng công: 10.000 lượt × 30 giây = **5.000 phút ≈ 83 giờ**.
+- Chia cho 2 annotator làm song song: **~42 giờ / người**.
+
+| Số giờ làm / ngày / người | Số ngày hoàn thành (chưa tính hao phí) |
+|---|---|
+| 4 giờ | ~11 ngày |
+| 5 giờ | ~8–9 ngày |
+| 6 giờ | ~7 ngày |
+| 8 giờ (toàn thời gian) | ~5 ngày |
+
+Cộng thêm ~15–20% cho Skip, nghỉ giải lao và hỏi đáp các ca khó:
+
+- Bán thời gian (~5 giờ/ngày/người): **khoảng 2 tuần**.
+- Toàn thời gian (~8 giờ/ngày/người): **khoảng 1–1,5 tuần**.
+
+### 8.4 Thu nhập theo giờ của annotator
+
+Ở tốc độ 30 giây/lượt → 120 lượt/giờ → **36.000đ/giờ/người** (đơn giá là 300đ
+mỗi *lượt*, không phải mỗi giờ).
+
+Nếu tốc độ thực tế chậm hơn thì thu nhập giờ giảm theo: 1 phút/lượt →
+18.000đ/giờ; 2 phút/lượt → 9.000đ/giờ.
+
+> **Lưu ý:** 30 giây/lượt là rất nhanh cho một bài báo dài vài đoạn — mức này
+> chỉ đủ để đọc lướt. Nếu muốn annotator đọc kỹ, tốc độ thực tế sẽ gần
+> 1 phút/lượt hơn. Ngoài ra tốc độ kế hoạch 30 giây khá sát ngưỡng cảnh báo
+> `lead_time` ~20 giây ở Mục 6, nên cần theo dõi chặt phân bố `lead_time` để
+> phân biệt "làm nhanh nhưng vẫn đọc" với "gán ẩu".

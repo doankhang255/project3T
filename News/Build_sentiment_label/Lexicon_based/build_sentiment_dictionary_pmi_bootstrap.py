@@ -11,8 +11,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# build_sentiment_dictionary_pmi.py chi con cung cap PMI add-alpha (bien the
-# duy nhat con dung) - file nay chi import cac ham/hang so DUNG CHUNG.
 from News.Build_sentiment_label.Lexicon_based.build_sentiment_dictionary_pmi import (
     CATEGORY_NAMES,
     FINAL_SEED_DIR,
@@ -25,47 +23,24 @@ from News.Build_sentiment_label.Lexicon_based.build_sentiment_dictionary_pmi imp
 BOOTSTRAP_DATA_DIR = LEXICON_DATA_DIR / "bootstrap"
 PROVENANCE_PATH = BOOTSTRAP_DATA_DIR / "seed_provenance.csv"
 
-# Moi vong bootstrap co 1 thu muc seed rieng (seed_round1, seed_round2, ...)
-# nam canh final_seed trong Seed_set_Prepare - final_seed luon giu nguyen la
-# seed GOC, khong bao gio bi ghi de boi ket qua bootstrap.
 SEED_SET_PREPARE_DIR = FINAL_SEED_DIR.parent
 
 
 def resolve_seed_round_dir(round_number: int) -> Path:
-    """Thu muc seed LA KET QUA cua vong `round_number` (seed goc + moi term
-    duyet tinh den het vong do)."""
     return SEED_SET_PREPARE_DIR / f"seed_round{round_number}"
 
 
 def resolve_seed_source_dir(round_number: int) -> Path:
-    """Thu muc seed dung LAM DAU VAO khi tinh PMI hoac ingest cho vong
-    `round_number`: la ket qua cua vong ngay truoc do (seed_round{N-1}), hoac
-    final_seed goc neu day la vong dau tien (round_number <= 1)."""
     if round_number <= 1:
         return FINAL_SEED_DIR
     return resolve_seed_round_dir(round_number - 1)
 
-# Top 3% candidate (theo diem centered) moi category se duoc dua vao file
-# review moi vong.
 TOP_PERCENTILE_DEFAULT = 0.03
 
-# Cac gia tri duoc coi la "duyet" trong cot approve cua file review (khong
-# phan biet hoa/thuong, tu dong strip khoang trang).
 APPROVE_TRUE_VALUES = {"1", "x", "yes", "y", "true", "approve", "approved", "ok", "co", "duyet"}
 
 
 def wrap_terms_preserving_boundaries(terms: list[str], width: int = 79) -> list[str]:
-    """Xep cac term (VD "quyet_dinh dinh_chi", nhieu tu cach nhau boi dau
-    cach that) thanh cac dong ~width ky tu, kieu nhu textwrap, nhung KHONG
-    BAO GIO xuong dong o giua 1 term - chi xuong dong giua 2 term voi nhau.
-
-    Ly do khong dung textwrap.wrap truc tiep tren chuoi da noi dau phay: no
-    chi biet ngat o khoang trang, khong biet ranh gioi that su la dau phay,
-    nen co the cat doi mot term nhieu tu ngay giua 2 tu cua no. Khi doc lai
-    bang load_seed_words (tach theo ca dau phay LAN xuong dong), nua dau va
-    nua sau cua term bi cat se tro thanh 2 muc rieng biet - vua mat term
-    goc vua sinh ra muc trung lap voi term khac co san.
-    """
     lines: list[str] = []
     current = ""
     for term in terms:
@@ -86,34 +61,7 @@ def aggregate_category_labels_percentile(
     top_percentile: float = TOP_PERCENTILE_DEFAULT,
     min_candidate_unit_st: int | None = None,
 ) -> pd.DataFrame:
-    """Xep hang candidate theo PHAN TRAM (percentile) diem centered, lay dung
-    top_percentile% candidate moi category bat ke hinh dang phan phoi diem.
 
-    Dung centering 2 CHIEU (row + column, kieu two-way ANOVA):
-    - Tru row_mean (trung binh 7 category CUNG 1 candidate): khu bias
-      "candidate hiem bi doi diem deu tren ca 7 category" (xem giai thich
-      chi tiet trong build_sentiment_dictionary_pmi.py). Buoc nay BAT BUOC
-      phai giu - da kiem chung thuc te: bo buoc nay thi co toi 105 candidate
-      bi flag=True o CA 7 category cung luc (dung raw score de xep percentile
-      truc tiep), vi row_mean khac nhau theo TUNG candidate nen no thuc su
-      doi thu hang ben trong 1 category.
-    - Tru them col_mean (trung binh 1 category qua TOAN BO candidate, cong
-      lai grand_mean): khu bias "category nay co PMI trung binh cao/thap hon
-      hang loat category khac mot cach he thong" (VD weak_modal luon +1.15,
-      strong_modal luon -1.33 so voi trung binh 7 category, du category
-      khong lien quan gi den candidate cu the). Buoc nay KHONG doi candidate
-      nao duoc chon top X% (da kiem chung: 100% trung khop danh sach so voi
-      khi chi dung 1 chieu), vi day la 1 hang so cong them GIONG NHAU cho
-      moi candidate trong cung 1 category - khong doi thu hang trong noi bo
-      category. Chi giup gia tri score_centered so sanh duoc GIUA cac
-      category voi nhau (vd danh gia candidate nao "litigious" hon la
-      "constraining" mot cach cong bang), thay vi chi so sanh duoc trong
-      noi bo 1 category nhu truoc.
-
-    `min_candidate_unit_st`: loc candidate qua hiem O CAP CAU truoc khi xep
-    hang (van nen dung, vi ly do khac voi 2 bias tren - candidate hiem cho
-    diem tung category kem on dinh hon, xem hoi thoai truoc).
-    """
     candidate_terms_df = result["candidate_terms_df"]
 
     if min_candidate_unit_st is not None:
@@ -164,15 +112,6 @@ def export_review_batch(
     categories: list[str] = CATEGORY_NAMES,
     output_dir: Path = BOOTSTRAP_DATA_DIR,
 ) -> Path:
-    """Xuat toan bo candidate duoc chon (flag=True) o MOI category ra 1 file
-    CSV de review thu cong. Moi dong la 1 cap (term, category) - 1 term co
-    the xuat hien nhieu dong neu duoc chon o nhieu category cung luc (hop le,
-    xem hoi thoai truoc ve multi-label).
-
-    Cot "approve" de trong san - nguoi review dien 1 trong cac gia tri
-    APPROVE_TRUE_VALUES (VD "x") de duyet, de trong = tu choi/bo qua.
-    Cot "notes" de trong, danh cho ghi chu tuy y khi review.
-    """
     rows = []
     for category in categories:
         flagged = labeled_df.loc[labeled_df[f"{category}_flag"]]
@@ -214,15 +153,7 @@ def ingest_review_batch(
     output_seed_dir: Path | None = None,
     provenance_path: Path = PROVENANCE_PATH,
 ) -> pd.DataFrame:
-    """Doc lai file review (da duoc dien cot 'approve'), gop voi seed dau vao
-    (source_seed_dir - mac dinh la ket qua vong truoc, hoac final_seed neu la
-    vong 1) thanh 1 bo seed MOI, ghi ra output_seed_dir (mac dinh la thu muc
-    rieng seed_round{round_number} - KHONG BAO GIO ghi de len final_seed hay
-    len source_seed_dir). Ghi ca 7 danh muc du category do co term moi hay
-    khong, de moi thu muc seed_round{N} luon la 1 ban chup day du, doc lap,
-    khong phu thuoc thu muc vong truoc con ton tai hay khong. Ghi log vao
-    provenance de sau nay biet term nao them o vong nao, luc nao.
-    """
+
     if source_seed_dir is None:
         source_seed_dir = resolve_seed_source_dir(round_number)
     if output_seed_dir is None:
@@ -305,20 +236,7 @@ def run_export_round(
     smoothing_alpha: float = 1.0,
     export_categories: list[str] | None = None,
 ) -> Path:
-    """Chay 1 vong bootstrap - phan 'xuat file review'. Dung seed la KET QUA
-    cua vong truoc (seed_round{round_number-1}, hoac final_seed goc neu day
-    la vong 1 - xem resolve_seed_source_dir) de tinh PMI, roi xuat
-    top_percentile% candidate moi category ra file review_round{N}.csv.
 
-    `export_categories`: neu truyen vao (VD ["negative", "positive", ...]),
-    CHI xuat candidate cua nhung category nay ra file review - dung khi 1 vai
-    category da bao hoa (VD strong_modal/weak_modal ra rat it hoac 0 candidate
-    o vong truoc) va muon bo qua khong xuat lai o vong nay. Luu y: PMI va
-    2-chieu centering VAN duoc tinh tren DU CA 7 category nhu binh thuong
-    (khong doi) - chi buoc xuat file la bi loc bot, de khong pha vo co che
-    row-centering/col-centering da kiem chung (row_mean/col_mean can tinh
-    tren toan bo 7 category moi dung). Mac dinh (None) = xuat het 7 category.
-    """
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
