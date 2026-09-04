@@ -1,0 +1,227 @@
+---
+title: "Tóm tắt phương pháp Traditional ML "
+lang: vi
+format:
+  pdf:
+    pdf-engine: xelatex
+    documentclass: article
+    papersize: a4
+    fontsize: 12pt
+    mainfont: "Times New Roman"
+    linestretch: 1.3
+    toc: true
+    toc-title: "Mục lục"
+    toc-depth: 2
+    number-sections: false
+    colorlinks: true
+    linkcolor: black
+    urlcolor: blue
+    citecolor: black
+    geometry:
+      - top=2.5cm
+      - bottom=2.5cm
+      - left=3cm
+      - right=2cm
+---
+
+\newpage 
+
+# 1. Bối cảnh và vị trí của phương pháp
+
+Dự án đo sentiment tin tức chứng khoán Việt Nam rồi phân tích tác động lên
+VN-Index. Việc gán nhãn sentiment cấp bài (`positive` / `negative` / `neutral`)
+được làm theo **bốn hướng độc lập để so sánh**:
+
+1. Lexicon-based (từ điển + công thức) — baseline.
+2. **Traditional ML (TF-IDF + classifier) — nội dung tài liệu này.**
+3. Transfer Learning (fine-tune PhoBERT).
+4. PCA-based index (tổng hợp, ở tầng chỉ số).
+
+Traditional ML đóng vai **baseline có giám sát, giải thích được**: bag-of-words
++ TF-IDF + mô hình tuyến tính/cây, để đối chiếu công bằng với Lexicon và
+Transformer trên cùng một tập ground truth.
+
+# 2. Dữ liệu
+
+| | |
+|---|---|
+| Ground truth | **152 bài** gán nhãn tay trên Label Studio |
+| Phân bố nhãn | negative 49 (32%), neutral 68 (45%), positive 35 (23%) |
+
+# 3. Đặc trưng (features)
+
+## 3.1. N-gram + lọc từ vựng
+
+- N-gram **1--3** trên token tiếng Việt.
+- Lọc từ vựng (vocabulary):
+  - `min_df` **theo tỷ lệ** số tài liệu (`{1-gram: 2%, 2-gram: 1.3%, 3-gram: 1.3%}`,
+    sàn tối thiểu 2 tài liệu) 
+  - `max_df_ratio = 0.85` -- bỏ term xuất hiện hơn 85% số bài (quá phổ biến,
+    vô ích cho phân loại).
+  - Bỏ stopword tiếng Việt; bỏ token dạng số / shape lỗi.
+- Từ vựng thực tế: **1.468 term** (449 unigram / 630 bigram / 389 trigram) khi
+  fit trên toàn bộ 152 bài.
+
+## 3.2. Công thức TF-IDF
+
+Dùng đúng công thức trọng số của **Loughran & McDonald (2011)** cho văn bản
+tài chính:
+
+$$
+w_{i,j} \;=\;
+\frac{1 + \log(\mathrm{tf}_{i,j})}{1 + \log(a_j)}
+\;\cdot\;
+\log\!\frac{N}{\mathrm{df}_i}
+\qquad \text{nếu } \mathrm{tf}_{i,j} \ge 1
+$$
+
+- $\mathrm{tf}_{i,j}$: số lần term $i$ xuất hiện trong bài $j$; $\log$ giảm ảnh
+  hưởng của term lặp nhiều lần.
+- $a_j$: tổng số token (trong từ vựng) của bài $j$ -- chuẩn hoá độ dài, để bài
+  dài và bài ngắn so được với nhau.
+- $\log(N / \mathrm{df}_i)$: IDF -- term hiếm (df nhỏ) được coi trọng hơn, term
+  phổ biến bị hạ gần 0.
+
+# 4. Mô hình
+
+Bốn classifier chạy trên **cùng một quy trình đặc trưng**, để so sánh:
+
+| Model | Cấu hình |
+|---|---|
+| Logistic Regression | `C = 1`, `class_weight = balanced` |
+| Multinomial Naive Bayes | mặc định |
+| Random Forest | 300 cây, `class_weight = balanced` |
+| Linear SVM | `LinearSVC` + Platt calibration để có xác suất, `class_weight = balanced` |
+
+Tất cả dùng `class_weight = balanced` để bù lớp `positive` ít dữ liệu.
+
+Đầu ra mỗi bài: nhãn dự đoán + xác suất 3 lớp, và
+`sentiment_score_ml` $=$ P(positive) $-$ P(negative).
+
+# 5. Đánh giá -- điểm mấu chốt về phương pháp
+
+**5-fold stratified cross-validation** (mỗi fold giữ nguyên tỷ lệ 3 lớp).
+Không có test hold-out riêng vì 152 dòng quá ít; CV cho mỗi bài được dự đoán
+đúng một lần khi nó nằm ở fold validation, rồi gộp lại tính metric trên toàn
+bộ 152.
+
+**Không rò rỉ dữ liệu (data leakage).** Đây là điểm được xử lý kỹ:
+
+- Từ vựng, `df`, `idf` và bước chọn feature được **fit lại riêng trong từng
+  train-fold** (khoảng 121 bài), rồi mới `transform` lên fold validation.
+- Term chỉ xuất hiện trong fold validation thì không vào từ vựng, bị bỏ qua khi
+  transform (đúng như tình huống gặp bài mới ngoài đời).
+- `idf = log(n_train / df_train)`, mẫu số là số bài **train**, không dính
+  validation.
+- Một đường CV chung cho cả 4 model; `n_splits = min(5, số dòng lớp nhỏ nhất)`.
+
+**Chỉ số báo cáo.** Macro-F1 (chính), accuracy, precision/recall/F1 từng lớp,
+confusion matrix.
+
+# 6. Kết quả (5-fold CV, tokenizer VNCoreNLP)
+
+| Model | Macro F1 | Accuracy | F1 negative | F1 neutral | F1 positive |
+|---|--:|--:|--:|--:|--:|
+| **Random Forest** | **0.634** | 0.658 | 0.625 | 0.721 | 0.557 |
+| Naive Bayes | 0.605 | 0.632 | 0.673 | 0.686 | 0.455 |
+| Logistic Regression | 0.593 | 0.632 | 0.674 | 0.684 | 0.421 |
+| SVM | 0.562 | 0.638 | 0.667 | 0.716 | 0.304 |
+
+**Nhận xét.**
+
+- Random Forest ổn định nhất qua cả 3 lớp.
+- Lớp **`positive` yếu nhất** ở mọi model (F1 0.30--0.56). Ngoài lý do ít dữ
+  liệu (35 bài), đây còn là hiện tượng đã ghi nhận trong tài liệu: Loughran &
+  McDonald (2011), Tetlock (2007), Engelberg (2008) đều thấy **từ ngữ tích cực
+  trong tin tài chính ít giá trị thông tin** vì hay bị phủ định ("không hoàn
+  thành kế hoạch"). Nên yếu ở lớp positive **một phần là bản chất bài toán**.
+- Các con số dao động khoảng 0.02 macro-F1 giữa các lần chia fold khác nhau,
+  nên với 152 dòng **chưa kết luận chắc chắn model nào tốt hơn**.
+
+Một thí nghiệm khác em đã làm (để từ vựng gọn hơn: bỏ trigram + nâng `min_df`
+sàn) giảm từ vựng 50% nhưng macro-F1 gần như không đổi (trung bình +0.006),
+xác nhận vocab "rác" không phải nút thắt; **nút thắt là số lượng ground truth**.
+
+# 7. Các quyết định thiết kế và lý do
+
+| Quyết định | Lý do | Tham chiếu |
+|---|---|---|
+| Công thức TF-IDF $(1+\log tf)/(1+\log a_j) \times \log(N/df)$ | Chuẩn textual analysis tài chính, xử lý attenuation bias | Loughran & McDonald 2011, eq. (1) |
+| `max_df 0.85` + IDF | Giảm ảnh hưởng từ tần suất cao | LM 2011 |
+| TF-IDF + chọn feature fit **trong từng fold** | Tránh data leakage, điểm CV phản ánh đúng khả năng ngoài mẫu | Cawley & Talbot 2010 (chung về selection bias) |
+| 5-fold **stratified** CV, `class_weight=balanced` | Dữ liệu ít và mất cân bằng | chuẩn ML |
+| Chạy 4 model song song | So sánh, chưa cố định lựa chọn khi dữ liệu còn ít | -- |
+| `min_df` theo tỷ lệ | Ngưỡng tự co giãn khi ground truth lớn dần | -- |
+
+# 8. Hướng cải tiến khi có thêm ground truth
+
+Khi ground truth lên **vài trăm đến vài nghìn dòng** (và cân bằng hơn), dự kiến
+triển khai + đo lại theo thứ tự dưới. Các ý tưởng **bám sát tài liệu trong
+`REF/`**:
+
+**Ưu tiên 1 -- Đặc trưng từ điển tài chính + phủ định.**
+Ghép thêm các cột đếm hit theo 7 nhóm từ điển đã xây trong `Seed_set_Prepare`
+(negative / positive / uncertainty / litigious / strong-modal / weak-modal /
+constraining), cả dạng tỷ lệ thô lẫn tf-idf weighted; xử lý phủ định cho nhóm
+positive (cue trong 3 token trước).
+Căn cứ: *Loughran & McDonald (2011)* -- từ điển đa dụng phân loại sai khoảng
+74% từ tài chính; từ điển chuyên ngành giảm sai số. *Tetlock (2007)* -- nhóm
+Negative và Weak-modal là hai nhóm tải tín hiệu mạnh nhất.
+
+**Ưu tiên 2 -- Phương pháp đánh giá & mô hình.**
+Nested-CV tuning siêu tham số; đổi Naive Bayes sang ComplementNB (cho lớp mất
+cân bằng); ensemble trung bình xác suất 4 model; repeated stratified CV
+(5 lần x 10 fold) báo cáo mean và độ lệch chuẩn; kiểm định McNemar trước khi
+kết luận model thắng.
+Căn cứ: *Cawley & Talbot (2010)* (nested CV), *Rennie et al. (2003)*
+(ComplementNB), *Dietterich (1998)* (McNemar).
+
+**Ưu tiên 3 -- Làm sạch không gian đặc trưng.**
+N-gram giới hạn theo mẫu POS (part-of-speech / từ loại) mang sentiment, loại
+tên riêng; thay số / mã cổ phiếu / phần trăm bằng placeholder; chọn feature có
+giám sát (chi-square / Delta-IDF) trong fold; thêm đặc trưng SO-PMI cấp bài
+(tái dùng PMI đã tính ở nhánh Lexicon).
+Căn cứ: *Turney (2002)* -- trích cụm theo mẫu adjective/adverb, tránh proper
+noun, điểm bài = trung bình semantic orientation. *Yang & Pedersen (1997)* --
+chi-square / information gain. *Martineau & Finin (2009)* -- Delta TF-IDF.
+
+**Ưu tiên 4 -- Bán giám sát (không cần gán thêm tay).**
+Self-training / EM trên 126k bài chưa nhãn; hoặc mô hình nhãn kiểu Snorkel gộp
+rule lexicon + weak label PhoBERT; active learning nếu có gán thêm (gán bài
+uncertainty cao nhất thay vì ngẫu nhiên).
+Căn cứ: *Nigam et al. (2000)*, *Ratner et al. (2017)*, *Settles (2009)*.
+
+# 9. Tham khảo
+
+Trong `REF/`:
+
+- **Loughran, T. & McDonald, B. (2011).** "When Is a Liability Not a Liability?
+  Textual Analysis, Dictionaries, and 10-Ks." *Journal of Finance* 66(1).
+- **Turney, P. D. (2002).** "Thumbs Up or Thumbs Down? Semantic Orientation
+  Applied to Unsupervised Classification of Reviews." *ACL 2002*.
+- **Tetlock, P. C. (2007).** "Giving Content to Investor Sentiment: The Role of
+  Media in the Stock Market." *Journal of Finance* 62(3).
+- **Allen, D. E., McAleer, M. & Singh, A. K. (2015).** "Daily Market News
+  Sentiment and Stock Prices." *Tinbergen Institute Discussion Paper 15-090/III*.
+- Baker, M. & Wurgler, J. -- investor sentiment cross-section (bước xây chỉ số).
+
+Ngoài `REF/` (dùng cho phần cải tiến):
+
+- Yang, Y. & Pedersen, J. O. (1997). "A Comparative Study on Feature Selection
+  in Text Categorization." *ICML*.
+- Martineau, J. & Finin, T. (2009). "Delta TFIDF: An Improved Feature Space for
+  Sentiment Analysis." *ICWSM*.
+- Rennie, J. D. M. et al. (2003). "Tackling the Poor Assumptions of Naive Bayes
+  Text Classifiers." *ICML*.
+- Cawley, G. C. & Talbot, N. L. C. (2010). "On Over-fitting in Model Selection
+  and Subsequent Selection Bias in Performance Evaluation." *JMLR*.
+- Dietterich, T. G. (1998). "Approximate Statistical Tests for Comparing
+  Supervised Classification Learning Algorithms." *Neural Computation*.
+- Nigam, K. et al. (2000). "Text Classification from Labeled and Unlabeled
+  Documents using EM." *Machine Learning*.
+- Ratner, A. et al. (2017). "Snorkel: Rapid Training Data Creation with Weak
+  Supervision." *VLDB*.
+- Settles, B. (2009). "Active Learning Literature Survey." *Univ. Wisconsin
+  Tech Report*.
+- Frank, E. & Hall, M. (2001). "A Simple Approach to Ordinal Classification."
+  *ECML*.

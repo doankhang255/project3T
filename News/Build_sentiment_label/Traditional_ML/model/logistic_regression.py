@@ -11,20 +11,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
 from News.Build_sentiment_label.Traditional_ML.model.common import (
     DATA_DIR,
-    INPUT_CSR_NPZ_PATH,
-    MAX_FEATURES,
-    N_SPLITS,
     RANDOM_SEED,
     VALID_LABELS,
+    build_full_fit_features,
     build_prediction_output,
-    build_stratified_folds,
     compute_metrics,
     confusion_matrix,
     encode_labels,
-    load_inputs,
-    select_top_features,
+    load_ground_truth_frame,
+    run_cross_validation,
 )
 
 
@@ -37,7 +35,7 @@ LOGISTIC_C = 1.0
 MAX_ITER = 5000
 
 
-def build_base_logistic_regression(random_state: int) -> LogisticRegression:
+def build_estimator(random_state: int) -> LogisticRegression:
     return LogisticRegression(
         C=LOGISTIC_C,
         max_iter=MAX_ITER,
@@ -46,44 +44,13 @@ def build_base_logistic_regression(random_state: int) -> LogisticRegression:
     )
 
 
-def cross_validate_logistic_regression(
-    x: np.ndarray,
-    y: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    min_class_count = int(np.bincount(y, minlength=len(VALID_LABELS)).min())
-    n_splits = min(N_SPLITS, min_class_count)
-    if n_splits < 2:
-        raise ValueError("Each class needs at least 2 rows for cross-validation.")
-
-    probabilities = np.zeros((len(y), len(VALID_LABELS)), dtype=np.float64)
-    folds = build_stratified_folds(y, n_splits=n_splits)
-    all_indices = np.arange(len(y))
-
-    for fold_id, validation_indices in enumerate(folds, start=1):
-        train_mask = np.ones(len(y), dtype=bool)
-        train_mask[validation_indices] = False
-        train_indices = all_indices[train_mask]
-
-        model = build_base_logistic_regression(random_state=RANDOM_SEED + fold_id)
-        model.fit(x[train_indices], y[train_indices])
-        assert list(model.classes_) == list(range(len(VALID_LABELS)))
-        probabilities[validation_indices] = model.predict_proba(x[validation_indices])
-        print(
-            f"Fold {fold_id}/{n_splits}: "
-            f"train={len(train_indices)}, validation={len(validation_indices)}"
-        )
-
-    predictions = probabilities.argmax(axis=1)
-    return probabilities, predictions
-
-
 def build_top_features(
     x: np.ndarray,
     y: np.ndarray,
     vocabulary: pd.DataFrame,
     top_n: int = 40,
 ) -> pd.DataFrame:
-    model = build_base_logistic_regression(random_state=RANDOM_SEED + 999)
+    model = build_estimator(RANDOM_SEED + 999)
     model.fit(x, y)
     assert list(model.classes_) == list(range(len(VALID_LABELS)))
 
@@ -111,25 +78,20 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    x, document_index, vocabulary = load_inputs()
-    x_selected, selected_vocabulary, selected_indices = select_top_features(
-        x,
-        vocabulary,
-        max_features=MAX_FEATURES,
-    )
-    y = encode_labels(document_index["ground_truth_label"])
+    df = load_ground_truth_frame()
+    term_counts = build_document_term_counts(df)
+    y = encode_labels(df["ground_truth_label"])
 
     print("Model: Logistic Regression (scikit-learn)")
-    print("Input matrix:", INPUT_CSR_NPZ_PATH)
-    print("Documents:", x_selected.shape[0])
-    print("Original features:", x.shape[1])
-    print("Selected features:", x_selected.shape[1])
+    print("Documents:", len(df))
     print("Label counts:")
-    print(document_index["ground_truth_label"].value_counts().to_string())
+    print(df["ground_truth_label"].value_counts().to_string())
 
-    probabilities, predictions = cross_validate_logistic_regression(x_selected, y)
+    probabilities, predictions, fold_of_row = run_cross_validation(
+        build_estimator, term_counts, y
+    )
     metrics_df = compute_metrics(y, predictions)
-    prediction_df = build_prediction_output(document_index, probabilities, predictions)
+    prediction_df = build_prediction_output(df, probabilities, predictions, fold_of_row)
 
     confusion_df = pd.DataFrame(
         confusion_matrix(y, predictions),
@@ -137,16 +99,13 @@ def main() -> None:
         columns=[f"pred_{label}" for label in VALID_LABELS],
     ).reset_index(names="true_label")
 
-    top_features_df = build_top_features(x_selected, y, selected_vocabulary)
+    x_full, vocabulary_full = build_full_fit_features(term_counts)
+    top_features_df = build_top_features(x_full, y, vocabulary_full)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     metrics_df.to_csv(OUTPUT_METRICS_PATH, index=False, encoding="utf-8-sig")
     prediction_df.to_csv(OUTPUT_PREDICTIONS_PATH, index=False, encoding="utf-8-sig")
-    confusion_df.to_csv(
-        OUTPUT_CONFUSION_MATRIX_PATH,
-        index=False,
-        encoding="utf-8-sig",
-    )
+    confusion_df.to_csv(OUTPUT_CONFUSION_MATRIX_PATH, index=False, encoding="utf-8-sig")
     top_features_df.to_csv(OUTPUT_TOP_FEATURES_PATH, index=False, encoding="utf-8-sig")
 
     print("\nMetrics:")
@@ -157,7 +116,6 @@ def main() -> None:
     print("Output predictions:", OUTPUT_PREDICTIONS_PATH)
     print("Output confusion matrix:", OUTPUT_CONFUSION_MATRIX_PATH)
     print("Output top features:", OUTPUT_TOP_FEATURES_PATH)
-    print("Selected feature source ids:", selected_indices[:10].tolist(), "...")
 
 
 if __name__ == "__main__":

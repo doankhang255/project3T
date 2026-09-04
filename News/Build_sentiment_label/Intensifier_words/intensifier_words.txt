@@ -1,0 +1,22 @@
+# thu muc). TOM TAT: nhom 1-2 co can cu la chuong trinh Ngu van 6-7 (Bo Giao
+# duc va Dao tao) - nguon chinh thong nhung KHONG phai bai bao hoc thuat.
+# Nhom 3 la tu thong dung trong van phong bao chi/tai chinh, CHUA co nguon
+# ngon ngu hoc doc lap xac nhan - can nguoi review danh gia truoc khi dung.
+#
+# CHUA co he so nhan cu the (khac VADER co so -0.74/1.295 do thuc nghiem tren
+# nguoi danh gia tieng Anh) - phan he so se lam SAU khi co du lieu that de
+# hieu chinh, KHONG bia so tuy tien.
+
+# --- Nhom 1: Muc do THAP/VUA (giam nhe cuong do tu phia sau) ---
+hơi, khá, phần_nào, tương_đối, ít
+
+# --- Nhom 2: Muc do CAO (tang cuong do - chuan chuong trinh Ngu van 6-7) ---
+rất, quá, lắm, thật, thật_sự
+
+# --- Nhom 3: Muc do RAT CAO/TUYET DOI (tang cuong manh nhat) ---
+cực_kỳ, vô_cùng, hết_sức, tuyệt_đối, hoàn_toàn, đặc_biệt
+
+# --- Nhom 4: Tu thong dung trong van phong tai chinh - bao chi (rieng cho
+#     domain nay, CHUA co nguon ngon ngu hoc doc lap xac nhan) ---
+đáng_kể, nghiêm_trọng, mạnh_mẽ, sâu_sắc, rõ_rệt
+

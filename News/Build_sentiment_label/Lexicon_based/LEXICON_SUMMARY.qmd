@@ -1,0 +1,190 @@
+---
+title: "Tóm tắt phương pháp Lexicon-Based"
+lang: vi
+format:
+  pdf:
+    pdf-engine: xelatex
+    documentclass: article
+    papersize: a4
+    fontsize: 12pt
+    mainfont: "Times New Roman"
+    linestretch: 1.3
+    toc: true
+    toc-title: "Mục lục"
+    toc-depth: 2
+    number-sections: false
+    colorlinks: true
+    linkcolor: black
+    urlcolor: blue
+    citecolor: black
+    geometry:
+      - top=2.5cm
+      - bottom=2.5cm
+      - left=3cm
+      - right=2cm
+---
+
+{{< pagebreak >}}
+
+## 1. Xây dựng seed — bootstrap bán giám sát qua PMI (4 vòng)
+
+- **Seed gốc** được dịch từ bộ từ điển LM: 7 file, tổng ~410 từ, curate tay theo đúng 7
+  category LM.
+- **Biến thể PMI dùng: ADD-ALPHA PMI (Laplace smoothing)**
+  `PMI_add-alpha = log2( ((co_df+α)·N) / ((df_candidate+α)·(df_seed+α)) )`,
+  α=1.0.
+- **4 tầng tổng hợp điểm**: PMI(candidate, real_form) → max theo real_form
+  cùng 1 seed → mean theo mọi seed trong category (raw_score) →
+  **centering 2 chiều** (trừ row_mean theo candidate + trừ col_mean theo
+  category, cộng grand_mean) để khử 2 loại bias: (a) candidate hiếm bị PMI
+  thổi điểm đều trên mọi category, (b) category có PMI trung bình hệ thống
+  cao/thấp hơn category khác.
+- **Chọn ngưỡng theo percentile** (top 3%/category) để review đến khi bão hòa
+- **Quy trình theo vòng**: mỗi vòng xuất file kiểm tra manual review.
+- **Kết quả sau 4 vòng**: litigious 587 từ, negative 355,
+  uncertainty 358, positive 165, constraining 176,
+  weak_modal 48, strong_modal 40.
+
+
+# PHẦN 1 — Scoring: trọng số PMI + xử lý ngữ cảnh (`Scoring/`)
+
+## 2. Công thức trọng số — Cách 1 (PMI-based, biến thể ADD-ALPHA)
+
+`weight` = `score_centered`, điểm **add-alpha PMI** cho từ mở rộng, `1.0` cho từ seed
+gốc.
+
+## 3. Cơ chế xử lý ngữ cảnh khi chấm điểm bài báo (Negation + ranh giới mệnh đề + longest-match)
+
+- **Phủ định** (`negation_cue_words.txt`, nguồn học thuật: *"Function Words
+  of Negation in Vietnamese"*, Tạp chí Ngôn ngữ và Đời sống): quét ngược
+  tối đa 4 token trước mỗi từ match, đảo dấu nếu gặp cue-word phủ định. Đã
+  test 2/3/4/5/6 token — 4 là điểm bão hòa (≥4 cho kết quả giống hệt nhau).
+- **Chặn ranh giới mệnh đề** (`clause_boundary_words.txt`): corpus đã
+  tokenize **không còn dấu câu** (đã kiểm tra thực tế), nên dùng từ nối
+  tương phản ("nhưng", "tuy_nhiên", "mặc_dù"...) làm điểm dừng cứng khi quét
+  ngược tìm phủ định, tránh phủ định ở mệnh đề trước lan sang mệnh đề sau
+  (VD "mặc_dù lợi_nhuận giảm **nhưng** doanh_thu tăng mạnh").
+  ~0,6% số quyết định phủ định trên toàn corpus bị chặn
+  đúng.
+- **Greedy longest-match** (không chồng lấn): quét mỗi câu ưu tiên khớp
+  n-gram dài nhất trước, tránh đếm trùng vừa "hoạt_động" riêng lẻ vừa
+  "tạm_ngừng hoạt_động" chứa nó trong cùng câu.
+
+## 4. Công thức tổng & gán nhãn 3 lớp
+
+```
+S_category = ( Σᵢ weight(wᵢ) × sign(wᵢ) ) / N_total
+```
+`N_total` = tổng token bài báo (chuẩn hóa độ dài). `sign` = -1 nếu bị phủ
+định (mục 3), ngược lại +1.
+
+**Gán nhãn 3 lớp ("Cách 3")** — so sánh trực tiếp `positive_score` vs
+`negative_score`, không dùng ngưỡng đệm tùy tiện (đã thử thêm vùng đệm
+quanh 0, cải thiện không đáng kể/không nhất quán):
+```
+positive_score > negative_score  -> Positive
+positive_score < negative_score  -> Negative
+bằng nhau (kể cả 0-0)            -> Neutral
+```
+5 category còn lại (uncertainty, litigious, strong_modal, weak_modal,
+constraining) giữ điểm riêng, hiện **chưa đưa vào luật gán nhãn 3 lớp**.
+
+## 5. Kết quả Phần 1 (đối chiếu 152 bài ground truth thí điểm)
+
+| Ban đầu | 63,8% (macro-F1 nhích nhẹ) |
+| Sau khi đổi sang greedy longest-match | 61,2% |
+
+# PHẦN 2 — Scoring Intensity: trọng số nội tại kiểu VADER (`Scoring_Intensity/`)
+
+## 6. Công thức trọng số — Cách 2 (không dùng điểm tính được từ PMI)
+
+Cách 2 vẫn **gián tiếp thừa hưởng thứ tự ưu tiên** (final_seed > round1 >
+... > round4) từ PMI, dù không cộng thẳng con số PMI vào công thức.
+
+Vì tiếng Việt chưa có sẵn lexicon kiểu VADER/AFINN cho tài chính, xây dựng
+quy tắc tường minh (rule-based) gồm 2 lớp:
+
+- `base_weight` theo **vòng duyệt** (final_seed cao nhất → round4 thấp
+  nhất) — từ càng "gốc/trung tâm" trọng số càng cao.
+- `marker_adjustment`: +/- theo có chứa từ mang nghĩa cực đoan (VD
+  "tuyệt_đối", "phá_sản") hay nhẹ (VD "hơi", "tương_đối") hay không.
+- **Thêm hệ số nhân từ nhấn mạnh** (`Intensifier_words/`, có nguồn tham
+  khảo chương trình Ngữ văn 6-7 cho nhóm "rất/quá/lắm..."): "rất tăng
+  trưởng" được nhân hệ số lên so với "tăng trưởng" đứng một mình.
+- Đã **dò 125 tổ hợp hệ số** (base_weight × marker_delta × intensifier_scale)
+  trên 152 mẫu ground truth (không tạo file trung gian), áp cấu hình tốt
+  nhất rồi chạy lại qua **đúng pipeline chấm điểm chính thức** trên toàn bộ
+  126.576 bài để đối chiếu 
+
+**Công thức tổng**:
+```
+S_category = ( Σᵢ weight(wᵢ) × intensifier_multiplier(wᵢ) × sign(wᵢ) ) / N_total
+```
+`weight` và `intensifier_multiplier` là 2 điểm khác Phần 1; **phần còn lại
+(xử lý phủ định, ranh giới mệnh đề, longest-match, gán nhãn 3 lớp) dùng lại
+NGUYÊN cơ chế đã mô tả ở mục 3-4 Phần 1**, không xây riêng.
+
+## 7. Kết quả Phần 2 (đối chiếu 152 bài ground truth thí điểm)
+
+| Bước | Accuracy |
+|---|---:|
+| Cấu hình rule-based ban đầu | 61,8% |
+| **Sau khi dò 125 tổ hợp hệ số** | **63,2%** (đánh giá trên đúng 152 bài có nhãn, sau khi chạy qua pipeline chính thức) |
+
+**"Dò 125 tổ hợp hệ số" nghĩa là gì**: grid-search — thử toàn bộ tổ hợp
+thay vì đoán tay. 3 tham số của công thức, mỗi tham số 5 giá trị:
+`base_weight` (5 cách gán mức trọng số theo round), `marker_delta` ∈
+`[0.0, 0.5, 1.0, 1.5, 2.0]`, `intensifier_scale` ∈ `[0.0, 0.5, 1.0, 1.5,
+2.0]` → 5×5×5 = 125 tổ hợp. `tune_intensity_coefficients.py` chạy lần lượt
+cả 125 tổ hợp, mỗi tổ hợp chỉ chấm nhanh trên 152 bài ground truth (không
+quét toàn bộ corpus, không tạo file trung gian cho từng tổ hợp), so
+accuracy để chọn tổ hợp tốt nhất. Tổ hợp thắng: base_weight dốc hơn cấu
+hình gốc, `marker_delta=0.0` (tắt hẳn điều chỉnh marker — phát hiện bất
+ngờ), `intensifier_scale=1.0` (giữ nguyên).
+
+ 
+## 8. So sánh tổng hợp Phần 1 vs Phần 2
+
+| | Phần 1 (PMI) | Phần 2 (nội tại) |
+|---|---:|---:|
+| Accuracy tốt nhất hiện tại | 61,2%* | **63,2%** |
+
+*Phần 1 từng đạt 63,8% trước khi đổi sang longest-match 
+
+Phân phối nhãn dự đoán trên toàn bộ 126.576 bài của cả 2 phần hiện tương
+đối cân bằng (~37% Positive/17% Negative/46% Neutral), không lệch cực đoan
+về 1 phía.
+
+## 9. Liên hệ tài liệu tham khảo (REF)
+
+- **Loughran & McDonald (2011)**, *"When Is a Liability Not a Liability?
+  Textual Analysis, Dictionaries, and 10-Ks"*, JF — khung 7-category gốc,
+  đơn vị đo `count/N_total` (dùng ở cả Phần 1 và Phần 2).
+- **Tetlock (2007)**, *"Giving Content to Investor Sentiment"*, JF — cơ sở
+  cho việc dùng ngôn ngữ media để đo sentiment tác động thị trường.
+- **Baker & Wurgler (2006)**, *"Investor Sentiment and the Cross-Section of
+  Stock Returns"*, JF — bối cảnh ứng dụng investor sentiment.
+- **VADER** (Hutto & Gilbert) — ý tưởng trọng số nội tại theo từ + hệ số
+  nhấn mạnh/phủ định, áp dụng ở Phần 2.
+- **SentProp** (Hamilton, Clark, Leskovec, Jurafsky 2016) — hướng thay thế
+  PMI bằng embedding + label propagation, đã tìm hiểu, **chưa triển khai**
+  (cần train embedding riêng trên corpus, xem mục 10).
+
+## 10. Hạn chế đã biết & việc đang chờ
+
+1. **Đang chờ bộ ground truth đầy đủ hơn** để đánh giá chính thức — 152 bài
+   hiện tại chỉ là mẫu thí điểm, nhiều lần tinh chỉnh (margin, negation
+   window, hệ số Phần 2) có rủi ro overfit vào đúng mẫu nhỏ này, cần tập
+   lớn hơn để xác nhận các lựa chọn có tổng quát hóa tốt không.
+2. Phần 1 sau khi đổi sang longest-match bị giảm nhẹ so với bản khớp chồng
+   lấn cũ (63,8%→61,2%) — chưa rõ đây là nhiễu do mẫu nhỏ hay longest-match
+   thực sự kém hơn, cần dữ liệu lớn hơn để kết luận.
+3. 5 category còn lại (uncertainty/litigious/strong_modal/weak_modal/
+   constraining) chưa được đưa vào luật gán nhãn 3 lớp ở cả 2 phần — có thể
+   là tín hiệu bổ sung hữu ích nhưng chưa thử nghiệm.
+4. SentProp (embedding-based) chưa triển khai — hướng tiềm năng nếu Phần
+   1/2 hiện tại chưa đủ tốt khi có ground truth lớn.
+5. Các hệ số cụ thể ở Phần 2 (base_weight theo vòng, hệ số nhấn mạnh) là
+   quy tắc tự thiết kế + tinh chỉnh trên 152 mẫu, không phải do người/chuyên
+   gia chấm độc lập từng từ như VADER gốc — cần đánh giá lại khi có thêm dữ
+   liệu.

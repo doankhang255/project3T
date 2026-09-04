@@ -1,0 +1,49 @@
+EXPERIMENT - LEANER VOCABULARY vs BASELINE
+====================================================================
+
+Ground truth: 152 bai | 5-fold stratified CV | TF-IDF fit per-fold
+
+baseline : n-gram (1,3), min_df floor = 2   (= main pipeline)
+leaner   : n-gram (1,2), min_df floor = 3
+
+VOCAB (fit tren toan bo ground truth; moi fold model dung vocab train rieng)
+--------------------------------------------------------------------
+  baseline :  1468 term   (1gram=449, 2gram=630, 3gram=389)
+  leaner   :   736 term   (1gram=449, 2gram=287)
+  -> leaner cat 732 term (50%)
+
+MACRO F1 (5-fold CV)
+--------------------------------------------------------------------
+  model                   baseline    leaner    delta
+  random_forest              0.634     0.630   -0.004
+  naive_bayes                0.605     0.607   +0.002
+  logistic_regression        0.593     0.597   +0.004
+  svm                        0.562     0.585   +0.023
+
+ACCURACY (5-fold CV)
+--------------------------------------------------------------------
+  model                   baseline    leaner    delta
+  random_forest              0.658     0.651   -0.007
+  naive_bayes                0.632     0.645   +0.013
+  logistic_regression        0.632     0.625   -0.007
+  svm                        0.638     0.645   +0.007
+
+PER-CLASS F1
+--------------------------------------------------------------------
+  model               config          neg      neu      pos
+  random_forest       baseline      0.625    0.721    0.557
+  random_forest       leaner        0.645    0.708    0.537
+  naive_bayes         baseline      0.673    0.686    0.455
+  naive_bayes         leaner        0.680    0.707    0.433
+  logistic_regression baseline      0.674    0.684    0.421
+  logistic_regression leaner        0.695    0.667    0.431
+  svm                 baseline      0.667    0.716    0.304
+  svm                 leaner        0.644    0.727    0.385
+
+READ
+--------------------------------------------------------------------
+  Best baseline : random_forest macro F1 = 0.634
+  Best leaner   : random_forest macro F1 = 0.630
+  Mean macro-F1 delta (leaner - baseline), 4 models: +0.006
+
+  Luu y: 152 dong -> +/- 0.02 macro-F1 co the chi la nhieu CV, chua ket luan duoc.

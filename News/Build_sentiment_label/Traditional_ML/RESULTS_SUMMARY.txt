@@ -1,6 +1,8 @@
 TÓM TẮT KẾT QUẢ - TRADITIONAL ML (Sentiment Classification)
 ================================================================
 
+File này được sinh tự động bởi run_pipeline.py - không sửa tay.
+
 1. DỮ LIỆU ĐẦU VÀO
 ----------------------------------------------------------------
 Tổng số dòng: 152 bài báo đã được gán nhãn tay (ground truth)
@@ -10,113 +12,110 @@ Phân bố nhãn:
   neutral  : 68 bài  (44.7%)
   positive : 35 bài  (23.0%)
 
-Feature: TF-IDF trên n-gram tiếng Việt (1-3 gram), sau khi lọc
-stopword + min_df theo tỷ lệ + max_df_ratio = 0.85.
-Vocab thực tế: 1.392 term (434 unigram, 602 bigram, 356 trigram).
-Tất cả 4 model dùng chung 1 ma trận feature này (xem TF_IDF.py).
+Tokenizer: VNCoreNLP - token lấy từ equity_news_tokenized_vncorenlp.parquet
+theo source_row_id (chung với nhánh Lexicon_based và Build_sentiment_index).
 
-Đánh giá bằng 5-fold stratified cross-validation (mỗi fold giữ
-nguyên tỷ lệ 3 class), không có tập test riêng vì dữ liệu quá nhỏ.
+Feature: TF-IDF trên n-gram tiếng Việt (1-3 gram), lọc stopword + min_df
+theo tỷ lệ + max_df_ratio = 0.85.
+Vocab (fit trên toàn bộ GT, dùng để mô tả): 1468 term (449 unigram, 630 bigram, 389 trigram).
+
+Đánh giá bằng 5-fold stratified cross-validation. TF-IDF + bước chọn
+top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold validation).
 
 
 2. KẾT QUẢ TỪNG MODEL
 ----------------------------------------------------------------
 
---- Logistic Regression (sklearn, class_weight=balanced) ---
+--- Logistic Regression (class_weight=balanced) ---
   Class      Precision  Recall   F1
-  negative   0.652      0.612    0.632
-  neutral    0.635      0.794    0.706
-  positive   0.571      0.343    0.429
-  ------------------------------------------
+  negative   0.696      0.653      0.674
+  neutral    0.619      0.765      0.684
+  positive   0.545      0.343      0.421
+  ----------------------------------------
   Accuracy      : 0.632
-  Macro F1      : 0.589
+  Macro F1      : 0.593
+
+  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+                 pred_neg  pred_neu  pred_pos
+  true_negative     32        15        2
+  true_neutral       8        52        8
+  true_positive      6        17       12
+
+--- Naive Bayes (MultinomialNB) ---
+  Class      Precision  Recall   F1
+  negative   0.673      0.673      0.673
+  neutral    0.667      0.706      0.686
+  positive   0.484      0.429      0.455
+  ----------------------------------------
+  Accuracy      : 0.632
+  Macro F1      : 0.605
+
+  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+                 pred_neg  pred_neu  pred_pos
+  true_negative     33        10        6
+  true_neutral      10        48       10
+  true_positive      6        14       15
+
+--- Random Forest (300 trees, class_weight=balanced) ---
+  Class      Precision  Recall   F1
+  negative   0.638      0.612      0.625
+  neutral    0.671      0.779      0.721
+  positive   0.654      0.486      0.557
+  ----------------------------------------
+  Accuracy      : 0.658
+  Macro F1      : 0.634
 
   Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
                  pred_neg  pred_neu  pred_pos
   true_negative     30        16        3
-  true_neutral       8        54        6
-  true_positive       8        15       12
-
---- Naive Bayes (MultinomialNB) ---
-  Class      Precision  Recall   F1
-  negative   0.633      0.633    0.633
-  neutral    0.657      0.647    0.652
-  positive   0.444      0.457    0.451
-  ------------------------------------------
-  Accuracy      : 0.599
-  Macro F1      : 0.578
-
-  Confusion matrix:
-                 pred_neg  pred_neu  pred_pos
-  true_negative     31        12        6
-  true_neutral      10        44       14
-  true_positive       8        11       16
-
---- Random Forest (300 trees, class_weight=balanced) ---
-  Class      Precision  Recall   F1
-  negative   0.698      0.612    0.652
-  neutral    0.688      0.779    0.731
-  positive   0.656      0.600    0.627
-  ------------------------------------------
-  Accuracy      : 0.684
-  Macro F1      : 0.670   <-- TỐT NHẤT trong 4 model
-
-  Confusion matrix:
-                 pred_neg  pred_neu  pred_pos
-  true_negative     30        15        4
-  true_neutral       8        53        7
-  true_positive       5         9       21
+  true_neutral       9        53        6
+  true_positive      8        10       17
 
 --- SVM (LinearSVC + Platt calibration) ---
   Class      Precision  Recall   F1
-  negative   0.659      0.592    0.624
-  neutral    0.611      0.853    0.712
-  positive   0.615      0.229    0.333   <-- yếu nhất, recall positive rất thấp
-  ------------------------------------------
-  Accuracy      : 0.625
-  Macro F1      : 0.556
+  negative   0.681      0.653      0.667
+  neutral    0.617      0.853      0.716
+  positive   0.636      0.200      0.304
+  ----------------------------------------
+  Accuracy      : 0.638
+  Macro F1      : 0.562
+
+  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+                 pred_neg  pred_neu  pred_pos
+  true_negative     32        15        2
+  true_neutral       8        58        2
+  true_positive      7        21        7
 
 
 3. BẢNG XẾP HẠNG TỔNG HỢP (macro F1)
 ----------------------------------------------------------------
-  1. Random Forest         F1 = 0.670   Accuracy = 0.684
-  2. Logistic Regression   F1 = 0.589   Accuracy = 0.632
-  3. Naive Bayes           F1 = 0.578   Accuracy = 0.599
-  4. SVM                   F1 = 0.556   Accuracy = 0.625
+  1. random_forest          F1 = 0.634   Accuracy = 0.658
+  2. naive_bayes            F1 = 0.605   Accuracy = 0.632
+  3. logistic_regression    F1 = 0.593   Accuracy = 0.632
+  4. svm                    F1 = 0.562   Accuracy = 0.638
 
 
 4. NHẬN XÉT
 ----------------------------------------------------------------
-- Cả 4 model đều yếu nhất ở class "positive" (recall 0.23-0.60),
-  vì đây cũng là class ít dữ liệu nhất (chỉ 35/152 bài, 23%).
-  SVM bị ảnh hưởng rõ nhất: recall positive chỉ 0.229, tức là
-  hầu hết bài positive bị model đoán nhầm thành neutral/negative.
-- Random Forest ổn định nhất qua cả 3 class, có thể vì nó ít nhạy
-  cảm với dữ liệu nhỏ/mất cân bằng hơn so với model tuyến tính.
+- logistic_regression: class yếu nhất = positive (F1 = 0.421, recall = 0.343).
+- naive_bayes: class yếu nhất = positive (F1 = 0.455, recall = 0.429).
+- random_forest: class yếu nhất = positive (F1 = 0.557, recall = 0.486).
+- svm: class yếu nhất = positive (F1 = 0.304, recall = 0.200).
+- Class 'positive' ít dữ liệu nhất (35/152) nên thường là class yếu nhất.
 
 
 5. HẠN CHẾ QUAN TRỌNG NHẤT: GROUND TRUTH QUÁ ÍT
 ----------------------------------------------------------------
-152 dòng là một bộ dữ liệu RẤT NHỎ cho bài toán phân loại 3 lớp:
+152 dòng vẫn là bộ dữ liệu RẤT NHỎ cho bài toán phân loại 3 lớp. Mỗi
+fold validation chỉ ~30 dòng, class positive chỉ ~7 dòng/fold, nên các con
+số accuracy/F1 ở trên chưa thật sự ổn định.
 
-- Mỗi fold validation (trong 5-fold CV) chỉ có ~30 dòng, và class
-  positive chỉ còn ~7 dòng/fold. Chỉ cần model đoán sai 1-2 dòng
-  là metric (đặc biệt là recall/F1 của positive) dao động mạnh.
-  => Các con số accuracy/F1 ở trên CHƯA THẬT SỰ ỔN ĐỊNH, độ tin
-  cậy thấp khi ngoại suy ra toàn bộ tập equity_news (126.576 bài).
+Đã xử lý trong đợt refactor này:
+  (2) hết rò rỉ - vocab/IDF/chọn feature fit trong từng train-fold.
+  (3) giữ MAX_FEATURES nhưng gọi bên trong fold (train-only).
+  (4) tokenizer = VNCoreNLP, đồng bộ với phần còn lại của project.
+  (7) một đường CV chung, n_splits = min(5, số dòng của lớp nhỏ nhất).
 
-- Class positive (35 bài) quá ít để model học được pattern rõ
-  ràng, dù đã dùng class_weight="balanced" ở cả 4 model.
-
-- Chưa có tập test độc lập (hold-out) tách riêng khỏi quá trình
-  chọn feature/tuning - toàn bộ 152 dòng đều tham gia vào cả
-  bước chọn vocab (TF_IDF.py) lẫn bước train/validate.
-
-=> ĐỀ XUẤT: cần gán nhãn thêm ground truth (mục tiêu tối thiểu
-vài trăm - vài nghìn dòng, và cân bằng hơn giữa 3 class, đặc biệt
-là thêm dữ liệu cho class "positive") trước khi dùng kết quả này
-để:
-  (a) kết luận model nào thực sự tốt hơn,
-  (b) so sánh công bằng với phương pháp Lexicon-based và
-      Transformer (PhoBERT) trong MD/SENTIMENT_METHODS_PLAN.md,
-  (c) dùng làm nhãn/kiểm chứng cho toàn bộ equity_news.
+Còn lại: cần gán nhãn thêm ground truth (vài trăm - vài nghìn dòng, cân
+bằng hơn giữa 3 class) trước khi kết luận model nào tốt hơn và so sánh
+công bằng với Lexicon-based / Transformer (PhoBERT).

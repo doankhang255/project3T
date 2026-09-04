@@ -13,20 +13,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
 from News.Build_sentiment_label.Traditional_ML.model.common import (
     DATA_DIR,
-    INPUT_CSR_NPZ_PATH,
-    MAX_FEATURES,
-    N_SPLITS,
     RANDOM_SEED,
     VALID_LABELS,
+    build_full_fit_features,
     build_prediction_output,
-    build_stratified_folds,
     compute_metrics,
     confusion_matrix,
     encode_labels,
-    load_inputs,
-    select_top_features,
+    load_ground_truth_frame,
+    run_cross_validation,
 )
 
 
@@ -36,8 +34,9 @@ OUTPUT_CONFUSION_MATRIX_PATH = DATA_DIR / "svm_confusion_matrix.csv"
 OUTPUT_TOP_FEATURES_PATH = DATA_DIR / "svm_top_features.csv"
 
 # LinearSVC has no predict_proba; CalibratedClassifierCV adds probability
-# estimates via an inner k-fold calibration so the output stays comparable
-# (prob_positive/prob_negative/sentiment_score_ml) with the other models.
+# estimates via an inner k-fold calibration on the training rows so the output
+# stays comparable (prob_positive/prob_negative/sentiment_score_ml) with the
+# other models.
 CALIBRATION_CV = 3
 MAX_ITER = 5000
 
@@ -50,35 +49,11 @@ def build_base_svm(random_state: int) -> LinearSVC:
     )
 
 
-def cross_validate_svm(
-    x: np.ndarray,
-    y: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    probabilities = np.zeros((len(y), len(VALID_LABELS)), dtype=np.float64)
-    folds = build_stratified_folds(y, n_splits=N_SPLITS)
-    all_indices = np.arange(len(y))
-
-    for fold_id, validation_indices in enumerate(folds, start=1):
-        train_mask = np.ones(len(y), dtype=bool)
-        train_mask[validation_indices] = False
-        train_indices = all_indices[train_mask]
-
-        calibrated_model = CalibratedClassifierCV(
-            build_base_svm(random_state=RANDOM_SEED + fold_id),
-            cv=CALIBRATION_CV,
-        )
-        calibrated_model.fit(x[train_indices], y[train_indices])
-        assert list(calibrated_model.classes_) == list(range(len(VALID_LABELS)))
-        probabilities[validation_indices] = calibrated_model.predict_proba(
-            x[validation_indices]
-        )
-        print(
-            f"Fold {fold_id}/{N_SPLITS}: "
-            f"train={len(train_indices)}, validation={len(validation_indices)}"
-        )
-
-    predictions = probabilities.argmax(axis=1)
-    return probabilities, predictions
+def build_estimator(random_state: int) -> CalibratedClassifierCV:
+    return CalibratedClassifierCV(
+        build_base_svm(random_state=random_state),
+        cv=CALIBRATION_CV,
+    )
 
 
 def build_top_features(
@@ -87,7 +62,7 @@ def build_top_features(
     vocabulary: pd.DataFrame,
     top_n: int = 40,
 ) -> pd.DataFrame:
-    model = build_base_svm(random_state=RANDOM_SEED + 999)
+    model = build_base_svm(RANDOM_SEED + 999)
     model.fit(x, y)
     assert list(model.classes_) == list(range(len(VALID_LABELS)))
 
@@ -114,24 +89,20 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    x, document_index, vocabulary = load_inputs()
-    x_selected, selected_vocabulary, selected_indices = select_top_features(
-        x,
-        vocabulary,
-        max_features=MAX_FEATURES,
-    )
-    y = encode_labels(document_index["ground_truth_label"])
+    df = load_ground_truth_frame()
+    term_counts = build_document_term_counts(df)
+    y = encode_labels(df["ground_truth_label"])
 
     print("Model: Linear SVM (LinearSVC, one-vs-rest, calibrated probabilities)")
-    print("Input matrix:", INPUT_CSR_NPZ_PATH)
-    print("Documents:", x_selected.shape[0])
-    print("Selected features:", x_selected.shape[1])
+    print("Documents:", len(df))
     print("Label counts:")
-    print(document_index["ground_truth_label"].value_counts().to_string())
+    print(df["ground_truth_label"].value_counts().to_string())
 
-    probabilities, predictions = cross_validate_svm(x_selected, y)
+    probabilities, predictions, fold_of_row = run_cross_validation(
+        build_estimator, term_counts, y
+    )
     metrics_df = compute_metrics(y, predictions)
-    prediction_df = build_prediction_output(document_index, probabilities, predictions)
+    prediction_df = build_prediction_output(df, probabilities, predictions, fold_of_row)
 
     confusion_df = pd.DataFrame(
         confusion_matrix(y, predictions),
@@ -139,7 +110,8 @@ def main() -> None:
         columns=[f"pred_{label}" for label in VALID_LABELS],
     ).reset_index(names="true_label")
 
-    top_features_df = build_top_features(x_selected, y, selected_vocabulary)
+    x_full, vocabulary_full = build_full_fit_features(term_counts)
+    top_features_df = build_top_features(x_full, y, vocabulary_full)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     metrics_df.to_csv(OUTPUT_METRICS_PATH, index=False, encoding="utf-8-sig")

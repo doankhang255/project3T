@@ -30,11 +30,6 @@ LEXICON_DATA_DIR = SCRIPT_DIR / "data"
 INPUT_TOKENIZED_PATH = DEFAULT_TOKENIZED_NEWS_PATH
 CANDIDATE_TERMS_PATH = LEXICON_DATA_DIR / "candidate_ngram_terms.parquet"
 
-# 7 danh muc cua Loughran-McDonald, khop voi ten file trong
-# Seed_set_Prepare/final_seed/{category}_word.txt. KHONG con ghep cap doi lap
-# (positive vs negative) nhu ban PMI nhi phan truoc - moi danh muc la 1 co
-# doc lap, 1 candidate co the thuoc 0, 1 hoac nhieu danh muc cung luc, dung
-# tinh than 7 danh sach doc lap cua Loughran-McDonald goc.
 CATEGORY_NAMES = [
     "negative",
     "positive",
@@ -52,21 +47,11 @@ SEED_MIN_N = 1
 SEED_MAX_N = 3
 CANDIDATE_NGRAM_RANGE = (2, 3)
 
-# Duoi nguong nay, seed bi coi la qua hiem de dong gop tin hieu PMI dang tin cay
-# (dong bo voi LEXICON_MIN_DF_FLOOR ben select_lexicon_candidate_terms.py).
 SEED_MIN_DF = 20
 
-# ------------------------------------------------------------------
-# Context window: don vi dung de dem dong-xuat-hien (co_df). "document" la
-# hanh vi goc (nguyen ca bai). "sentence" tach moi bai thanh cac cau rieng
-# le va coi moi cau la 1 don vi - hep hon nhieu nen dong-xuat-hien phan anh
-# lien ket ngu nghia that hon la "tinh co cung xuat hien trong 1 bai dai".
-# ------------------------------------------------------------------
 CONTEXT_WINDOW_DOCUMENT = "document"
 CONTEXT_WINDOW_SENTENCE = "sentence"
 
-# Alpha (pseudo-count) mac dinh cho add-alpha (Laplace) smoothing trong
-# compute_pmi - xem giai thich chi tiet tai do.
 SMOOTHING_ALPHA_DEFAULT = 1.0
 
 
@@ -81,10 +66,6 @@ def normalize_for_seed_matching(term: str, separator: str = NGRAM_SEPARATOR) -> 
 
 
 def explode_documents_to_sentences(tokenized_documents: list) -> list[list[str]]:
-    """Tach moi document thanh danh sach cac cau rieng le, dung khi
-    context_window="sentence". Moi cau tro thanh 1 "don vi" doc lap de tinh
-    df/tf/dong-xuat-hien, thay vi ca bai la 1 don vi.
-    """
     sentences: list[list[str]] = []
     for raw_document_tokens in tokenized_documents:
         sentences.extend(normalize_sentence_token_lists(raw_document_tokens))
@@ -178,9 +159,6 @@ def build_binary_document_term_matrix(
     min_n: int = SEED_MIN_N,
     max_n: int = CANDIDATE_NGRAM_RANGE[1],
 ):
-    """Xay ma tran nhi phan (co/khong xuat hien) theo tung "don vi" trong
-    `tokenized_units`. Don vi la document hoac sentence tuy context_window.
-    """
     unit_terms = [
         build_document_terms(raw_tokens, min_n=min_n, max_n=max_n)
         for raw_tokens in tokenized_units
@@ -242,24 +220,6 @@ def build_embedded_seed_exclusion_mask(
     return mask
 
 
-# ============================================================
-# PMI DA DANH MUC (multi-category, khong ghep cap doi lap)
-# ============================================================
-#
-# Khac voi ban PMI nhi phan (positive vs negative, so_score = hieu 2 cuc),
-# 7 danh muc Loughran-McDonald KHONG phai cac cap doi lap cua nhau - 1
-# candidate co the vua "negative" vua "litigious" vua "uncertainty" cung luc.
-# Vi vay moi danh muc duoc cham diem DOC LAP: category_score(candidate) =
-# trung binh PMI(candidate, seed) tren toan bo seed CUA CHINH danh muc do
-# (khong tru di danh muc nao khac).
-#
-# compute_multi_category_pmi() lam phan NANG (build ma tran, tinh PMI cho
-# tung cap candidate-seed) CHI 1 LAN, tra ve PMI THO chua gan nhan. Buoc gop
-# thanh nhan (percentile + centering 2 chieu) nam o
-# aggregate_category_labels_percentile() trong build_sentiment_dictionary_pmi_bootstrap.py
-# - tach rieng de doi nguong percentile nhieu lan MA KHONG can tinh lai PMI.
-
-
 def compute_multi_category_pmi(
     tokenized_path: Path = INPUT_TOKENIZED_PATH,
     candidate_terms_path: Path = CANDIDATE_TERMS_PATH,
@@ -300,7 +260,6 @@ def compute_multi_category_pmi(
 
     print(f"Tong don vi ({context_window}):", total_units)
 
-    # Resolve seed cho tung danh muc rieng (moi danh muc 1 file seed rieng).
     category_resolved: dict[str, pd.DataFrame] = {}
     category_real_forms: dict[str, list[str]] = {}
     for category in categories:
@@ -321,9 +280,6 @@ def compute_multi_category_pmi(
         candidate_terms_path, min_candidate_df=min_candidate_df
     )
 
-    # Mot candidate co the trung voi chinh 1 seed CUA BAT KY danh muc nao.
-    # Cung logic nhu ban nhi phan: gan thang nhan cho danh muc do (khong qua
-    # PMI, tranh tu so sanh voi chinh no), loai khoi tap candidate tinh PMI.
     seed_terms_all: set[str] = set()
     term_to_seed_categories: dict[str, list[str]] = {}
     for category, real_forms in category_real_forms.items():
@@ -356,13 +312,13 @@ def compute_multi_category_pmi(
     matrix_unit_df = np.asarray(matrix.sum(axis=0)).ravel()
 
     candidate_cols_all = np.array([term_to_col[term] for term in candidate_terms])
-    candidate_df_all = matrix_unit_df[candidate_cols_all].astype(float)
+    candidate_unit_df_all = matrix_unit_df[candidate_cols_all].astype(float)
 
     if max_df_ratio is not None:
-        candidate_ratio_all = candidate_df_all / total_units
+        candidate_ratio_all = candidate_unit_df_all / total_units
         keep_mask = candidate_ratio_all <= max_df_ratio
     else:
-        keep_mask = np.ones_like(candidate_df_all, dtype=bool)
+        keep_mask = np.ones_like(candidate_unit_df_all, dtype=bool)
 
     excluded_high_df_df = candidate_terms_df.loc[~keep_mask].copy()
     if not excluded_high_df_df.empty:
@@ -374,16 +330,10 @@ def compute_multi_category_pmi(
     candidate_terms_df = candidate_terms_df.loc[keep_mask].reset_index(drop=True)
     candidate_terms = candidate_terms_df["term"].tolist()
     candidate_cols = candidate_cols_all[keep_mask]
-    candidate_df_array = candidate_df_all[keep_mask]
+    candidate_unit_df_array = candidate_unit_df_all[keep_mask]
 
-    # QUAN TRONG: candidate_df_array la df cua candidate O CAP DON VI DANG DUNG
-    # (cau/tai lieu), KHAC voi cot "df" san co trong candidate_terms_df (do la
-    # df cap TAI LIEU tu file candidate_ngram_terms.parquet, luon co san du
-    # context_window la gi). Candidate hiem o cap don vi bi PMI (dac biet
-    # add_alpha) thoi phong diem DEU tren moi danh muc - can gia tri nay o
-    # buoc aggregate_category_labels_percentile() de loc rieng, khong dua vao cot "df" cu.
     candidate_terms_df = candidate_terms_df.copy()
-    candidate_terms_df["candidate_unit_st"] = candidate_df_array
+    candidate_terms_df["candidate_unit_st"] = candidate_unit_df_array
 
     category_pmi_by_seed: dict[str, tuple[np.ndarray, list[str]]] = {}
     for category in categories:
@@ -402,10 +352,6 @@ def compute_multi_category_pmi(
         co_df_forms = (matrix[:, candidate_cols].T @ matrix[:, cols]).toarray().astype(float)
         raw_form_df = matrix_unit_df[cols].astype(float)
 
-        # Anh xa moi dang thuc te (real form) ve dung seed goc cua no - dung
-        # vong lap tuong minh (khong dung comprehension + walrus) de tranh loi
-        # pham vi bien kho hieu khi 1 ten bien duoc dung o nhieu comprehension
-        # ke nhau trong cung 1 ham.
         form_to_seed: dict[str, str] = {}
         for _, row in resolved_df.iterrows():
             for form in row["real_forms"]:
@@ -413,7 +359,7 @@ def compute_multi_category_pmi(
 
         pmi_forms = compute_pmi(
             co_df_forms,
-            candidate_df_array,
+            candidate_unit_df_array,
             raw_form_df,
             total_units,
             alpha=smoothing_alpha,

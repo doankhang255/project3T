@@ -1,6 +1,6 @@
 chắc_chắn_sẽ, bắt_buộc_phải, tốt_nhất, cao_nhất, thấp_nhất, không_bao_giờ,
 luôn_luôn, rõ_ràng, mạnh_mẽ, không_thể_tranh_cãi, dứt_khoát, vô_song,
-chắc_chắn, không_nghi_ngờ_gì, minh_bạch_tuyệt_đối, nhất_định, bắt_buộc, phải,
+chắc_chắn, không_nghi_ngờ_gì, minh_bạch_tuyệt_đối, nhất_định, bắt_buộc,
 tuyệt_đối, mạnh_mẽ_nhất, hoàn_toàn, tất_yếu, kiên_quyết, quyết_liệt,
 khẳng_định, cam_kết_chắc_chắn, đảm_bảo_chắc_chắn, hiển_nhiên, đương_nhiên,
 luôn_đúng, vượt_trội_nhất, dẫn_đầu, số_một, duy_nhất, tối_đa, tối_ưu_nhất,

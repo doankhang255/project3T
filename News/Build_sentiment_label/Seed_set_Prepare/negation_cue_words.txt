@@ -1,36 +1,4 @@
-
-# 7 nhom, xep theo do uu tien dung trong van phong bao chi tai chinh (formal).
-
-# --- Nhom 1: Phu dinh cot loi (tan suat cao nhat, BAT BUOC co) ---
-không, chưa, chẳng, chả
-
-# --- Nhom 2: Phu dinh nhan manh / tuyet doi ---
-không_hề, chẳng_hề, chưa_hề, không_bao_giờ, chẳng_bao_giờ, chưa_bao_giờ,
-không_còn, chưa_từng, chưa_bao_giờ, tuyệt_nhiên_không, tuyệt_đối_không,
-hoàn_toàn_không
-
-# --- Nhom 3: Phu dinh qua cau hoi tu tu (hay gap trong van viet/binh luan) ---
-đâu_có, đâu, nào_có, làm_gì_có, có_đâu, có_đâu_mà
-
-# --- Nhom 4: Phu dinh he tu / danh tu (copula negation) ---
-không_phải, chẳng_phải, đâu_có_phải, chẳng_phải_là, không_phải_là
-
-# --- Nhom 5: Phu dinh kha nang (modal negation - lien quan truc tiep
-#     strong_modal/weak_modal, can uu tien vi de nham voi cac seed dang
-#     "co_the", "co_kha_nang") ---
-không_thể, chưa_thể, không_tài_nào, chẳng_thể
-
-# --- Nhom 6: Phu dinh ton tai (existential negation) ---
-không_có, chẳng_có, chả_có
-
-# --- Nhom 7: Khau ngu / phuong ngu (tan suat RAT THAP trong bao chi tai chinh
-#     formal - co the bo qua neu muon gon, giu lai neu muon phu rong) ---
-khỏi, cóc, đếch, ứ, hổng, hông
-
-# --- GHI CHU QUAN TRONG: KHONG dung cho co che scope-window nay ---
-# Tien to Han-Viet tao phu dinh NGAY TRONG 1 tu (bat_, vo_, phi_ - vd bat_on,
-# vo_hieu, phi_ly) la phu dinh DA TU VUNG HOA SAN trong chinh seed 7-category
-# roi (vd "bat_on" da la 1 seed word doc lap cua uncertainty). Day KHONG phai
-# truong hop "cue word dung truoc roi dao dau tu sentiment phia sau" nhu
-# khong/chua/chang, nen KHONG duoc dua vao danh sach cue-word o tren - neu dua
-# vao se bi trung/sai co che.
+không, chưa, chẳng, chả, không_hề, chẳng_hề, chưa_hề, không_bao_giờ, chẳng_bao_giờ, chưa_bao_giờ, 
+không_còn, chưa_từng, chưa_bao_giờ, tuyệt_nhiên_không, tuyệt_đối_không, hoàn_toàn_không, đâu_có, 
+đâu, nào_có, làm_gì_có, có_đâu, có_đâu_mà, không_phải, chẳng_phải, đâu_có_phải, chẳng_phải_là,
+không_phải_là, không_thể, chưa_thể, không_tài_nào, chẳng_thể, không_có, chẳng_có, chả_có

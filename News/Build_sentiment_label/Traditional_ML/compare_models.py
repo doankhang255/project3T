@@ -27,7 +27,8 @@ def load_model_metrics(model_name: str, path: Path) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
             f"Metrics file for {model_name!r} not found: {path}. "
-            "Run that model's script first."
+            "Run the full pipeline first: "
+            "python News/Build_sentiment_label/Traditional_ML/run_pipeline.py"
         )
     df = pd.read_csv(path)
     df.insert(0, "model", model_name)

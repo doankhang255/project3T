@@ -1,3 +1,18 @@
+"""TF-IDF feature builder for the Traditional_ML sentiment models.
+
+Two entry points:
+
+* ``fit_tfidf_vocabulary`` / ``transform_tfidf`` — the fit/transform pair the
+  cross-validation loop in ``model/common.py`` calls **per fold**, so the
+  vocabulary, document frequencies and IDF weights are learned from the
+  training rows only and never see the held-out fold.
+
+* ``main`` — fits the same pipeline on the **whole** ground-truth set and
+  writes ``tfidf_matrix_csr.npz`` / ``tfidf_vocabulary.csv`` / ``…`` . Those
+  files are a descriptive artifact for inspection and for the global
+  top-feature tables; they are **not** the input the models evaluate on.
+"""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -46,12 +61,6 @@ TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"
 NGRAM_RANGE = (1, 3)
 REMOVE_STOPWORDS = True
 
-# Ratios instead of fixed counts: the ground-truth set keeps growing as more
-# rows get labeled in Label Studio, so a hardcoded min_df tuned for today's
-# row count would silently stop filtering anything once the corpus outgrows
-# it (this is exactly how the project ended up with hundreds of thousands of
-# near-useless candidate terms before). MIN_DF_FLOOR still guarantees a term
-# must appear in at least 2 documents no matter how small the corpus is.
 ML_MIN_DF_RATIO_BY_NGRAM = {1: 0.02, 2: 0.013, 3: 0.013}
 ML_MIN_DF_FLOOR = 2
 ML_MAX_DF_RATIO = 0.85
@@ -77,20 +86,18 @@ def build_document_terms(row: pd.Series) -> list[str]:
 
 
 def load_tokenized_ground_truth() -> pd.DataFrame:
-    if INPUT_PARQUET_PATH.exists():
-        df = pd.read_parquet(INPUT_PARQUET_PATH)
-        input_path = INPUT_PARQUET_PATH
-    else:
+    if not INPUT_PARQUET_PATH.exists():
         raise FileNotFoundError(
             "Tokenized ground truth file not found. Run "
-            "News/Build_sentiment_label/Traditional_ML/tokenize_underthesea.py first."
+            "News/Build_sentiment_label/Traditional_ML/prepare_ground_truth.py first."
         )
 
+    df = pd.read_parquet(INPUT_PARQUET_PATH)
     required_columns = {TOKENIZED_COLUMN}
     missing_columns = required_columns.difference(df.columns)
     if missing_columns:
         raise ValueError(
-            f"Input file {input_path} is missing columns: {sorted(missing_columns)}"
+            f"Input file {INPUT_PARQUET_PATH} is missing columns: {sorted(missing_columns)}"
         )
 
     out = df.copy()
@@ -99,7 +106,7 @@ def load_tokenized_ground_truth() -> pd.DataFrame:
     if out.empty:
         raise ValueError("No valid tokenized rows found.")
 
-    print("Input:", input_path)
+    print("Input:", INPUT_PARQUET_PATH)
     return out
 
 
@@ -127,7 +134,7 @@ def build_ngram_terms_dataframe(
     )
 
 
-def build_vocabulary(
+def fit_tfidf_vocabulary(
     term_counts_by_document: list[Counter[str]],
     total_documents: int,
     stopwords: set[str] | None = None,
@@ -161,66 +168,71 @@ def build_vocabulary(
     return vocabulary_df
 
 
-def build_tfidf_csr_arrays(
+def _document_tfidf_weights(
+    term_counts: Counter[str],
+    term_to_id: dict[str, int],
+    term_to_idf: dict[str, float],
+) -> tuple[dict[int, float], int, float]:
+    filtered_counts = {
+        term: count for term, count in term_counts.items() if term in term_to_id
+    }
+    document_term_count = sum(filtered_counts.values())
+    document_length_norm = (
+        1.0 + np.log(document_term_count) if document_term_count >= 1 else 1.0
+    )
+
+    weights: dict[int, float] = {}
+    for term, term_frequency in filtered_counts.items():
+        term_id = int(term_to_id[term])
+        tf_log = 1.0 + np.log(term_frequency)
+        idf = float(term_to_idf[term])
+        weights[term_id] = float((tf_log / document_length_norm) * idf)
+    return weights, document_term_count, document_length_norm
+
+
+def transform_tfidf(
     term_counts_by_document: list[Counter[str]],
     vocabulary_df: pd.DataFrame,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, tuple[int, int], pd.DataFrame]:
+    with_tf_rows: bool = False,
+) -> tuple[np.ndarray, pd.DataFrame | None]:
     term_to_id = dict(zip(vocabulary_df["term"], vocabulary_df["term_id"], strict=False))
     term_to_idf = dict(zip(vocabulary_df["term"], vocabulary_df["idf"], strict=False))
 
-    data: list[float] = []
-    indices: list[int] = []
-    indptr = [0]
-    tf_rows = []
+    n_documents = len(term_counts_by_document)
+    n_terms = len(vocabulary_df)
+    dense = np.zeros((n_documents, n_terms), dtype=np.float32)
+    tf_rows: list[dict[str, object]] = []
 
-    for document_id, term_counts in enumerate(term_counts_by_document):
-        filtered_counts = {
-            term: count
-            for term, count in term_counts.items()
-            if term in term_to_id
-        }
-        document_term_count = sum(filtered_counts.values())
-        document_length_norm = (
-            1.0 + np.log(document_term_count)
-            if document_term_count >= 1
-            else 1.0
-        )
-
-        for term, term_frequency in sorted(
-            filtered_counts.items(),
-            key=lambda item: term_to_id[item[0]],
-        ):
-            term_id = int(term_to_id[term])
-            tf_log = 1.0 + np.log(term_frequency)
-            idf = float(term_to_idf[term])
-            weight = float((tf_log / document_length_norm) * idf)
-
-            indices.append(term_id)
-            data.append(weight)
-            tf_rows.append(
-                {
-                    "document_id": document_id,
-                    "term_id": term_id,
-                    "term": term,
-                    "tf": int(term_frequency),
-                    "document_term_count": int(document_term_count),
-                    "tf_log": float(tf_log),
-                    "document_length_norm": float(document_length_norm),
-                    "idf": idf,
-                    "tfidf_weight": weight,
-                }
-            )
-
-        indptr.append(len(data))
-
-    shape = (len(term_counts_by_document), len(vocabulary_df))
-    return (
-        np.asarray(data, dtype=np.float64),
-        np.asarray(indices, dtype=np.int32),
-        np.asarray(indptr, dtype=np.int64),
-        shape,
-        pd.DataFrame(tf_rows),
+    id_to_term = dict(
+        zip(vocabulary_df["term_id"], vocabulary_df["term"], strict=False)
     )
+    for document_id, term_counts in enumerate(term_counts_by_document):
+        weights, document_term_count, document_length_norm = _document_tfidf_weights(
+            term_counts, term_to_id, term_to_idf
+        )
+        for term_id, weight in weights.items():
+            dense[document_id, term_id] = weight
+
+        if with_tf_rows:
+            for term_id in sorted(weights):
+                term = id_to_term[term_id]
+                term_frequency = int(term_counts[term])
+                tf_rows.append(
+                    {
+                        "document_id": document_id,
+                        "term_id": term_id,
+                        "term": term,
+                        "tf": term_frequency,
+                        "document_term_count": int(document_term_count),
+                        "tf_log": float(1.0 + np.log(term_frequency)),
+                        "document_length_norm": float(document_length_norm),
+                        "idf": float(term_to_idf[term]),
+                        "tfidf_weight": float(dense[document_id, term_id]),
+                    }
+                )
+
+    tf_rows_df = pd.DataFrame(tf_rows) if with_tf_rows else None
+    return dense, tf_rows_df
 
 
 def build_document_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -233,6 +245,25 @@ def build_document_index(df: pd.DataFrame) -> pd.DataFrame:
     document_index.insert(0, "document_id", np.arange(len(df), dtype=int))
     document_index["document_ngram_count"] = df["_document_terms"].map(len)
     return document_index
+
+
+def dense_to_csr_arrays(
+    dense: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, tuple[int, int]]:
+    data: list[float] = []
+    indices: list[int] = []
+    indptr = [0]
+    for row in dense:
+        nonzero_columns = np.flatnonzero(row)
+        indices.extend(int(column) for column in nonzero_columns)
+        data.extend(float(value) for value in row[nonzero_columns])
+        indptr.append(len(data))
+    return (
+        np.asarray(data, dtype=np.float64),
+        np.asarray(indices, dtype=np.int32),
+        np.asarray(indptr, dtype=np.int64),
+        (int(dense.shape[0]), int(dense.shape[1])),
+    )
 
 
 def save_csr_npz(
@@ -258,15 +289,17 @@ def main() -> None:
     df = load_tokenized_ground_truth()
     term_counts_by_document = build_document_term_counts(df)
     stopwords = load_stopwords(DEFAULT_STOPWORDS_PATH) if REMOVE_STOPWORDS else set()
-    vocabulary_df = build_vocabulary(
+    vocabulary_df = fit_tfidf_vocabulary(
         term_counts_by_document,
         total_documents=len(df),
         stopwords=stopwords,
     )
-    data, indices, indptr, shape, document_term_tf_df = build_tfidf_csr_arrays(
+    dense, document_term_tf_df = transform_tfidf(
         term_counts_by_document,
         vocabulary_df,
+        with_tf_rows=True,
     )
+    data, indices, indptr, shape = dense_to_csr_arrays(dense)
     document_index_df = build_document_index(df)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -290,6 +323,8 @@ def main() -> None:
         floor=ML_MIN_DF_FLOOR,
     )
 
+    print("NOTE: these files describe a whole-corpus fit; the models re-fit")
+    print("      TF-IDF inside each CV fold (see model/common.py).")
     print("TF-IDF formula:")
     print("w_i,j = ((1 + log(tf_i,j)) / (1 + log(a_j))) * log(N / df_i)")
     print("N-gram range:", NGRAM_RANGE)
