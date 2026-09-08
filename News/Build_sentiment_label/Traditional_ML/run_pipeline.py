@@ -232,7 +232,7 @@ def main() -> None:
     write_results_summary()
 
     print(f"\n{'=' * 70}")
-    print("Flow 1 complete. Next: verify_pipeline.py")
+    print("Flow 1 complete.")
     print("=" * 70)
 
 

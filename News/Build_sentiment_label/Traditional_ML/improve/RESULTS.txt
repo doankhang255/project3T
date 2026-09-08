@@ -1,0 +1,60 @@
+IMPROVE - M2.1 / M2.2 / M2.3  (Traditional_ML methodology fixes)
+====================================================================
+
+Ground truth: 152 rows (neg 49 / neu 68 / pos 35) | tokenizer VNCoreNLP
+Repeated stratified 5-fold CV, 10 repeats, TF-IDF fit per fold (leak-free).
+Repeat r uses fold seed r; every model sees the SAME split in repeat r (paired).
+
+M2.2  REPEATED CV  -  mean +/- std over 10 repeats
+--------------------------------------------------------------------
+  model                       macro_f1        accuracy
+  random_forest        0.610 +/- 0.025 0.646 +/- 0.018
+  logistic_regression  0.600 +/- 0.020 0.642 +/- 0.018
+  multinomial_nb       0.587 +/- 0.025 0.621 +/- 0.019
+  complement_nb        0.577 +/- 0.028 0.605 +/- 0.025
+  svm                  0.545 +/- 0.030 0.614 +/- 0.018
+
+  model                    f1_negative      f1_neutral     f1_positive
+  random_forest        0.627 +/- 0.022 0.723 +/- 0.015 0.479 +/- 0.060
+  logistic_regression  0.646 +/- 0.023 0.716 +/- 0.018 0.437 +/- 0.037
+  multinomial_nb       0.636 +/- 0.026 0.690 +/- 0.023 0.434 +/- 0.052
+  complement_nb        0.642 +/- 0.036 0.657 +/- 0.027 0.433 +/- 0.049
+  svm                  0.602 +/- 0.027 0.705 +/- 0.015 0.327 +/- 0.080
+
+  Single-split reference (RESULTS_SUMMARY.txt, one fold seed):
+    random_forest        macro_f1 0.634   accuracy 0.658
+    naive_bayes          macro_f1 0.605   accuracy 0.632
+    logistic_regression  macro_f1 0.593   accuracy 0.632
+    svm                  macro_f1 0.562   accuracy 0.638
+
+M2.1  MULTINOMIAL vs COMPLEMENT NAIVE BAYES
+--------------------------------------------------------------------
+  multinomial_nb   macro_f1 0.587 +/- 0.025   accuracy 0.621 +/- 0.019
+  complement_nb    macro_f1 0.577 +/- 0.028   accuracy 0.605 +/- 0.025
+  delta (complement - multinomial): -0.009 macro_f1  (inside one std -> noise)
+  McNemar: mean_b(mnb right, cnb wrong)=5.4  mean_c=2.9  median_p=0.740  sig_repeats=0/10  -> not reliably different
+
+M2.3  McNEMAR PAIRWISE  (are the model gaps real, or the split?)
+--------------------------------------------------------------------
+  pair                                      mean_b  mean_c   med_p   sig/N   pool_p
+  logistic_regression vs multinomial_nb       13.2    10.0   0.564    0/10    0.042
+  logistic_regression vs complement_nb        17.2    11.5   0.402    1/10    0.001
+  logistic_regression vs random_forest        11.4    12.0   0.708    0/10    0.744
+  logistic_regression vs svm                   8.8     4.6   0.462    2/10    0.000
+  multinomial_nb vs complement_nb              5.4     2.9   0.740    0/10    0.008
+  multinomial_nb vs random_forest             12.9    16.7   0.564    0/10    0.032
+  multinomial_nb vs svm                       14.1    13.1   0.844    0/10    0.585
+  complement_nb vs random_forest              13.1    19.4   0.344    0/10    0.001
+  complement_nb vs svm                        15.4    16.9   0.603    0/10    0.436
+  random_forest vs svm                        15.4    10.6   0.540    1/10    0.004
+
+  mean_b = rows first model right & second wrong (averaged over repeats)
+  sig/N  = repeats with p < 0.05 out of N; pool_p pools all repeats
+           (optimistic - repeats are not independent)
+
+READ
+--------------------------------------------------------------------
+  Best mean macro-F1: random_forest 0.610 +/- 0.025.
+  No model pair is reliably different (no pair significant in a majority of repeats).
+  delta(complement - multinomial) = -0.009 macro-F1; within one std.
+  With 152 rows most gaps sit inside the +/- std band. Do not lock in a model choice; grow ground truth first (see ../IMPROVEMENTS.md).
