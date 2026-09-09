@@ -7,10 +7,14 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-INPUT_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged.parquet"
-OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return.parquet"
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return.csv"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+INPUT_PATHS_BY_METHOD = {
+    "pmi": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged_pmi.parquet",
+    "intensity": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged_intensity.parquet",
+    "pca_pmi": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged_pca_pmi.parquet",
+    "pca_intensity": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged_pca_intensity.parquet",
+}
+OUTPUT_DIR = PROJECT_ROOT / "data_News"
 
 RETURN_COLUMN = "weekly_return"
 ROLLING_EXPECTED_WINDOW = 26
@@ -93,33 +97,34 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    merged_df = pd.read_parquet(INPUT_PATH)
-    abnormal_df = add_weekly_abnormal_return(merged_df)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    for suffix, input_path in INPUT_PATHS_BY_METHOD.items():
+        merged_df = pd.read_parquet(input_path)
+        abnormal_df = add_weekly_abnormal_return(merged_df)
 
-    OUTPUT_PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    abnormal_df.to_parquet(OUTPUT_PARQUET_PATH, index=False)
-    abnormal_df.to_csv(OUTPUT_CSV_PATH, index=False, encoding="utf-8-sig")
+        output_parquet_path = OUTPUT_DIR / f"vnindex_weekly_sentiment_abnormal_return_{suffix}.parquet"
+        output_csv_path = OUTPUT_DIR / f"vnindex_weekly_sentiment_abnormal_return_{suffix}.csv"
+        abnormal_df.to_parquet(output_parquet_path, index=False)
+        abnormal_df.to_csv(output_csv_path, index=False, encoding="utf-8-sig")
 
-    print("Input:", INPUT_PATH)
-    print("Output parquet:", OUTPUT_PARQUET_PATH)
-    print("Input rows:", len(merged_df))
-    print("Output rows:", len(abnormal_df))
-    print(
-        abnormal_df[
-            [
-                "week_end",
-                "weekly_return",
-                "expected_return_26w",
-                "abnormal_return_rolling_1w",
-                "expected_return_ar1_52w",
-                "abnormal_return_ar1_1w",
-                "future_abnormal_rolling_ret_4w",
-                "future_abnormal_ar1_ret_4w",
+        print(f"--- {suffix} ---")
+        print("Input:", input_path)
+        print("Output parquet:", output_parquet_path)
+        print("Input rows:", len(merged_df))
+        print("Output rows:", len(abnormal_df))
+        print(
+            abnormal_df[
+                [
+                    "week_end",
+                    "weekly_return",
+                    "abnormal_return_rolling_1w",
+                    "abnormal_return_ar1_1w",
+                ]
             ]
-        ]
-        .head(30)
-        .to_string(index=False)
-    )
+            .tail(10)
+            .to_string(index=False)
+        )
+        print()
 
 
 if __name__ == "__main__":

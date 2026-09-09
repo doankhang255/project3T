@@ -97,6 +97,13 @@ def run_single_cv(
 
         model = estimator_factory(RANDOM_SEED + fold_seed * 100 + fold_id)
         model.fit(x_train_selected, y[train_indices])
+        if list(model.classes_) != list(range(len(VALID_LABELS))):
+            raise AssertionError(
+                f"fold {fold_id} (seed {fold_seed}): estimator class order "
+                f"{list(model.classes_)} != {list(range(len(VALID_LABELS)))} - "
+                "a training fold is missing a class; predict_proba columns would "
+                "misalign (same guard as model/common.run_cross_validation)"
+            )
         probabilities[validation_indices] = model.predict_proba(x_val_selected)
 
     return probabilities.argmax(axis=1)

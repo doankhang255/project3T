@@ -30,6 +30,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
+from News.Build_sentiment_label.Traditional_ML.improve.bootstrap import (
+    N_BOOT,
+    bootstrap_samples,
+    ci,
+    mean_macro_f1,
+    two_sided_p,
+)
 from News.Build_sentiment_label.Traditional_ML.improve.mcnemar import mcnemar_test
 from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import (
     N_REPEATS,
@@ -136,6 +143,39 @@ def mcnemar_pairwise(
     return pd.DataFrame(rows)
 
 
+def bootstrap_delta_pairwise(
+    model_names: list[str],
+    boot_samples: dict[str, np.ndarray],
+    point_by_model: dict[str, float],
+) -> pd.DataFrame:
+    """Paired bootstrap of macro-F1(a) - macro-F1(b) for every model pair.
+
+    ``boot_samples[name]`` are the resampled macro-F1 values from a shared set
+    of row resamples, so ``boot_samples[a] - boot_samples[b]`` is the gap under
+    the same resample. A CI that straddles 0 means the ranking is not
+    distinguishable from split noise.
+    """
+    rows = []
+    for first_index in range(len(model_names)):
+        for second_index in range(first_index + 1, len(model_names)):
+            model_a = model_names[first_index]
+            model_b = model_names[second_index]
+            delta_sample = boot_samples[model_a] - boot_samples[model_b]
+            ci_low, ci_high = ci(delta_sample)
+            rows.append(
+                {
+                    "model_a": model_a,
+                    "model_b": model_b,
+                    "delta_macro_f1": point_by_model[model_a] - point_by_model[model_b],
+                    "ci_low": ci_low,
+                    "ci_high": ci_high,
+                    "p_value": two_sided_p(delta_sample),
+                    "crosses_zero": bool(ci_low <= 0.0 <= ci_high),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _fmt_mean_std(mean_std: tuple[float, float]) -> str:
     mean, std = mean_std
     return f"{mean:.3f} +/- {std:.3f}"
@@ -145,14 +185,18 @@ def render_report(
     summary_by_model: dict[str, dict[str, tuple[float, float]]],
     per_repeat_by_model: dict[str, pd.DataFrame],
     mcnemar_df: pd.DataFrame,
+    boot_point_by_model: dict[str, float],
+    boot_ci_by_model: dict[str, tuple[float, float]],
+    boot_delta_df: pd.DataFrame,
     n_repeats: int,
+    n_boot: int,
     label_counts: dict[str, int],
 ) -> str:
     lines: list[str] = []
     add = lines.append
 
     total = sum(label_counts.values())
-    add("IMPROVE - M2.1 / M2.2 / M2.3  (Traditional_ML methodology fixes)")
+    add("IMPROVE - M2.1 / M2.2 / M2.3 / M2.4  (Traditional_ML methodology fixes)")
     add("=" * 68)
     add("")
     add(
@@ -196,9 +240,26 @@ def render_report(
             f"{_fmt_mean_std(stats['f1_positive']):>16}"
         )
     add("")
-    add("  Single-split reference (RESULTS_SUMMARY.txt, one fold seed):")
-    for name, (macro_f1, accuracy) in SINGLE_RUN_REFERENCE.items():
-        add(f"    {name:<20} macro_f1 {macro_f1:.3f}   accuracy {accuracy:.3f}")
+    add(
+        f"  95% bootstrap CI on mean macro-F1 (B={n_boot}, resample the {total} rows):"
+    )
+    for name in ranked:
+        low, high = boot_ci_by_model[name]
+        add(f"    {name:<20} {boot_point_by_model[name]:.3f}  [{low:.3f}, {high:.3f}]")
+    add("")
+    add("  RESULTS_SUMMARY.txt still shows SINGLE-SEED numbers (one lucky fold")
+    add("  split) - do NOT cite them; the mean +/- std above supersedes. Making")
+    add("  RESULTS_SUMMARY.txt honest needs run_pipeline.py on repeated CV")
+    add("  (deferred - see README 'Promotion path').")
+    reference_to_repeat = {"naive_bayes": "multinomial_nb"}
+    for name, (macro_f1, _accuracy) in SINGLE_RUN_REFERENCE.items():
+        repeat_name = reference_to_repeat.get(name, name)
+        repeat_mean = summary_by_model.get(repeat_name, {}).get(
+            "macro_f1", (float("nan"), 0.0)
+        )[0]
+        add(
+            f"    {name:<20} single {macro_f1:.3f}   repeated mean {repeat_mean:.3f}"
+        )
     add("")
 
     add("M2.1  MULTINOMIAL vs COMPLEMENT NAIVE BAYES")
@@ -251,12 +312,33 @@ def render_report(
     add("           (optimistic - repeats are not independent)")
     add("")
 
+    add(
+        f"M2.4  BOOTSTRAP  -  95% CI on delta(macro-F1) between models "
+        f"(paired, B={n_boot})"
+    )
+    add("-" * 68)
+    add(f"  {'pair':<40}{'d_macroF1':>11}{'  95% CI':<20}{'p':>7}")
+    for row in boot_delta_df.itertuples(index=False):
+        pair = f"{row.model_a} vs {row.model_b}"
+        ci_text = f"  [{row.ci_low:+.3f}, {row.ci_high:+.3f}]"
+        add(
+            f"  {pair:<40}{row.delta_macro_f1:>+11.3f}{ci_text:<20}{row.p_value:>7.3f}"
+            f"{'   overlaps 0' if row.crosses_zero else '   EXCLUDES 0'}"
+        )
+    add("")
+    add("  delta = (row1 mean macro-F1) - (row2). McNemar (M2.3) tests the")
+    add("  accuracy gap; this tests the macro-F1 gap, which is the ranking")
+    add("  metric. CI straddling 0 -> gap not distinguishable from split noise.")
+    add("")
+
     add("READ")
     add("-" * 68)
     best = ranked[0]
     best_macro = summary_by_model[best]["macro_f1"]
+    best_low, best_high = boot_ci_by_model[best]
     add(
-        f"  Best mean macro-F1: {best} {best_macro[0]:.3f} +/- {best_macro[1]:.3f}."
+        f"  Best mean macro-F1: {best} {best_macro[0]:.3f} +/- {best_macro[1]:.3f} "
+        f"(95% CI [{best_low:.3f}, {best_high:.3f}])."
     )
     any_reliable = (mcnemar_df["sig_repeats"] > mcnemar_df["n_repeats"] / 2).any()
     if any_reliable:
@@ -275,6 +357,17 @@ def render_report(
         f"  delta(complement - multinomial) = {delta_macro:+.3f} macro-F1; "
         f"{'within' if inside else 'beyond'} one std."
     )
+    excludes_zero = boot_delta_df.loc[~boot_delta_df["crosses_zero"], ["model_a", "model_b"]]
+    if excludes_zero.empty:
+        add(
+            "  Bootstrap: every model-pair macro-F1 gap CI straddles 0 - no "
+            "ranking survives at this sample size."
+        )
+    else:
+        pairs = ", ".join(
+            f"{a} vs {b}" for a, b in excludes_zero.itertuples(index=False)
+        )
+        add(f"  Bootstrap: macro-F1 gap CI excludes 0 only for: {pairs}.")
     add(
         "  With 152 rows most gaps sit inside the +/- std band. Do not lock in "
         "a model choice; grow ground truth first (see ../IMPROVEMENTS.md)."
@@ -299,6 +392,12 @@ def main() -> None:
         choices=list(MODEL_FACTORIES),
         default=list(MODEL_FACTORIES),
         help="subset of models to run (default: all)",
+    )
+    parser.add_argument(
+        "--n-boot",
+        type=int,
+        default=N_BOOT,
+        help=f"bootstrap resamples for the macro-F1 CI (default {N_BOOT})",
     )
     args = parser.parse_args()
 
@@ -329,6 +428,20 @@ def main() -> None:
 
     mcnemar_df = mcnemar_pairwise(list(args.models), np.asarray(y), oof_by_model, args.repeats)
 
+    print(f"\n[bootstrap] {args.n_boot} paired resamples of {len(frame)} rows ...", flush=True)
+    boot_sample_by_model = bootstrap_samples(
+        np.asarray(y), oof_by_model, n_boot=args.n_boot
+    )
+    boot_point_by_model = {
+        name: mean_macro_f1(np.asarray(y), oof_by_model[name]) for name in args.models
+    }
+    boot_ci_by_model = {
+        name: ci(boot_sample_by_model[name]) for name in args.models
+    }
+    boot_delta_df = bootstrap_delta_pairwise(
+        list(args.models), boot_sample_by_model, boot_point_by_model
+    )
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     per_repeat_all = pd.concat(per_repeat_by_model.values(), ignore_index=True)
     per_repeat_all.to_csv(
@@ -349,15 +462,44 @@ def main() -> None:
         DATA_DIR / "mcnemar_pairwise.csv", index=False, encoding="utf-8-sig"
     )
 
+    boot_ci_rows = [
+        {
+            "model": name,
+            "macro_f1_point": boot_point_by_model[name],
+            "ci_low": boot_ci_by_model[name][0],
+            "ci_high": boot_ci_by_model[name][1],
+        }
+        for name in args.models
+    ]
+    pd.DataFrame(boot_ci_rows).to_csv(
+        DATA_DIR / "bootstrap_macro_f1_ci.csv", index=False, encoding="utf-8-sig"
+    )
+    boot_delta_df.to_csv(
+        DATA_DIR / "bootstrap_delta.csv", index=False, encoding="utf-8-sig"
+    )
+
     report = render_report(
-        summary_by_model, per_repeat_by_model, mcnemar_df, args.repeats, label_counts
+        summary_by_model,
+        per_repeat_by_model,
+        mcnemar_df,
+        boot_point_by_model,
+        boot_ci_by_model,
+        boot_delta_df,
+        args.repeats,
+        args.n_boot,
+        label_counts,
     )
     RESULTS_PATH.write_text(report + "\n", encoding="utf-8")
     print("\n" + report)
     print(f"\nWritten: {RESULTS_PATH}")
-    print(f"         {DATA_DIR / 'repeated_cv_per_repeat.csv'}")
-    print(f"         {DATA_DIR / 'repeated_cv_summary.csv'}")
-    print(f"         {DATA_DIR / 'mcnemar_pairwise.csv'}")
+    for csv_name in (
+        "repeated_cv_per_repeat.csv",
+        "repeated_cv_summary.csv",
+        "mcnemar_pairwise.csv",
+        "bootstrap_macro_f1_ci.csv",
+        "bootstrap_delta.csv",
+    ):
+        print(f"         {DATA_DIR / csv_name}")
 
 
 if __name__ == "__main__":

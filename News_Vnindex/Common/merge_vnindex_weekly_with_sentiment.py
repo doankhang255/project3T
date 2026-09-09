@@ -7,11 +7,27 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VNINDEX_WEEKLY_PATH = PROJECT_ROOT / "data_Histo" / "vnindex_weekly_return.parquet"
-SENTIMENT_WEEKLY_PATH = PROJECT_ROOT / "data_News" / "market_sentiment_index_weekly.parquet"
-OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged.parquet"
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged.csv"
+SENTIMENT_WEEKLY_PATHS_BY_METHOD = {
+    "pmi": PROJECT_ROOT / "News" / "Build_sentiment_index" / "data" / "market_sentiment_index_weekly_pmi.parquet",
+    "intensity": PROJECT_ROOT
+    / "News"
+    / "Build_sentiment_index"
+    / "data"
+    / "market_sentiment_index_weekly_intensity.parquet",
+    "pca_pmi": PROJECT_ROOT
+    / "News"
+    / "Build_sentiment_index"
+    / "data"
+    / "market_sentiment_index_weekly_pca_pmi.parquet",
+    "pca_intensity": PROJECT_ROOT
+    / "News"
+    / "Build_sentiment_index"
+    / "data"
+    / "market_sentiment_index_weekly_pca_intensity.parquet",
+}
+OUTPUT_DIR = PROJECT_ROOT / "data_News"
 
 
 def prepare_week_key(df: pd.DataFrame, column: str = "week_end") -> pd.DataFrame:
@@ -79,25 +95,26 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     vnindex_weekly_df = pd.read_parquet(VNINDEX_WEEKLY_PATH)
-    sentiment_weekly_df = pd.read_parquet(SENTIMENT_WEEKLY_PATH)
-    merged_df = merge_vnindex_weekly_with_sentiment(
-        vnindex_weekly_df,
-        sentiment_weekly_df,
-    )
 
-    OUTPUT_PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    merged_df.to_parquet(OUTPUT_PARQUET_PATH, index=False)
-    merged_df.to_csv(OUTPUT_CSV_PATH, index=False, encoding="utf-8-sig")
+    for method_suffix, sentiment_weekly_path in SENTIMENT_WEEKLY_PATHS_BY_METHOD.items():
+        sentiment_weekly_df = pd.read_parquet(sentiment_weekly_path)
+        merged_df = merge_vnindex_weekly_with_sentiment(vnindex_weekly_df, sentiment_weekly_df)
 
-    print("VN-Index weekly input:", VNINDEX_WEEKLY_PATH)
-    print("Sentiment weekly input:", SENTIMENT_WEEKLY_PATH)
-    print("Output parquet:", OUTPUT_PARQUET_PATH)
-    print("Output csv:", OUTPUT_CSV_PATH)
-    print("VN-Index weekly rows:", len(vnindex_weekly_df))
-    print("Sentiment weekly rows:", len(sentiment_weekly_df))
-    print("Merged rows:", len(merged_df))
-    print(merged_df.head(20).to_string(index=False))
+        output_parquet_path = OUTPUT_DIR / f"vnindex_weekly_sentiment_merged_{method_suffix}.parquet"
+        output_csv_path = OUTPUT_DIR / f"vnindex_weekly_sentiment_merged_{method_suffix}.csv"
+        merged_df.to_parquet(output_parquet_path, index=False)
+        merged_df.to_csv(output_csv_path, index=False, encoding="utf-8-sig")
+
+        print(f"--- {method_suffix} ---")
+        print("Sentiment weekly input:", sentiment_weekly_path)
+        print("Output parquet:", output_parquet_path)
+        print("VN-Index weekly rows:", len(vnindex_weekly_df))
+        print("Sentiment weekly rows:", len(sentiment_weekly_df))
+        print("Merged rows:", len(merged_df))
+        print(merged_df.head(10).to_string(index=False))
+        print()
 
 
 if __name__ == "__main__":

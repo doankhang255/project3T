@@ -62,9 +62,6 @@ NEGATION_WINDOW_DEFAULT = 4  # số token quét ngược trước mỗi match đ
 
 
 def load_word_set_from_file(path: Path) -> set[str]:
-    """Đọc 1 file danh sách từ dạng comma/newline-separated, bỏ dòng comment
-    (bắt đầu bằng '#') - dùng chung cho negation_cue_words.txt và
-    clause_boundary_words.txt."""
     text = path.read_text(encoding="utf-8")
     lines = [ln for ln in text.splitlines() if not ln.strip().startswith("#")]
     cleaned = "\n".join(lines)

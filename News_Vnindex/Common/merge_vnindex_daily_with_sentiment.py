@@ -7,11 +7,25 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VNINDEX_DAILY_PATH = PROJECT_ROOT / "data_Histo" / "vnindex_eda_output.csv"
-SENTIMENT_DAILY_PATH = PROJECT_ROOT / "data_News" / "market_sentiment_index_daily.parquet"
-OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data_News" / "vnindex_daily_sentiment_merged.parquet"
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "vnindex_daily_sentiment_merged.csv"
+# 2 nguồn sentiment cấp-ngày (Cách 1 PMI / Cách 2 intensity) từ
+# News/Build_sentiment_index/build_sentiment_index_daily.py - chạy hàm merge
+# này riêng cho từng nguồn (xem main()), ra 2 file merged riêng để so sánh
+# khách quan 2 cách chấm điểm ở bước hồi quy (vnindex_daily_predictive_regression.py).
+SENTIMENT_DAILY_PATHS_BY_METHOD = {
+    "pmi": PROJECT_ROOT / "News" / "Build_sentiment_index" / "data" / "market_sentiment_index_daily_pmi.parquet",
+    "intensity": PROJECT_ROOT / "News" / "Build_sentiment_index" / "data" / "market_sentiment_index_daily_intensity.parquet",
+    # Chỉ số PCA kiểu Tetlock (build_sentiment_index_pca.py) - xem README/chat
+    # để biết PCA ở đây ra "chỉ số mật độ ngôn từ" chứ không sạch như bản gốc.
+    "pca_pmi": PROJECT_ROOT / "News" / "Build_sentiment_index" / "data" / "market_sentiment_index_daily_pca_pmi.parquet",
+    "pca_intensity": PROJECT_ROOT
+    / "News"
+    / "Build_sentiment_index"
+    / "data"
+    / "market_sentiment_index_daily_pca_intensity.parquet",
+}
+OUTPUT_DIR = PROJECT_ROOT / "data_News"
 
 SYMBOL_COLUMN = "symbol"
 DATE_COLUMN = "date"
@@ -65,7 +79,12 @@ def prepare_vnindex_daily(df: pd.DataFrame) -> pd.DataFrame:
     out["future_ret_5d"] = np.log(out[CLOSE_COLUMN].shift(-5) / out[CLOSE_COLUMN])
     out["future_ret_20d"] = np.log(out[CLOSE_COLUMN].shift(-20) / out[CLOSE_COLUMN])
     out["return_lag_1d"] = out["daily_return"].shift(1)
-    out["volatility_20d"] = out["daily_return"].rolling(20).std()
+    # .shift(1): Exog phải là thông tin QUÁ KHỨ (đúng Exog_{t-1} trong
+    # Tetlock) - không .shift thì cửa sổ rolling 20 ngày tính đến CẢ ngày t,
+    # nghĩa là dùng 1 phần chính return ngày t (biến đang muốn dự báo) làm
+    # biến kiểm soát cho chính nó - look-ahead nhẹ, đã phát hiện khi đối
+    # chiếu lại REF/Tetlock_Media_Sentiment_JF.pdf.
+    out["volatility_20d"] = out["daily_return"].rolling(20).std().shift(1)
     out["log_vol_total"] = np.log1p(out[VOLUME_COLUMN])
     out["log_val_total"] = np.log1p(out[VALUE_COLUMN])
 
@@ -121,14 +140,6 @@ def prepare_effective_sentiment(
     out[ARTICLE_COUNT_COLUMN] = pd.to_numeric(out[ARTICLE_COUNT_COLUMN], errors="coerce")
     out[SENTIMENT_SCORE_COLUMN] = pd.to_numeric(out[SENTIMENT_SCORE_COLUMN], errors="coerce")
 
-    for column in [
-        "positive_article_count",
-        "negative_article_count",
-        "neutral_article_count",
-    ]:
-        if column in out.columns:
-            out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0)
-
     out = out.loc[
         out[DATE_COLUMN].notna()
         & out[ARTICLE_COUNT_COLUMN].notna()
@@ -149,9 +160,6 @@ def prepare_effective_sentiment(
         source_calendar_day_count=(DATE_COLUMN, "size"),
         article_count=(ARTICLE_COUNT_COLUMN, "sum"),
         weighted_sentiment=("weighted_sentiment", "sum"),
-        positive_article_count=("positive_article_count", "sum"),
-        negative_article_count=("negative_article_count", "sum"),
-        neutral_article_count=("neutral_article_count", "sum"),
     )
     effective_sentiment = effective_sentiment.reset_index()
     effective_sentiment["sentiment_index"] = (
@@ -164,21 +172,17 @@ def prepare_effective_sentiment(
         effective_sentiment["article_count"]
     )
 
-    return effective_sentiment[
-        [
-            "effective_trading_date",
-            "sentiment_calendar_start",
-            "sentiment_calendar_end",
-            "source_calendar_day_count",
-            "article_count",
-            "sentiment_index",
-            "sentiment_index_z",
-            "positive_article_count",
-            "negative_article_count",
-            "neutral_article_count",
-            "log_article_count",
-        ]
+    output_columns = [
+        "effective_trading_date",
+        "sentiment_calendar_start",
+        "sentiment_calendar_end",
+        "source_calendar_day_count",
+        "article_count",
+        "sentiment_index",
+        "sentiment_index_z",
+        "log_article_count",
     ]
+    return effective_sentiment[output_columns]
 
 
 def merge_vnindex_daily_with_sentiment(
@@ -208,9 +212,6 @@ def merge_vnindex_daily_with_sentiment(
         "article_count",
         "sentiment_index",
         "sentiment_index_z",
-        "positive_article_count",
-        "negative_article_count",
-        "neutral_article_count",
         "log_article_count",
         OPEN_COLUMN,
         HIGH_COLUMN,
@@ -227,6 +228,7 @@ def merge_vnindex_daily_with_sentiment(
         "log_vol_total",
         "log_val_total",
     ]
+    ordered_columns = [column for column in ordered_columns if column in merged_df.columns]
     merged_df = merged_df[ordered_columns]
     return merged_df.sort_values(DATE_COLUMN, kind="mergesort").reset_index(drop=True)
 
@@ -235,26 +237,25 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     vnindex_daily_df = pd.read_csv(VNINDEX_DAILY_PATH, encoding="utf-8-sig")
-    sentiment_daily_df = pd.read_parquet(SENTIMENT_DAILY_PATH)
 
-    merged_df = merge_vnindex_daily_with_sentiment(
-        vnindex_daily_df,
-        sentiment_daily_df,
-    )
+    for method_suffix, sentiment_daily_path in SENTIMENT_DAILY_PATHS_BY_METHOD.items():
+        sentiment_daily_df = pd.read_parquet(sentiment_daily_path)
+        merged_df = merge_vnindex_daily_with_sentiment(vnindex_daily_df, sentiment_daily_df)
 
-    OUTPUT_PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    merged_df.to_parquet(OUTPUT_PARQUET_PATH, index=False)
-    merged_df.to_csv(OUTPUT_CSV_PATH, index=False, encoding="utf-8-sig")
+        output_parquet_path = OUTPUT_DIR / f"vnindex_daily_sentiment_merged_{method_suffix}.parquet"
+        output_csv_path = OUTPUT_DIR / f"vnindex_daily_sentiment_merged_{method_suffix}.csv"
+        merged_df.to_parquet(output_parquet_path, index=False)
+        merged_df.to_csv(output_csv_path, index=False, encoding="utf-8-sig")
 
-    print("VN-Index daily input:", VNINDEX_DAILY_PATH)
-    print("Sentiment daily input:", SENTIMENT_DAILY_PATH)
-    print("Output parquet:", OUTPUT_PARQUET_PATH)
-    print("Output csv:", OUTPUT_CSV_PATH)
-    print("VN-Index daily rows:", len(prepare_vnindex_daily(vnindex_daily_df)))
-    print("Sentiment daily rows:", len(sentiment_daily_df))
-    print("Merged rows:", len(merged_df))
-    print(merged_df.head(20).to_string(index=False))
+        print(f"--- {method_suffix} ---")
+        print("Sentiment daily input:", sentiment_daily_path)
+        print("Output parquet:", output_parquet_path)
+        print("Sentiment daily rows:", len(sentiment_daily_df))
+        print("Merged rows:", len(merged_df))
+        print(merged_df.head(10).to_string(index=False))
+        print()
 
 
 if __name__ == "__main__":

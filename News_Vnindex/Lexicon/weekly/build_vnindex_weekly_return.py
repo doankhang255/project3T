@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 INPUT_PATH = PROJECT_ROOT / "data_Histo" / "vnindex_eda_output.csv"
 OUTPUT_PARQUET_PATH = PROJECT_ROOT / "data_Histo" / "vnindex_weekly_return.parquet"
 OUTPUT_CSV_PATH = PROJECT_ROOT / "data_Histo" / "vnindex_weekly_return.csv"
@@ -78,7 +78,9 @@ def build_vnindex_weekly_return(df: pd.DataFrame) -> pd.DataFrame:
     weekly_return["future_ret_4w"] = np.log(weekly_return["close_price"].shift(-4) / weekly_return["close_price"]
                                             )
     weekly_return["return_lag_1w"] = weekly_return["weekly_return"].shift(1)
-    weekly_return["volatility_12w"] = weekly_return["weekly_return"].rolling(12).std()
+    # .shift(1): tránh look-ahead - cùng lý do đã sửa volatility_20d ở bản
+    # daily (xem News_Vnindex/Common/merge_vnindex_daily_with_sentiment.py).
+    weekly_return["volatility_12w"] = weekly_return["weekly_return"].rolling(12).std().shift(1)
     weekly_return["log_vol_total"] = np.log1p(weekly_return["vol_total"])
 
     weekly_return = weekly_return[

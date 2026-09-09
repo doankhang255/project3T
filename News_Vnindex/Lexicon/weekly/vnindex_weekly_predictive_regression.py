@@ -8,11 +8,14 @@ import pandas as pd
 from scipy import stats
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-BASE_INPUT_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_merged.parquet"
-ABNORMAL_INPUT_PATH = (PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return.parquet")
-OUTPUT_PARQUET_PATH = (PROJECT_ROOT / "data_News" / "vnindex_weekly_predictive_regression.parquet")
-OUTPUT_CSV_PATH = PROJECT_ROOT / "data_News" / "vnindex_weekly_predictive_regression.csv"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ABNORMAL_INPUT_PATHS_BY_METHOD = {
+    "Cach1_PMI": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_pmi.parquet",
+    "Cach2_Intensity": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_intensity.parquet",
+    "PCA_PMI": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_pca_pmi.parquet",
+    "PCA_Intensity": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_pca_intensity.parquet",
+}
+OUTPUT_DIR = PROJECT_ROOT / "data_News"
 
 PREDICTOR_COLUMNS = [
     "sentiment_index_z",
@@ -140,20 +143,28 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    input_path = ABNORMAL_INPUT_PATH if ABNORMAL_INPUT_PATH.exists() else BASE_INPUT_PATH
-    merged_df = pd.read_parquet(input_path)
-    regression_result = build_regression_results(merged_df)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    result_frames = []
+    for method_name, input_path in ABNORMAL_INPUT_PATHS_BY_METHOD.items():
+        merged_df = pd.read_parquet(input_path)
+        regression_result = build_regression_results(merged_df)
+        regression_result.insert(0, "method", method_name)
+        result_frames.append(regression_result)
 
-    OUTPUT_PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    regression_result.to_parquet(OUTPUT_PARQUET_PATH, index=False)
-    regression_result.to_csv(OUTPUT_CSV_PATH, index=False, encoding="utf-8-sig")
+        print(f"--- {method_name} ---")
+        print("Input:", input_path)
+        print("Input rows:", len(merged_df))
+        print(
+            regression_result.loc[regression_result["predictor_variable"] == "sentiment_index_z"].to_string(
+                index=False
+            )
+        )
+        print()
 
-    print("Input:", input_path)
-    print("Output parquet:", OUTPUT_PARQUET_PATH)
-    print("Output csv:", OUTPUT_CSV_PATH)
-    print("Input rows:", len(merged_df))
-    print("Regression result rows:", len(regression_result))
-    print(regression_result.to_string(index=False))
+    all_results_df = pd.concat(result_frames, ignore_index=True)
+    all_results_df.to_parquet(OUTPUT_DIR / "vnindex_weekly_predictive_regression.parquet", index=False)
+    all_results_df.to_csv(OUTPUT_DIR / "vnindex_weekly_predictive_regression.csv", index=False, encoding="utf-8-sig")
+    print("Output:", OUTPUT_DIR / "vnindex_weekly_predictive_regression.csv")
 
 
 if __name__ == "__main__":
