@@ -1,12 +1,52 @@
+"""E3 - Fine-tune the domain-adapted PhoBERT on the manually labeled ground truth.
+
+Starts from ``Model_Output/phobert_domain_adapted`` (the E1 DAPT checkpoint, a
+``RobertaForMaskedLM``). ``AutoModelForSequenceClassification.from_pretrained(...,
+num_labels=3, ignore_mismatched_sizes=True)`` drops the MLM head and initializes
+a fresh 3-class classifier head on top of the adapted encoder.
+
+Evaluation is 5-fold stratified cross-validation with out-of-fold predictions -
+the same protocol the Traditional_ML branch uses - so the two method families are
+compared on an equal footing rather than on a single 80/20 split. Each fold
+trains a fresh classifier with ``WeightedLossTrainer`` (balanced-class-weight
+CrossEntropyLoss, weights taken from that fold's training rows) and predicts the
+held-out fold; the reported metrics / confusion matrix are computed once on the
+pooled out-of-fold predictions covering all 152 rows.
+
+After CV, one final model is trained on all rows (class weights from all rows)
+and saved to ``Model_Output/phobert_finetuned_ground_truth/`` as the single
+downstream inference artifact - the CV numbers are the honest performance
+estimate for it.
+
+GPU perf (copied from the E1 ``domain_adaptive_pretrain.py`` script): TF32
+matmul, bf16 autocast by default on CUDA (``--fp16`` forces fp16, ``--no-amp``
+disables mixed precision), 0 dataloader workers (Windows spawn/pickle overhead
+outweighs the gain here), pinned host memory on CUDA.
+
+Run (from the repo root, using the GPU venv)::
+
+    News/Build_sentiment_label/Transfer_Learning/Model_Output/.venv-gpu/Scripts/python.exe \
+        News/Build_sentiment_label/Transfer_Learning/model/finetune_phobert.py
+
+Quick smoke test (2 folds, 1 epoch, small batch)::
+
+    ... finetune_phobert.py --folds 2 --epochs 1 --batch-size 8
+"""
+
 from __future__ import annotations
 
-from pathlib import Path
+import argparse
+import shutil
 import sys
+import tempfile
+import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import train_test_split
+from datasets import Dataset
+from sklearn.model_selection import StratifiedKFold
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -14,7 +54,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-from datasets import Dataset
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -28,7 +67,6 @@ from News.Build_sentiment_label.Transfer_Learning.model.common import (
     RANDOM_SEED,
     TEXT_COLUMN,
     VALID_LABELS,
-    VAL_SIZE,
     compute_metrics_table,
     confusion_matrix,
     encode_labels,
@@ -36,11 +74,12 @@ from News.Build_sentiment_label.Transfer_Learning.model.common import (
 )
 
 
-# Single stratified train/val split rather than the 5-fold CV used by the
-# Traditional_ML models: this machine has no GPU (CPU-only torch build), and
-# fine-tuning a full PhoBERT model 5x over would take far longer than the
-# sklearn models do. A held-out 20% split is the same evaluation protocol
-# the earlier model_sentiment_v1.py/v2.py scripts already used.
+# 5-fold stratified CV with out-of-fold predictions, matching the protocol the
+# Traditional_ML models use, so PhoBERT fine-tuning and the sklearn baselines are
+# evaluated identically. The RTX 5060 fine-tunes each ~120-row fold in well under
+# a minute, so running the full model 5x + once more on all rows is only a few
+# minutes total - a single 80/20 split (the old model_sentiment_v1/v2 protocol)
+# is no longer worth the weaker estimate it gives on 152 rows.
 OUTPUT_DIR = (
     Path(__file__).resolve().parents[1] / "Model_Output" / "phobert_finetuned_ground_truth"
 )
@@ -48,10 +87,27 @@ OUTPUT_METRICS_PATH = DATA_DIR / "phobert_finetuned_metrics.csv"
 OUTPUT_PREDICTIONS_PATH = DATA_DIR / "phobert_finetuned_predictions.csv"
 OUTPUT_CONFUSION_MATRIX_PATH = DATA_DIR / "phobert_finetuned_confusion_matrix.csv"
 
-BATCH_SIZE = 8
-EPOCHS = 5
-LEARNING_RATE = 2e-5
 WEIGHT_DECAY = 0.01
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--epochs", type=float, default=5.0)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--learning-rate", type=float, default=2e-5)
+    parser.add_argument(
+        "--no-amp",
+        action="store_true",
+        help="Disable mixed precision entirely (train in fp32).",
+    )
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="Force fp16 mixed precision instead of the bf16 default (bf16 is "
+        "native on this RTX 5060 / Blackwell and needs no loss scaler).",
+    )
+    return parser.parse_args()
 
 
 def compute_balanced_class_weights(labels: list[int]) -> torch.Tensor:
@@ -98,42 +154,13 @@ def build_hf_compute_metrics():
     return compute_metrics
 
 
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def build_classifier() -> AutoModelForSequenceClassification:
+    """A fresh sequence-classification model from the E1 domain-adapted encoder.
 
-    torch.manual_seed(RANDOM_SEED)
-
-    ground_truth_df = load_ground_truth()
-    labels = encode_labels(ground_truth_df["ground_truth_label"])
-    ground_truth_df = ground_truth_df.assign(label=labels)
-
-    print("Base model:", BASE_MODEL_PATH)
-    print("Documents:", len(ground_truth_df))
-    print("Label counts:")
-    print(ground_truth_df["ground_truth_label"].value_counts().to_string())
-
-    train_df, val_df = train_test_split(
-        ground_truth_df,
-        test_size=VAL_SIZE,
-        random_state=RANDOM_SEED,
-        stratify=ground_truth_df["label"],
-    )
-    train_df = train_df.reset_index(drop=True)
-    val_df = val_df.reset_index(drop=True)
-
-    class_weights = compute_balanced_class_weights(train_df["label"].tolist())
-    print("\nTrain rows:", len(train_df), "| Val rows:", len(val_df))
-    print("Class weights used in CrossEntropyLoss:")
-    for label_id, weight in enumerate(class_weights.tolist()):
-        print(f"  {VALID_LABELS[label_id]}: {weight:.4f}")
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        BASE_MODEL_PATH,
-        use_fast=False,
-        local_files_only=True,
-    )
-    model = AutoModelForSequenceClassification.from_pretrained(
+    ``ignore_mismatched_sizes=True`` drops the incoming MLM head and randomly
+    initializes the 3-way classifier head - the intended behaviour here.
+    """
+    return AutoModelForSequenceClassification.from_pretrained(
         BASE_MODEL_PATH,
         num_labels=len(VALID_LABELS),
         label2id={label: index for index, label in enumerate(VALID_LABELS)},
@@ -142,70 +169,171 @@ def main() -> None:
         ignore_mismatched_sizes=True,
     )
 
-    def tokenize_batch(batch):
-        return tokenizer(batch[TEXT_COLUMN], truncation=True, max_length=MAX_LENGTH)
 
-    train_dataset = Dataset.from_pandas(train_df[[TEXT_COLUMN, "label"]])
-    val_dataset = Dataset.from_pandas(val_df[[TEXT_COLUMN, "label"]])
-    train_dataset = train_dataset.map(tokenize_batch, batched=True).remove_columns([TEXT_COLUMN])
-    val_dataset = val_dataset.map(tokenize_batch, batched=True).remove_columns([TEXT_COLUMN])
-    train_dataset.set_format("torch")
-    val_dataset.set_format("torch")
-
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-    training_args = TrainingArguments(
-        output_dir=str(OUTPUT_DIR),
-        eval_strategy="epoch",
-        save_strategy="epoch",
+def make_training_args(
+    output_dir: Path,
+    args: argparse.Namespace,
+    use_bf16: bool,
+    use_fp16: bool,
+    on_cuda: bool,
+) -> TrainingArguments:
+    return TrainingArguments(
+        output_dir=str(output_dir),
+        eval_strategy="no",
+        save_strategy="no",
         logging_strategy="steps",
         logging_steps=10,
-        learning_rate=LEARNING_RATE,
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
-        num_train_epochs=EPOCHS,
+        learning_rate=args.learning_rate,
+        per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.batch_size,
+        num_train_epochs=args.epochs,
         weight_decay=WEIGHT_DECAY,
-        load_best_model_at_end=True,
-        metric_for_best_model="f1_macro",
-        greater_is_better=True,
-        save_total_limit=1,
+        bf16=use_bf16,
+        fp16=use_fp16,
+        # 0 on purpose: on Windows, DataLoader worker processes (spawn + pickle
+        # the Arrow dataset) add far more overhead than they save on 152 rows.
+        dataloader_num_workers=0,
+        dataloader_pin_memory=on_cuda,
         report_to="none",
         seed=RANDOM_SEED,
     )
 
-    trainer = WeightedLossTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        data_collator=data_collator,
-        compute_metrics=build_hf_compute_metrics(),
-        class_weights=class_weights,
+
+def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    args = parse_args()
+    torch.manual_seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
+
+    on_cuda = torch.cuda.is_available()
+    if on_cuda:
+        # Blackwell has fast TF32 matmul; free, accuracy-neutral speedup.
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
+    use_bf16 = (
+        on_cuda and not args.no_amp and not args.fp16 and torch.cuda.is_bf16_supported()
+    )
+    use_fp16 = on_cuda and not args.no_amp and not use_bf16
+    precision = "bf16" if use_bf16 else "fp16" if use_fp16 else "fp32"
+
+    ground_truth_df = load_ground_truth()
+    labels = encode_labels(ground_truth_df["ground_truth_label"])
+    ground_truth_df = ground_truth_df.assign(label=labels).reset_index(drop=True)
+    y = np.asarray(ground_truth_df["label"], dtype=int)
+    n_rows = len(ground_truth_df)
+
+    print("Base model :", BASE_MODEL_PATH)
+    print(
+        "Device     :",
+        torch.cuda.get_device_name(0) if on_cuda else "cpu",
+        "| precision:",
+        precision,
+    )
+    print("Documents  :", n_rows)
+    print("Label counts:")
+    print(ground_truth_df["ground_truth_label"].value_counts().to_string())
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        BASE_MODEL_PATH,
+        use_fast=False,
+        local_files_only=True,
     )
 
-    trainer.train()
+    def tokenize_batch(batch):
+        return tokenizer(batch[TEXT_COLUMN], truncation=True, max_length=MAX_LENGTH)
 
-    predictions = trainer.predict(val_dataset)
-    logits = predictions.predictions
-    y_true = np.asarray(predictions.label_ids)
-    probabilities = torch.softmax(torch.tensor(logits), dim=-1).numpy()
-    y_pred = probabilities.argmax(axis=1)
+    def make_dataset(frame: pd.DataFrame) -> Dataset:
+        dataset = Dataset.from_pandas(
+            frame[[TEXT_COLUMN, "label"]], preserve_index=False
+        )
+        dataset = dataset.map(tokenize_batch, batched=True).remove_columns([TEXT_COLUMN])
+        dataset = dataset.with_format("torch")
+        return dataset
 
-    metrics_df = compute_metrics_table(y_true, y_pred)
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
-    prediction_df = val_df[["id", "title", "ground_truth_label"]].copy()
-    prediction_df["predicted_label"] = [VALID_LABELS[index] for index in y_pred]
+    # ------------------------------------------------------------------
+    # 5-fold stratified CV -> out-of-fold probabilities for every row
+    # ------------------------------------------------------------------
+    skf = StratifiedKFold(
+        n_splits=args.folds, shuffle=True, random_state=RANDOM_SEED
+    )
+    oof_proba = np.zeros((n_rows, len(VALID_LABELS)), dtype=np.float64)
+    oof_pred = np.full(n_rows, -1, dtype=int)
+    fold_of_row = np.full(n_rows, -1, dtype=int)
+
+    cv_start = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="phobert_cv_") as scratch:
+        for fold_id, (train_idx, val_idx) in enumerate(
+            skf.split(np.zeros(n_rows), y), start=1
+        ):
+            fold_start = time.perf_counter()
+            fold_of_row[val_idx] = fold_id
+
+            train_frame = ground_truth_df.iloc[train_idx].reset_index(drop=True)
+            val_frame = ground_truth_df.iloc[val_idx].reset_index(drop=True)
+
+            class_weights = compute_balanced_class_weights(train_frame["label"].tolist())
+            train_dataset = make_dataset(train_frame)
+            val_dataset = make_dataset(val_frame)
+
+            model = build_classifier()
+            trainer = WeightedLossTrainer(
+                model=model,
+                args=make_training_args(
+                    Path(scratch) / f"fold_{fold_id}", args, use_bf16, use_fp16, on_cuda
+                ),
+                train_dataset=train_dataset,
+                data_collator=data_collator,
+                compute_metrics=build_hf_compute_metrics(),
+                class_weights=class_weights,
+            )
+            trainer.train()
+
+            fold_pred = trainer.predict(val_dataset)
+            probabilities = torch.softmax(
+                torch.tensor(fold_pred.predictions), dim=-1
+            ).numpy()
+            oof_proba[val_idx] = probabilities
+            oof_pred[val_idx] = probabilities.argmax(axis=1)
+
+            fold_acc = float((oof_pred[val_idx] == y[val_idx]).mean())
+            print(
+                f"Fold {fold_id}/{args.folds}: train={len(train_idx)} "
+                f"val={len(val_idx)} acc={fold_acc:.4f} "
+                f"({time.perf_counter() - fold_start:.1f}s)"
+            )
+
+            del trainer, model
+            if on_cuda:
+                torch.cuda.empty_cache()
+
+    if (fold_of_row < 0).any():
+        raise AssertionError("Some rows were never assigned to a validation fold.")
+    cv_wall = time.perf_counter() - cv_start
+
+    # ------------------------------------------------------------------
+    # Metrics / outputs from the pooled out-of-fold predictions
+    # ------------------------------------------------------------------
+    metrics_df = compute_metrics_table(y, oof_pred)
+
+    prediction_df = ground_truth_df[["id", "title", "ground_truth_label"]].copy()
+    prediction_df["predicted_label"] = [VALID_LABELS[index] for index in oof_pred]
     for label_id, label in enumerate(VALID_LABELS):
-        prediction_df[f"prob_{label}"] = probabilities[:, label_id]
+        prediction_df[f"prob_{label}"] = oof_proba[:, label_id]
     prediction_df["sentiment_score_ml"] = (
         prediction_df["prob_positive"] - prediction_df["prob_negative"]
     )
     prediction_df["is_correct"] = prediction_df["ground_truth_label"].eq(
         prediction_df["predicted_label"]
     )
+    prediction_df["fold"] = fold_of_row
 
     confusion_df = pd.DataFrame(
-        confusion_matrix(y_true, y_pred),
+        confusion_matrix(y, oof_pred),
         index=[f"true_{label}" for label in VALID_LABELS],
         columns=[f"pred_{label}" for label in VALID_LABELS],
     ).reset_index(names="true_label")
@@ -215,17 +343,53 @@ def main() -> None:
     prediction_df.to_csv(OUTPUT_PREDICTIONS_PATH, index=False, encoding="utf-8-sig")
     confusion_df.to_csv(OUTPUT_CONFUSION_MATRIX_PATH, index=False, encoding="utf-8-sig")
 
-    trainer.save_model(str(OUTPUT_DIR))
-    tokenizer.save_pretrained(str(OUTPUT_DIR))
+    # ------------------------------------------------------------------
+    # Final model: retrain on ALL rows, save as the downstream artifact
+    # ------------------------------------------------------------------
+    print(f"\nTraining final model on all {n_rows} rows ...")
+    final_weights = compute_balanced_class_weights(ground_truth_df["label"].tolist())
+    final_dataset = make_dataset(ground_truth_df)
+    final_model = build_classifier()
 
-    print("\nMetrics (held-out validation split):")
+    final_start = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="phobert_final_") as final_scratch:
+        final_trainer = WeightedLossTrainer(
+            model=final_model,
+            args=make_training_args(
+                Path(final_scratch), args, use_bf16, use_fp16, on_cuda
+            ),
+            train_dataset=final_dataset,
+            data_collator=data_collator,
+            compute_metrics=build_hf_compute_metrics(),
+            class_weights=final_weights,
+        )
+        final_trainer.train()
+
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        # Drop stale checkpoint dirs from earlier (single-split) runs of this
+        # script so the saved artifact is just the model + tokenizer.
+        for stale in OUTPUT_DIR.glob("checkpoint-*"):
+            if stale.is_dir():
+                shutil.rmtree(stale, ignore_errors=True)
+        final_trainer.save_model(str(OUTPUT_DIR))
+    tokenizer.save_pretrained(str(OUTPUT_DIR))
+    final_wall = time.perf_counter() - final_start
+
+    overall = metrics_df.loc[metrics_df["metric_scope"].eq("overall")].iloc[0]
+    print(f"\n=== {args.folds}-fold cross-validation (out-of-fold, {n_rows} rows) ===")
     print(metrics_df.to_string(index=False))
-    print("\nConfusion matrix:")
+    print("\nConfusion matrix (out-of-fold):")
     print(confusion_df.to_string(index=False))
-    print("\nSaved fine-tuned model to:", OUTPUT_DIR)
-    print("Output metrics:", OUTPUT_METRICS_PATH)
+    print(f"\nOOF macro F1 : {overall['f1']:.4f}")
+    print(f"OOF accuracy : {overall['accuracy']:.4f}")
+    print(
+        f"Wall time    : CV {cv_wall:.1f}s + final fit {final_wall:.1f}s "
+        f"= {cv_wall + final_wall:.1f}s"
+    )
+    print("\nSaved final fine-tuned model to:", OUTPUT_DIR)
+    print("Output metrics    :", OUTPUT_METRICS_PATH)
     print("Output predictions:", OUTPUT_PREDICTIONS_PATH)
-    print("Output confusion matrix:", OUTPUT_CONFUSION_MATRIX_PATH)
+    print("Output confusion  :", OUTPUT_CONFUSION_MATRIX_PATH)
 
 
 if __name__ == "__main__":

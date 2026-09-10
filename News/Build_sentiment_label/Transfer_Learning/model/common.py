@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import numpy as np
 import pandas as pd
@@ -12,26 +11,26 @@ TRANSFER_LEARNING_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = TRANSFER_LEARNING_DIR.parents[2]
 DATA_DIR = TRANSFER_LEARNING_DIR / "data"
 
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from News.Build_sentiment_label.Common.tokenize_underthesea import (  # noqa: E402
-    tokenize_vietnamese_text,
-)
-
 
 GROUND_TRUTH_PATH = PROJECT_ROOT / "data_news" / "ground_truth_labeled.csv"
 
-BASE_MODEL_PATH = (
-    TRANSFER_LEARNING_DIR
-    / "Model_Output"
-    / "hub"
-    / "models--wonrax--phobert-base-vietnamese-sentiment"
-    / "snapshots"
-    / "9076a5896971b5d551588fe8a51c722c89731d36"
+# The ground truth is joined to this VNCoreNLP word-segmentation of the corpus
+# by ``source_row_id`` instead of being re-tokenized here. VNCoreNLP is the
+# segmentation PhoBERT was pretrained on, the one E1 (pretrain/) adapts on, and
+# the one Lexicon_based / Traditional_ML compare against - so all branches now
+# feed PhoBERT identically segmented text.
+VNCORENLP_TOKENIZED_PATH = (
+    PROJECT_ROOT / "data_news" / "data_tokenized" / "equity_news_tokenized_vncorenlp.parquet"
 )
+SOURCE_ROW_ID_COLUMN = "source_row_id"
+TOKENIZED_COLUMN = "Tokenize_content"
 
-RAW_TEXT_COLUMN = "content"
+# E1 output: vinai/phobert-base-v2 after domain-adaptive MLM pretraining on the
+# 126k unlabeled equity-news corpus (val perplexity 8.25 -> 3.82). E2 (frozen
+# feature probe) and E3 (fine-tune) both start from this instead of the raw base
+# or the wonrax e-commerce-review sentiment checkpoint.
+BASE_MODEL_PATH = TRANSFER_LEARNING_DIR / "Model_Output" / "phobert_domain_adapted"
+
 TEXT_COLUMN = "text"
 LABEL_COLUMN = "sentiment"
 
@@ -59,33 +58,64 @@ def normalize_label(value: object) -> str | None:
 
 
 def load_ground_truth(path: Path = GROUND_TRUTH_PATH) -> pd.DataFrame:
-    """Load the 152-row manually labeled ground truth and word-segment its
-    raw article text so it matches the format PhoBERT's BPE tokenizer was
-    pretrained on (underscore-joined compound words), e.g. "cong_ty" not
-    "cong ty". Uses the same ground_truth_labeled.csv as Traditional_ML, so
-    results are comparable across methods.
+    """Load the manually labeled ground truth and attach the VNCoreNLP word
+    segmentation of each article (underscore-joined compounds, e.g. "cong_ty"
+    not "cong ty" - the format PhoBERT's BPE expects).
+
+    Instead of re-tokenizing ``content`` here, the rows are looked up in
+    ``equity_news_tokenized_vncorenlp.parquet`` by ``source_row_id`` (the same
+    positional join ``Traditional_ML/prepare_ground_truth.py`` uses). Keeps the
+    segmentation identical to E1 pretraining and to the other method branches.
     """
     if not path.exists():
         raise FileNotFoundError(f"Ground truth file not found: {path}")
+    if not VNCORENLP_TOKENIZED_PATH.exists():
+        raise FileNotFoundError(
+            f"VNCoreNLP tokenized corpus not found: {VNCORENLP_TOKENIZED_PATH}"
+        )
 
     df = pd.read_csv(path, encoding="utf-8-sig")
-    required_columns = {RAW_TEXT_COLUMN, LABEL_COLUMN}
+    required_columns = {SOURCE_ROW_ID_COLUMN, LABEL_COLUMN, "title"}
     missing_columns = required_columns.difference(df.columns)
     if missing_columns:
         raise ValueError(f"Ground truth file is missing columns: {sorted(missing_columns)}")
+    if df[SOURCE_ROW_ID_COLUMN].isna().any():
+        raise ValueError("Ground truth file has null source_row_id values.")
 
     out = df.copy()
+    out[SOURCE_ROW_ID_COLUMN] = out[SOURCE_ROW_ID_COLUMN].astype(int)
     out["ground_truth_label"] = out[LABEL_COLUMN].apply(normalize_label)
     out = out.loc[out["ground_truth_label"].isin(VALID_LABELS)].reset_index(drop=True)
     if out.empty:
         raise ValueError("No valid labels found in ground truth file.")
 
-    out[TEXT_COLUMN] = out[RAW_TEXT_COLUMN].apply(
-        lambda text: " ".join(tokenize_vietnamese_text(text))
+    corpus = pd.read_parquet(
+        VNCORENLP_TOKENIZED_PATH, columns=["title", TOKENIZED_COLUMN]
     )
+    row_ids = out[SOURCE_ROW_ID_COLUMN].to_numpy()
+    if ((row_ids < 0) | (row_ids >= len(corpus))).any():
+        raise ValueError(
+            f"source_row_id values fall outside the VNCoreNLP corpus (0..{len(corpus) - 1})."
+        )
+    corpus_rows = corpus.iloc[row_ids].reset_index(drop=True)
+
+    # The join is positional; make sure we pulled the article the annotator saw.
+    title_mismatch = (
+        out["title"].astype(str).to_numpy() != corpus_rows["title"].astype(str).to_numpy()
+    )
+    if title_mismatch.any():
+        raise ValueError(
+            "source_row_id no longer lines up with the VNCoreNLP corpus for "
+            f"{int(title_mismatch.sum())} row(s)."
+        )
+
+    out[TEXT_COLUMN] = [
+        " ".join(str(token) for token in tokens if str(token).strip())
+        for tokens in corpus_rows[TOKENIZED_COLUMN]
+    ]
     out = out.loc[out[TEXT_COLUMN].str.len().gt(0)].reset_index(drop=True)
     if out.empty:
-        raise ValueError("No non-empty article text left after tokenization.")
+        raise ValueError("No non-empty article text left after joining VNCoreNLP tokens.")
 
     return out
 

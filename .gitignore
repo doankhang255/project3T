@@ -26,3 +26,5 @@ phobert_finetuned_ground_truth
 venv/
 venv
 tfidf_matrix_csr.npz
+phobert_dapt_cache
+phobert_domain_adapted
