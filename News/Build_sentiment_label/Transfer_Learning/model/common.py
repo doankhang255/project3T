@@ -28,6 +28,23 @@ VNCORENLP_TOKENIZED_PATH = (
 SOURCE_ROW_ID_COLUMN = "source_row_id"
 TOKENIZED_COLUMN = "Tokenize_content"
 
+# Same Tune(744)/Holdout(320) partition of ground_truth_combined.csv that
+# Traditional_ML's mentor-plan mục A work uses (built by its
+# improve/build_tune_holdout_split.py), joined by source_row_id. Reusing it
+# here means PhoBERT-based methods and the sklearn baselines are ever
+# evaluated on the identical row sets - a prerequisite for a fair
+# cross-method comparison (paired bootstrap / McNemar) on the Holdout rows.
+TRADITIONAL_ML_TUNE_HOLDOUT_DIR = (
+    PROJECT_ROOT
+    / "News"
+    / "Build_sentiment_label"
+    / "Traditional_ML"
+    / "improve"
+    / "tune_holdout"
+)
+TUNE_SPLIT_PATH = TRADITIONAL_ML_TUNE_HOLDOUT_DIR / "ground_truth_tune.csv"
+HOLDOUT_SPLIT_PATH = TRADITIONAL_ML_TUNE_HOLDOUT_DIR / "ground_truth_holdout.csv"
+
 # E1 output: vinai/phobert-base-v2 after domain-adaptive MLM pretraining on the
 # 126k unlabeled equity-news corpus (val perplexity 8.25 -> 3.82). E2 (frozen
 # feature probe) and E3 (fine-tune) both start from this instead of the raw base
@@ -121,6 +138,40 @@ def load_ground_truth(path: Path = GROUND_TRUTH_PATH) -> pd.DataFrame:
         raise ValueError("No non-empty article text left after joining VNCoreNLP tokens.")
 
     return out
+
+
+def load_ground_truth_tune_holdout() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split load_ground_truth()'s rows into Traditional_ML's exact Tune/Holdout
+    partition (by source_row_id). Raises if the split files are missing or no
+    longer add up to the full ground truth (e.g. ground_truth_combined.csv grew
+    since the split was built and needs regenerating on the Traditional_ML side
+    first).
+    """
+    if not TUNE_SPLIT_PATH.exists() or not HOLDOUT_SPLIT_PATH.exists():
+        raise FileNotFoundError(
+            "Traditional_ML tune/holdout split not found under "
+            f"{TRADITIONAL_ML_TUNE_HOLDOUT_DIR}"
+        )
+
+    full = load_ground_truth()
+    tune_ids = set(pd.read_csv(TUNE_SPLIT_PATH, encoding="utf-8-sig")[SOURCE_ROW_ID_COLUMN])
+    holdout_ids = set(
+        pd.read_csv(HOLDOUT_SPLIT_PATH, encoding="utf-8-sig")[SOURCE_ROW_ID_COLUMN]
+    )
+    overlap = tune_ids & holdout_ids
+    if overlap:
+        raise ValueError(f"Tune/Holdout source_row_id overlap: {sorted(overlap)[:5]}")
+
+    tune_df = full.loc[full[SOURCE_ROW_ID_COLUMN].isin(tune_ids)].reset_index(drop=True)
+    holdout_df = full.loc[full[SOURCE_ROW_ID_COLUMN].isin(holdout_ids)].reset_index(drop=True)
+    unmatched = len(full) - len(tune_df) - len(holdout_df)
+    if unmatched:
+        raise ValueError(
+            f"{unmatched} ground-truth row(s) fall outside both Tune and Holdout - "
+            "the split is stale relative to ground_truth_combined.csv; regenerate "
+            "it on the Traditional_ML side first."
+        )
+    return tune_df, holdout_df
 
 
 def encode_labels(labels: pd.Series) -> list[int]:

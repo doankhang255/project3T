@@ -68,4 +68,4 @@ lỗ trên tỷ, gánh lỗ, bù_đắp thâm_hụt dòng, lỗ nặng tỷ, l�
 phân_phối âm tỷ, lỗ tài_sản, thua_lỗ triền_miên, lỗ doanh_nghiệp,
 chìm trong thua_lỗ, lỗ trong kỳ, thua_lỗ tỷ, thua_lỗ tỷ đồng, lỗ của công_ty,
 gộp âm tỷ, kết_quả kinh_doanh kém, tiền_tài chính_âm, dòng tiền_tài chính_âm,
-kinh_doanh thâm_hụt, tiền_tài chính_âm tỷ, thấp
+kinh_doanh thâm_hụt, tiền_tài chính_âm tỷ, thấp, phạt, truy_thu

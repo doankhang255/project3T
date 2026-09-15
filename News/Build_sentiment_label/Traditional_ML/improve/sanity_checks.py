@@ -174,7 +174,7 @@ def main() -> None:
     print(f"  sklearn vocab size (fit on all rows, for reference only): {ref['vocab_size']}")
     print(
         "  Compare to this project's logistic_regression result on the same rows "
-        "(see improve/RESULTS.txt or improve/gt599_tune/RESULTS.txt) - should land in "
+        "(see improve/RESULTS.txt or improve/gt1064_tune/RESULTS.txt) - should land in "
         "the same ballpark (+/- ~0.05), not wildly higher or lower."
     )
 
