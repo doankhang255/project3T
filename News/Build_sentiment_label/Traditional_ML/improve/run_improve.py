@@ -3,9 +3,15 @@
     python News/Build_sentiment_label/Traditional_ML/improve/run_improve.py
     python .../improve/run_improve.py --repeats 3        # quick smoke run
 
-Writes only into ``improve/`` (``RESULTS.txt`` + ``data/*.csv``). Does not
-touch the main pipeline. Once a change here is confirmed useful, fold it into
-``model/*.py`` and regenerate ``RESULTS_SUMMARY.txt``.
+    # retest on a bigger / different ground-truth CSV without touching the
+    # n=152 baseline report (writes to --out-dir instead of improve/):
+    python .../improve/run_improve.py \\
+        --ground-truth-csv data_news/ground_truth_combined.csv \\
+        --out-dir News/Build_sentiment_label/Traditional_ML/improve/gt599
+
+By default writes only into ``improve/`` (``RESULTS.txt`` + ``data/*.csv``).
+Does not touch the main pipeline. Once a change here is confirmed useful, fold
+it into ``model/*.py`` and regenerate ``RESULTS_SUMMARY.txt``.
 
 M2.1  Multinomial vs Complement Naive Bayes. Rennie et al. (2003): Complement
       NB is built for class-imbalanced text; here ``positive`` is 23% of rows.
@@ -29,7 +35,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
+from News.Build_sentiment_label.Traditional_ML.TF_IDF import (
+    build_document_term_counts,
+    build_document_terms,
+)
 from News.Build_sentiment_label.Traditional_ML.improve.bootstrap import (
     N_BOOT,
     bootstrap_samples,
@@ -43,9 +52,12 @@ from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import (
     load_stopword_set,
     run_repeated_cv,
 )
+from News.Build_sentiment_label.Traditional_ML import prepare_ground_truth
 from News.Build_sentiment_label.Traditional_ML.model.common import (
+    VALID_LABELS,
     encode_labels,
     load_ground_truth_frame,
+    normalize_label,
 )
 from News.Build_sentiment_label.Traditional_ML.model.logistic_regression import (
     build_estimator as build_logistic_regression,
@@ -61,8 +73,7 @@ from News.Build_sentiment_label.Traditional_ML.model.svm import (
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
-RESULTS_PATH = SCRIPT_DIR / "RESULTS.txt"
+# default output location; --out-dir overrides both (see main())
 
 METRIC_COLUMNS = ["macro_f1", "accuracy", "f1_negative", "f1_neutral", "f1_positive"]
 
@@ -74,6 +85,30 @@ SINGLE_RUN_REFERENCE = {
     "logistic_regression": (0.593, 0.632),
     "svm": (0.562, 0.638),
 }
+
+
+def load_frame_from_csv(path: Path) -> pd.DataFrame:
+    """Same join as ``prepare_ground_truth.main()`` (source_row_id ->
+    VNCoreNLP corpus, with the title/publication_date alignment check), but
+    against an arbitrary ground-truth CSV instead of the pipeline's default
+    ``data_news/ground_truth_labeled.csv`` / the pre-built tokenized parquet.
+    Reuses ``prepare_ground_truth``'s functions and the same label
+    normalization as ``model/common.load_ground_truth_frame`` - no separate
+    join or labeling logic.
+    """
+    ground_truth = prepare_ground_truth.load_ground_truth(path)
+    corpus_rows = prepare_ground_truth.lookup_vncorenlp_rows(ground_truth)
+    prepare_ground_truth.assert_alignment(ground_truth, corpus_rows)
+    frame = prepare_ground_truth.build_output(ground_truth, corpus_rows)
+    frame["ground_truth_label"] = frame["sentiment"].apply(normalize_label)
+    valid_mask = frame["ground_truth_label"].isin(VALID_LABELS)
+    frame = frame.loc[valid_mask].reset_index(drop=True)
+
+    # same n-gram extraction TF_IDF.load_tokenized_ground_truth does for the
+    # pipeline's own tokenized parquet - build_document_term_counts needs it.
+    frame["_document_terms"] = frame.apply(build_document_terms, axis=1)
+    frame = frame.loc[frame["_document_terms"].map(len).gt(0)].reset_index(drop=True)
+    return frame
 
 
 def build_complement_nb(random_state: int) -> ComplementNB:
@@ -369,8 +404,8 @@ def render_report(
         )
         add(f"  Bootstrap: macro-F1 gap CI excludes 0 only for: {pairs}.")
     add(
-        "  With 152 rows most gaps sit inside the +/- std band. Do not lock in "
-        "a model choice; grow ground truth first (see ../IMPROVEMENTS.md)."
+        f"  With {total} rows, check whether gaps still sit inside the +/- std "
+        "band before locking in a model choice (see ../IMPROVEMENTS.md)."
     )
     return "\n".join(lines)
 
@@ -399,13 +434,38 @@ def main() -> None:
         default=N_BOOT,
         help=f"bootstrap resamples for the macro-F1 CI (default {N_BOOT})",
     )
+    parser.add_argument(
+        "--ground-truth-csv",
+        type=Path,
+        default=None,
+        help=(
+            "retest against a different ground-truth CSV (same schema as "
+            "data_news/ground_truth_labeled.csv, joined to the VNCoreNLP "
+            "corpus by source_row_id) instead of the pipeline's committed "
+            "152-row tokenized parquet"
+        ),
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="where to write RESULTS.txt + data/ (default: this improve/ folder)",
+    )
     args = parser.parse_args()
 
-    frame = load_ground_truth_frame()
+    if args.ground_truth_csv is not None:
+        frame = load_frame_from_csv(args.ground_truth_csv)
+        print(f"Ground truth source: {args.ground_truth_csv}")
+    else:
+        frame = load_ground_truth_frame()
     term_counts = build_document_term_counts(frame)
     y = encode_labels(frame["ground_truth_label"])
     stopwords = load_stopword_set()
     label_counts = frame["ground_truth_label"].value_counts().to_dict()
+
+    out_dir = args.out_dir if args.out_dir is not None else SCRIPT_DIR
+    data_dir = out_dir / "data"
+    results_path = out_dir / "RESULTS.txt"
 
     print(f"Ground truth rows: {len(frame)}  |  repeats: {args.repeats}")
     print("Label counts:", label_counts)
@@ -442,10 +502,10 @@ def main() -> None:
         list(args.models), boot_sample_by_model, boot_point_by_model
     )
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
     per_repeat_all = pd.concat(per_repeat_by_model.values(), ignore_index=True)
     per_repeat_all.to_csv(
-        DATA_DIR / "repeated_cv_per_repeat.csv", index=False, encoding="utf-8-sig"
+        data_dir / "repeated_cv_per_repeat.csv", index=False, encoding="utf-8-sig"
     )
 
     summary_rows = []
@@ -456,10 +516,10 @@ def main() -> None:
             row[f"{metric}_std"] = std
         summary_rows.append(row)
     pd.DataFrame(summary_rows).to_csv(
-        DATA_DIR / "repeated_cv_summary.csv", index=False, encoding="utf-8-sig"
+        data_dir / "repeated_cv_summary.csv", index=False, encoding="utf-8-sig"
     )
     mcnemar_df.to_csv(
-        DATA_DIR / "mcnemar_pairwise.csv", index=False, encoding="utf-8-sig"
+        data_dir / "mcnemar_pairwise.csv", index=False, encoding="utf-8-sig"
     )
 
     boot_ci_rows = [
@@ -472,10 +532,10 @@ def main() -> None:
         for name in args.models
     ]
     pd.DataFrame(boot_ci_rows).to_csv(
-        DATA_DIR / "bootstrap_macro_f1_ci.csv", index=False, encoding="utf-8-sig"
+        data_dir / "bootstrap_macro_f1_ci.csv", index=False, encoding="utf-8-sig"
     )
     boot_delta_df.to_csv(
-        DATA_DIR / "bootstrap_delta.csv", index=False, encoding="utf-8-sig"
+        data_dir / "bootstrap_delta.csv", index=False, encoding="utf-8-sig"
     )
 
     report = render_report(
@@ -489,9 +549,9 @@ def main() -> None:
         args.n_boot,
         label_counts,
     )
-    RESULTS_PATH.write_text(report + "\n", encoding="utf-8")
+    results_path.write_text(report + "\n", encoding="utf-8")
     print("\n" + report)
-    print(f"\nWritten: {RESULTS_PATH}")
+    print(f"\nWritten: {results_path}")
     for csv_name in (
         "repeated_cv_per_repeat.csv",
         "repeated_cv_summary.csv",
@@ -499,7 +559,7 @@ def main() -> None:
         "bootstrap_macro_f1_ci.csv",
         "bootstrap_delta.csv",
     ):
-        print(f"         {DATA_DIR / csv_name}")
+        print(f"         {data_dir / csv_name}")
 
 
 if __name__ == "__main__":

@@ -1,25 +1,19 @@
-"""Thêm "vùng đệm" (margin) quanh 0 cho lớp Neutral, thay vì so sánh trực
-tiếp positive_score == negative_score (Cách 3 gốc, không margin).
+"""Bản Cách 2 (Intensity) của Scoring/tune_neutral_margin.py - CHƯA từng thử
+margin riêng cho Cách 2 trước đây (luôn dùng chung luật "Cách 3" không
+margin với Cách 1). Cùng công thức margin + cùng quy trình TUNE/HOLDOUT, chỉ
+đổi nguồn điểm số sang article_scores_intensity.parquet.
 
-Quy tắc mới:
+Quy tắc:
     diff = positive_score - negative_score
     |diff| <= margin   -> Neutral
     diff > margin      -> Positive
     diff < -margin     -> Negative
 
-QUY TRÌNH TUNE/HOLDOUT (sửa lại từ bản gốc dò trực tiếp trên 152 bài
-ground_truth_labeled.csv - đúng lỗi in-sample mentor nêu ở điểm 2, xem
-MENTOR_FEEDBACK_PLAN.md mục A). Bản gốc còn phụ thuộc file
-article_scores_labeled.parquet đã không còn tồn tại - viết lại dùng thẳng
-Scoring/data/article_scores.parquet (đầy đủ, luôn mới nhất theo dictionary
-hiện tại) lọc theo split.
-
     1. Đọc split cố định từ Lexicon_based/data/ground_truth_tune_holdout_split.csv
-       (419 bài Tune / 180 bài Holdout - xem tune_negation_window.py).
+       (419 bài Tune / 180 bài Holdout).
     2. Quét 1 dải margin CHỈ trên Tune, chọn margin cho accuracy cao nhất.
     3. Chấm lại Holdout ĐÚNG 1 LẦN với margin đã chọn, so với margin=0 (Cách
-       3 gốc, không đệm) cũng đo trên Holdout - đây là phép so sánh khách
-       quan, quyết định có nên đổi luật gán nhãn hay không.
+       3 gốc, không đệm) cũng đo trên Holdout.
 """
 
 from __future__ import annotations
@@ -30,10 +24,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCORING_DIR = Path(__file__).resolve().parent
 LEXICON_DIR = SCORING_DIR.parent
-ARTICLE_SCORES_PATH = SCORING_DIR / "data" / "article_scores.parquet"
+ARTICLE_SCORES_PATH = SCORING_DIR / "data" / "article_scores_intensity.parquet"
 SPLIT_PATH = LEXICON_DIR / "data" / "ground_truth_tune_holdout_split.csv"
 OUTPUT_PATH = SCORING_DIR / "data" / "neutral_margin_tuning.csv"
 
@@ -75,7 +68,7 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    print("Đọc article_scores.parquet (Cách 1 PMI, đầy đủ) + split Tune/Holdout ...")
+    print("Đọc article_scores_intensity.parquet (Cách 2, đầy đủ) + split Tune/Holdout ...")
     scores_df = pd.read_parquet(ARTICLE_SCORES_PATH, columns=["positive_score", "negative_score"]).reset_index(drop=True)
     scores_df["source_row_id"] = scores_df.index
 

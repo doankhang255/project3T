@@ -52,6 +52,7 @@ LATEST_SEED_ROUND_DIR = SEED_SET_PREPARE_DIR / "seed_round4"
 BOOTSTRAP_DATA_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Lexicon_based" / "data" / "bootstrap"
 PROVENANCE_PATH = BOOTSTRAP_DATA_DIR / "seed_provenance.csv"
 OUTPUT_PATH = Path(__file__).resolve().parent / "data" / "intensity_dictionary.csv"
+TOKENIZED_CORPUS_PATH = PROJECT_ROOT / "data_news" / "data_tokenized" / "equity_news_tokenized_vncorenlp.parquet"
 
 CATEGORY_NAMES = [
     "negative",
@@ -104,6 +105,35 @@ def load_seed_words(path: Path) -> list[str]:
     return [item for item in items if item]
 
 
+def build_single_token_vocab(tokenized_path: Path) -> set[str]:
+    """Tập hợp mọi token literal (đã tokenize bởi VNCoreNLP) từng xuất hiện
+    trong corpus - dùng để phân biệt 1 chuỗi nối gạch dưới trong seed là
+    compound THẬT (VNCoreNLP tự gộp thành 1 token, VD "tăng_trưởng") hay chỉ
+    là người viết seed nối tay nhiều từ riêng biệt (VD "tăng_mạnh" - thực ra
+    là 2 token "tăng" + "mạnh", không bao giờ xuất hiện gộp)."""
+    vocab: set[str] = set()
+    df = pd.read_parquet(tokenized_path, columns=["Tokenize_content_sentences"])
+    for sentences in df["Tokenize_content_sentences"]:
+        for sent in sentences:
+            vocab.update(sent)
+    return vocab
+
+
+def resolve_term_and_ngram(term: str, single_token_vocab: set[str]) -> tuple[str, int]:
+    """Cùng bug/cùng cách sửa như build_weighted_dictionary.py (Scoring/) -
+    xem docstring ở đó (chỉ tách theo "_" khi term CHƯA có dấu cách, để
+    không phá vỡ compound thật bên trong term nhiều từ đã đúng định dạng từ
+    round1-4). Ở đây còn ảnh hưởng thêm compute_intensity_weight() (tách
+    marker theo dấu cách) - term sau khi sửa nối bằng dấu cách nên logic
+    tách marker theo " " cũng tự động đúng theo, không cần sửa thêm."""
+    if " " in term:
+        return term, term.count(" ") + 1
+    if term in single_token_vocab:
+        return term, 1
+    parts = [p for p in term.split("_") if p]
+    return " ".join(parts), len(parts)
+
+
 def load_source_lookup() -> dict[tuple[str, str], str]:
     """Trả về {(category, term): source} - term không có trong provenance
     thì mặc định source='final_seed' (giống logic build_weighted_dictionary.py
@@ -138,6 +168,7 @@ def compute_intensity_weight(term: str) -> tuple[float, list[str]]:
 
 def build_intensity_dictionary() -> pd.DataFrame:
     source_lookup = load_source_lookup()
+    single_token_vocab = build_single_token_vocab(TOKENIZED_CORPUS_PATH)
 
     rows: list[dict] = []
     for category in CATEGORY_NAMES:
@@ -146,13 +177,14 @@ def build_intensity_dictionary() -> pd.DataFrame:
         for term in terms:
             source = source_lookup.get((category, term), "final_seed")
             base_weight = BASE_WEIGHT_BY_SOURCE[source]
-            adjustment, matched = compute_intensity_weight(term)
+            resolved_term, ngram_n = resolve_term_and_ngram(term, single_token_vocab)
+            adjustment, matched = compute_intensity_weight(resolved_term)
             final_weight = max(1.0, min(5.0, base_weight + adjustment))
             rows.append(
                 {
                     "category": category,
-                    "term": term,
-                    "ngram_n": term.count(" ") + 1,
+                    "term": resolved_term,
+                    "ngram_n": ngram_n,
                     "intensity_weight": final_weight,
                     "source": source,
                     "matched_markers": ";".join(matched),

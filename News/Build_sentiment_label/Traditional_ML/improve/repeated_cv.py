@@ -63,11 +63,24 @@ def run_single_cv(
     fold_seed: int,
     n_splits: int = N_SPLITS,
     max_features: int = MAX_FEATURES,
+    extra_features: np.ndarray | None = None,
 ) -> np.ndarray:
     """One leak-free 5-fold CV pass -> out-of-fold predicted label id per row.
 
     TF-IDF vocabulary / idf / top-feature cut are fit on the training rows of
     each fold only, exactly like ``model/common.run_cross_validation``.
+
+    ``extra_features`` (optional): a ``(n_rows, k)`` array of precomputed,
+    non-fitted feature columns (e.g. lexicon-category hit ratios) to hstack
+    onto the TF-IDF matrix after feature selection. "Precomputed" means the
+    *values* are not fit from the data (no leakage risk in that sense) - but
+    they are still standardized (mean/std) using the TRAIN fold only before
+    being hstacked, same discipline as the TF-IDF idf: without this, columns
+    on a much smaller scale than the TF-IDF weights (e.g. proportions in
+    [0, 0.06] next to TF-IDF weights of ~0.5) get an effectively-zero
+    coefficient from any linear model with fixed regularization, silently
+    contributing nothing. Default ``None`` keeps this function byte-identical
+    to the pre-existing TF-IDF-only behaviour.
     """
     y = np.asarray(y, dtype=int)
     n_splits = resolve_n_splits(y, n_splits)
@@ -95,6 +108,19 @@ def run_single_cv(
         )
         x_val_selected = x_val[:, selected_indices]
 
+        if extra_features is not None:
+            train_extra = extra_features[train_indices]
+            val_extra = extra_features[validation_indices]
+            extra_mean = train_extra.mean(axis=0)
+            extra_std = train_extra.std(axis=0)
+            extra_std = np.where(extra_std > 1e-8, extra_std, 1.0)  # guard constant columns
+            x_train_selected = np.hstack(
+                [x_train_selected, (train_extra - extra_mean) / extra_std]
+            )
+            x_val_selected = np.hstack(
+                [x_val_selected, (val_extra - extra_mean) / extra_std]
+            )
+
         model = estimator_factory(RANDOM_SEED + fold_seed * 100 + fold_id)
         model.fit(x_train_selected, y[train_indices])
         if list(model.classes_) != list(range(len(VALID_LABELS))):
@@ -116,8 +142,12 @@ def run_repeated_cv(
     stopwords: set[str],
     n_repeats: int = N_REPEATS,
     n_splits: int = N_SPLITS,
+    extra_features: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, np.ndarray]:
     """``n_repeats`` independent CV passes (fold seed = repeat index).
+
+    ``extra_features``: see ``run_single_cv`` - passed straight through,
+    ``None`` by default (unchanged behaviour for every existing caller).
 
     Returns
       - per_repeat_df : one row per repeat, columns
@@ -138,6 +168,7 @@ def run_repeated_cv(
             stopwords,
             fold_seed=repeat_id,
             n_splits=n_splits,
+            extra_features=extra_features,
         )
         oof_predictions[repeat_id] = predictions
         metrics = compute_metrics(y, predictions)

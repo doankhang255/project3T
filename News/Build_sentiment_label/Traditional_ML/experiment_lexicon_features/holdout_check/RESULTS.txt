@@ -1,0 +1,38 @@
+EXPERIMENT - lexicon-category features + negation vs TF-IDF-only baseline
+========================================================================
+
+Ground truth: News\Build_sentiment_label\Traditional_ML\improve\tune_holdout\ground_truth_holdout.csv
+  180 rows (neg 45 / neu 90 / pos 45)
+Repeated stratified 5-fold CV, 10 repeats, 2000 bootstrap resamples. TF-IDF fit per fold (leak-free); lexicon features are fixed word lists (Seed_set_Prepare + Loughran & McDonald 2011 negation rule), not fit from data, so adding them leaks nothing.
+Feature columns added: negative_prop, positive_prop, uncertainty_prop, litigious_prop, strong_modal_prop, weak_modal_prop, constraining_prop, net_polarity, coverage
+NB family (Multinomial/Complement) skipped: net_polarity can be negative.
+
+MACRO-F1: baseline (TF-IDF only) vs +lexicon
+------------------------------------------------------------------------
+  model                           baseline          +lexicon     delta
+  logistic_regression      0.569 +/- 0.023   0.559 +/- 0.031    -0.011
+  random_forest            0.556 +/- 0.026   0.567 +/- 0.017    +0.012
+  svm                      0.530 +/- 0.021   0.532 +/- 0.025    +0.002
+
+PER-CLASS F1 (+lexicon arm)
+------------------------------------------------------------------------
+  model                        f1_negative        f1_neutral       f1_positive
+  logistic_regression      0.525 +/- 0.023   0.672 +/- 0.020   0.479 +/- 0.060
+  random_forest            0.506 +/- 0.034   0.694 +/- 0.011   0.502 +/- 0.033
+  svm                      0.515 +/- 0.036   0.655 +/- 0.019   0.425 +/- 0.036
+
+BOOTSTRAP  -  95% CI on delta(macro-F1) = lexicon - baseline, paired, per model
+------------------------------------------------------------------------
+  model                     delta  95% CI                     p  verdict
+  logistic_regression      -0.011  [-0.050, +0.031]       0.653  overlaps 0
+  random_forest            +0.012  [-0.014, +0.040]       0.381  overlaps 0
+  svm                      +0.002  [-0.032, +0.037]       0.906  overlaps 0
+
+  delta > 0 and CI excludes 0 -> lexicon features reliably help this model.
+  CI straddling 0 -> not distinguishable from split/resample noise.
+
+READ
+------------------------------------------------------------------------
+  No model shows a reliable change - lexicon features are not distinguishable
+  from noise here. Do not promote into model/*.py yet.
+  This ran on the TUNE split only. If promoting, re-check once on the HOLDOUT split (../improve/tune_holdout.py) - exactly once, not iteratively.

@@ -5,7 +5,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.svm import LinearSVC
 
 
@@ -33,12 +32,48 @@ OUTPUT_PREDICTIONS_PATH = DATA_DIR / "svm_predictions.csv"
 OUTPUT_CONFUSION_MATRIX_PATH = DATA_DIR / "svm_confusion_matrix.csv"
 OUTPUT_TOP_FEATURES_PATH = DATA_DIR / "svm_top_features.csv"
 
-# LinearSVC has no predict_proba; CalibratedClassifierCV adds probability
-# estimates via an inner k-fold calibration on the training rows so the output
-# stays comparable (prob_positive/prob_negative/sentiment_score_ml) with the
-# other models.
-CALIBRATION_CV = 3
 MAX_ITER = 5000
+
+# Used to calibrate via Platt scaling (CalibratedClassifierCV(cv=3), i.e. an
+# inner 3-fold split of an already ~120-row training fold to fit the sigmoid
+# A,B). improve/calibration_check.py measured that directly: Platt was
+# overconfident relative to the observed frequency in several probability
+# bins (see RESULTS.txt), consistent with too little data per inner fold for
+# a one-vs-rest calibration where the positive class is a minority to begin
+# with. Removed - see MarginSoftmaxSVC below.
+
+
+class MarginSoftmaxSVC:
+    """``LinearSVC`` + a row-wise softmax of ``decision_function`` in place of
+    ``predict_proba`` - NOT a calibrated probability.
+
+    Exists only so this model satisfies the same ``fit`` / ``classes_`` /
+    ``predict_proba`` interface ``run_cross_validation`` uses for every
+    model. ``argmax(predict_proba(x))`` is identical to
+    ``argmax(decision_function(x))`` (softmax is monotonic), so the hard
+    label prediction is unaffected - only the numeric "probability" values
+    are not to be trusted as calibrated:
+
+    - ``model/ensemble.py`` excludes this model from probability averaging.
+    - ``sentiment_score_ml`` (``prob_positive - prob_negative``) for this
+      model is a margin-derived score, not a calibrated probability gap;
+      treat it as ranking-only, like the raw ``decision_function`` it comes
+      from.
+    """
+
+    def __init__(self, random_state: int) -> None:
+        self._svc = build_base_svm(random_state)
+
+    def fit(self, x: np.ndarray, y: np.ndarray) -> "MarginSoftmaxSVC":
+        self._svc.fit(x, y)
+        self.classes_ = self._svc.classes_
+        return self
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        scores = self._svc.decision_function(x)
+        scores = scores - scores.max(axis=1, keepdims=True)
+        exp_scores = np.exp(scores)
+        return exp_scores / exp_scores.sum(axis=1, keepdims=True)
 
 
 def build_base_svm(random_state: int) -> LinearSVC:
@@ -49,11 +84,8 @@ def build_base_svm(random_state: int) -> LinearSVC:
     )
 
 
-def build_estimator(random_state: int) -> CalibratedClassifierCV:
-    return CalibratedClassifierCV(
-        build_base_svm(random_state=random_state),
-        cv=CALIBRATION_CV,
-    )
+def build_estimator(random_state: int) -> MarginSoftmaxSVC:
+    return MarginSoftmaxSVC(random_state=random_state)
 
 
 def build_top_features(
@@ -93,7 +125,7 @@ def main() -> None:
     term_counts = build_document_term_counts(df)
     y = encode_labels(df["ground_truth_label"])
 
-    print("Model: Linear SVM (LinearSVC, one-vs-rest, calibrated probabilities)")
+    print("Model: Linear SVM (LinearSVC, margin-softmax - NOT a calibrated probability)")
     print("Documents:", len(df))
     print("Label counts:")
     print(df["ground_truth_label"].value_counts().to_string())

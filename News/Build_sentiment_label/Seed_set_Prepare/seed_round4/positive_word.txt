@@ -37,4 +37,4 @@ duy_trì tốc_độ tăng_trưởng, tăng_trưởng khả_quan, đồng vượ
 tăng_trưởng kép, ghi_nhận mức tăng_trưởng, thúc_đẩy sản_xuất,
 ghi_nhận tăng_trưởng, kết_quả tăng_trưởng, tốc_độ tăng_trưởng doanh_thu,
 gia_tăng lợi_nhuận, tăng_cường năng_lực, liên_tục tăng_trưởng,
-kinh_doanh thuận_lợi, tăng_trưởng,
+kinh_doanh thuận_lợi, tăng_trưởng, phát_triển

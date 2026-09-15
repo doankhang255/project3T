@@ -18,6 +18,7 @@ MODEL_METRICS_FILES = {
     "naive_bayes": DATA_DIR / "naive_bayes_metrics.csv",
     "svm": DATA_DIR / "svm_metrics.csv",
     "random_forest": DATA_DIR / "random_forest_metrics.csv",
+    "ensemble": DATA_DIR / "ensemble_metrics.csv",
 }
 
 OUTPUT_COMPARISON_PATH = DATA_DIR / "traditional_ml_model_comparison.csv"

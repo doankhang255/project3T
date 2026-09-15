@@ -12,7 +12,10 @@ PROJECT_ROOT = TRANSFER_LEARNING_DIR.parents[2]
 DATA_DIR = TRANSFER_LEARNING_DIR / "data"
 
 
-GROUND_TRUTH_PATH = PROJECT_ROOT / "data_news" / "ground_truth_labeled.csv"
+# Combined ground truth (152 old + 447 new, 0 duplicate source_row_id) built in
+# the Lexicon_based/Traditional_ML work - same schema as the old 152-row file,
+# so load_ground_truth() below needs no changes, just this path swap.
+GROUND_TRUTH_PATH = PROJECT_ROOT / "data_news" / "ground_truth_combined.csv"
 
 # The ground truth is joined to this VNCoreNLP word-segmentation of the corpus
 # by ``source_row_id`` instead of being re-tokenized here. VNCoreNLP is the

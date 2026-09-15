@@ -32,14 +32,16 @@ PIPELINE_STEPS = [
     SCRIPT_DIR / "model" / "naive_bayes.py",
     SCRIPT_DIR / "model" / "random_forest.py",
     SCRIPT_DIR / "model" / "svm.py",
+    SCRIPT_DIR / "model" / "ensemble.py",
     SCRIPT_DIR / "compare_models.py",
 ]
 
 MODEL_LABELS = {
     "logistic_regression": "Logistic Regression (class_weight=balanced)",
     "naive_bayes": "Naive Bayes (MultinomialNB)",
-    "random_forest": "Random Forest (300 trees, class_weight=balanced)",
-    "svm": "SVM (LinearSVC + Platt calibration)",
+    "random_forest": "Random Forest (300 trees, isotonic-calibrated, +lexicon features)",
+    "svm": "SVM (LinearSVC, margin-softmax - not a calibrated probability)",
+    "ensemble": "Ensemble (average probability of LR + NB + RF)",
 }
 
 
@@ -180,23 +182,29 @@ def write_results_summary() -> None:
             f"- {model_name}: class yếu nhất = {weakest['metric_scope']} "
             f"(F1 = {weakest['f1']:.3f}, recall = {weakest['recall']:.3f})."
         )
+    smallest_label = min(label_counts, key=label_counts.get)
+    smallest_count = int(label_counts[smallest_label])
     add(
-        "- Class 'positive' ít dữ liệu nhất (35/152) nên thường là class yếu nhất."
+        f"- Class '{smallest_label}' ít dữ liệu nhất ({smallest_count}/{n_rows}) "
+        "nên thường là class yếu nhất."
     )
 
     add("")
     add("")
-    add("5. HẠN CHẾ QUAN TRỌNG NHẤT: GROUND TRUTH QUÁ ÍT")
+    add("5. HẠN CHẾ QUAN TRỌNG NHẤT: GROUND TRUTH VẪN CÒN NHỎ")
     add("-" * 64)
+    fold_rows = n_rows // 5
+    fold_smallest = smallest_count // 5
     add(
-        f"{n_rows} dòng vẫn là bộ dữ liệu RẤT NHỎ cho bài toán phân loại 3 lớp. Mỗi"
+        f"{n_rows} dòng (tăng từ 152 dòng ban đầu) vẫn chưa lớn cho bài toán phân"
     )
     add(
-        "fold validation chỉ ~30 dòng, class positive chỉ ~7 dòng/fold, nên các con"
+        f"loại 3 lớp. Mỗi fold validation chỉ ~{fold_rows} dòng, class "
+        f"'{smallest_label}' chỉ ~{fold_smallest} dòng/fold, nên các con số"
     )
-    add("số accuracy/F1 ở trên chưa thật sự ổn định.")
+    add("accuracy/F1 ở trên vẫn còn dao động theo cách chia fold.")
     add("")
-    add("Đã xử lý trong đợt refactor này:")
+    add("Đã xử lý qua các đợt refactor:")
     add(
         "  (2) hết rò rỉ - vocab/IDF/chọn feature fit trong từng train-fold."
     )
@@ -207,14 +215,56 @@ def write_results_summary() -> None:
     add(
         "  (7) một đường CV chung, n_splits = min(5, số dòng của lớp nhỏ nhất)."
     )
+    add(
+        "  Ground truth: 152 -> 1064 dòng (data_news/ground_truth_combined.csv)."
+    )
+    add(
+        "  Random Forest: thêm isotonic calibration (CalibratedClassifierCV) -"
+    )
+    add(
+        "  predict_proba dạng vote-fraction trước đây bị lệch calibration"
+    )
+    add(
+        "  (đo bằng reliability diagram, xem improve/calibration_check.py)."
+    )
+    add(
+        "  SVM: bỏ Platt scaling (CalibratedClassifierCV) - dữ liệu calibrate"
+    )
+    add(
+        "  trong từng inner-fold vẫn không đủ ổn định; predict_proba giờ là"
+    )
+    add(
+        "  softmax của decision_function, CHỈ để xếp hạng, không phải xác suất"
+    )
+    add("  đã hiệu chỉnh - không dùng trong ensemble hay so sánh CI.")
+    add(
+        "  Thêm ensemble: trung bình xác suất LR + NB + RF (loại SVM vì lý do"
+    )
+    add("  trên).")
+    add(
+        "  Random Forest: thêm feature 7 nhóm lexicon tài chính + negation"
+    )
+    add(
+        "  (model/lexicon_features.py) - đã test tune+holdout 3 lần (2 lần"
+    )
+    add(
+        "  đầu không lặp lại được, lần 3 với GT lớn hơn + holdout mới thì"
+    )
+    add(
+        "  replicate: holdout Delta=+0.038 CI[+0.011,+0.066] p=0.004). Chỉ RF"
+    )
+    add(
+        "  dùng feature này (LR/SVM không có bằng chứng); xem IMPROVEMENTS.md"
+    )
+    add("  mục A và experiment_lexicon_features/README.md.")
     add("")
     add(
-        "Còn lại: cần gán nhãn thêm ground truth (vài trăm - vài nghìn dòng, cân"
+        "Còn lại: cần gán nhãn thêm ground truth (hàng nghìn dòng, cân bằng hơn"
     )
     add(
-        "bằng hơn giữa 3 class) trước khi kết luận model nào tốt hơn và so sánh"
+        "giữa 3 class) trước khi kết luận model nào tốt hơn và so sánh công bằng"
     )
-    add("công bằng với Lexicon-based / Transformer (PhoBERT).")
+    add("với Lexicon-based / Transformer (PhoBERT).")
     add("")
 
     text = "\n".join(line.rstrip() for line in lines)

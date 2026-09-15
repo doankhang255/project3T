@@ -12,6 +12,13 @@ positional row index into that VNCoreNLP parquet (verified: ``title`` and
 ``publication_date`` match on every row). So instead of tokenizing again we
 just look the rows up and copy the token columns across. No ``underthesea`` /
 Java dependency is needed here anymore.
+
+Default source is now ``ground_truth_combined.csv`` (599 rows) rather than
+the original ``ground_truth_labeled.csv`` (152 rows) it was built from -
+verified a strict superset (same columns, every ``source_row_id`` in the
+152-row file is also in the 599-row file). The old file is left on disk
+untouched (other branches may still reference it) but is no longer the
+Traditional_ML pipeline's input.
 """
 
 from __future__ import annotations
@@ -26,7 +33,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = SCRIPT_DIR / "data"
 
-GROUND_TRUTH_CSV_PATH = PROJECT_ROOT / "data_news" / "ground_truth_labeled.csv"
+GROUND_TRUTH_CSV_PATH = PROJECT_ROOT / "data_news" / "ground_truth_combined.csv"
 VNCORENLP_TOKENIZED_PATH = (
     PROJECT_ROOT
     / "data_news"

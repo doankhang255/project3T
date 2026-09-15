@@ -5,6 +5,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 
 
@@ -25,6 +26,9 @@ from News.Build_sentiment_label.Traditional_ML.model.common import (
     load_ground_truth_frame,
     run_cross_validation,
 )
+from News.Build_sentiment_label.Traditional_ML.model.lexicon_features import (
+    build_lexicon_feature_matrix,
+)
 
 
 OUTPUT_METRICS_PATH = DATA_DIR / "random_forest_metrics.csv"
@@ -34,13 +38,30 @@ OUTPUT_TOP_FEATURES_PATH = DATA_DIR / "random_forest_top_features.csv"
 
 N_ESTIMATORS = 300
 
+# RandomForestClassifier.predict_proba is a vote fraction across trees, not a
+# fitted probability - it tends to be pulled toward the middle (rarely near 0
+# or 1 even on confident rows). improve/calibration_check.py measured this
+# directly (reliability diagram + Brier score, raw vs isotonic) on the 599-row
+# ground truth; isotonic calibration is used here because there is now enough
+# data per inner fold for it (it needs more than Platt/sigmoid does - too
+# little data makes isotonic overfit the calibration curve).
+CALIBRATION_CV = 3
 
-def build_estimator(random_state: int) -> RandomForestClassifier:
+
+def build_base_random_forest(random_state: int) -> RandomForestClassifier:
     return RandomForestClassifier(
         n_estimators=N_ESTIMATORS,
         class_weight="balanced",
         random_state=random_state,
         n_jobs=-1,
+    )
+
+
+def build_estimator(random_state: int) -> CalibratedClassifierCV:
+    return CalibratedClassifierCV(
+        build_base_random_forest(random_state),
+        method="isotonic",
+        cv=CALIBRATION_CV,
     )
 
 
@@ -51,8 +72,10 @@ def build_top_features(
     top_n: int = 40,
 ) -> pd.DataFrame:
     # feature_importances_ is a single global ranking (impurity decrease),
-    # not per-class like the coefficient-based models.
-    model = build_estimator(RANDOM_SEED + 999)
+    # not per-class like the coefficient-based models. CalibratedClassifierCV
+    # does not expose it directly, so fit the uncalibrated forest here - same
+    # pattern as model/svm.py's build_top_features using build_base_svm.
+    model = build_base_random_forest(RANDOM_SEED + 999)
     model.fit(x, y)
 
     importances = model.feature_importances_
@@ -81,15 +104,16 @@ def main() -> None:
     df = load_ground_truth_frame()
     term_counts = build_document_term_counts(df)
     y = encode_labels(df["ground_truth_label"])
+    lexicon_matrix = build_lexicon_feature_matrix(df["Tokenize_content"].tolist())
 
-    print("Model: Random Forest")
+    print("Model: Random Forest (isotonic-calibrated probabilities, +lexicon features)")
     print("Documents:", len(df))
     print("Trees:", N_ESTIMATORS)
     print("Label counts:")
     print(df["ground_truth_label"].value_counts().to_string())
 
     probabilities, predictions, fold_of_row = run_cross_validation(
-        build_estimator, term_counts, y
+        build_estimator, term_counts, y, extra_features=lexicon_matrix
     )
     metrics_df = compute_metrics(y, predictions)
     prediction_df = build_prediction_output(df, probabilities, predictions, fold_of_row)
@@ -100,6 +124,8 @@ def main() -> None:
         columns=[f"pred_{label}" for label in VALID_LABELS],
     ).reset_index(names="true_label")
 
+    # TF-IDF vocabulary only (no lexicon columns) - top_features_df maps each
+    # row to a vocabulary term, which the 9 lexicon columns don't have.
     x_full, vocabulary_full = build_full_fit_features(term_counts)
     top_features_df = build_top_features(x_full, y, vocabulary_full)
 

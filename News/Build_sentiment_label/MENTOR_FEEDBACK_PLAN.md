@@ -10,7 +10,7 @@ vào ground truth và kiểm định ở tầng chỉ số ngày, đừng tối 
 
 ---
 
-## A. Sửa lỗi thống kê ở kết quả hiện có (điểm 1–2) — `Lexicon_based/`
+## A. Sửa lỗi thống kê ở kết quả hiện có (điểm 1–2) — ĐÃ XONG tune/holdout
 
 **Vấn đề mentor chỉ ra**: với n=152, sai số chuẩn của accuracy ~4 điểm %, nên
 61,2% / 63,2% / 63,8% (các bước trong `Scoring/` và `Scoring_Intensity/`) về
@@ -20,15 +20,45 @@ hay "Cách 2 tốt hơn Cách 1". Nặng hơn: 125 tổ hợp hệ số (Cách 2
 để báo cáo kết quả** → 63,2% là con số in-sample, không phải ước lượng
 khách quan.
 
-- [ ] Chia 152 bài ground truth thành tune/holdout (hoặc nested k-fold CV) —
-      áp lại cho: `negation_window` (`compare_negation_windows.py`), neutral
-      margin (`tune_neutral_margin.py`, hiện không dùng), 125 tổ hợp hệ số
-      Cách 2 (`tune_intensity_coefficients.py`).
-- [ ] Báo lại accuracy trên phần holdout/CV thay vì con số tune-trên-cùng-tập.
-- [ ] Thêm caveat sai số chuẩn (~4pp với n=152) vào `METHODOLOGY_SUMMARY.qmd`
-      mỗi chỗ so sánh % giữa các bước.
+### Đã làm
 
-**Trạng thái**: chưa bắt đầu — làm được ngay, không cần dữ liệu mới.
+Ground truth hiện đã tăng lên **599 bài** (`ground_truth_combined.csv` =
+`ground_truth_labeled.csv` 152 + `ground_truth_news.csv` 447, xác nhận 0
+trùng `source_row_id`). Chia cố định (`data/ground_truth_tune_holdout_split.csv`,
+stratified theo sentiment, `random_state=42`): **Tune 419 bài / Holdout 180
+bài**. Dò lại TOÀN BỘ tham số từng bị chọn in-sample, đúng quy trình
+tune/holdout (chọn trên Tune, chấm Holdout ĐÚNG 1 LẦN):
+
+| Tham số | Tốt nhất trên Tune | Trên Holdout (tốt nhất vs hiện tại) | Kết luận |
+|---|---|---|---|
+| `negation_window` — Cách 1 | window=10 (61,6%) | 58,33% vs **58,89%** (window=4) | Giữ =4 |
+| `negation_window` — Cách 2 | window=10 (61,6%) | 57,78% vs **58,89%** (window=4) | Giữ =4 |
+| 125 tổ hợp hệ số — Cách 2 | production/marker=0/scale=0 (61,1%) | 55,56% = **55,56%** (bằng nhau) | Giữ production |
+| `margin` (Neutral) — Cách 1 | 0,0037 (64,2%) | 57,22% vs **58,89%** (margin=0) | Giữ =0 (Cách 3 gốc) |
+| `margin` (Neutral) — Cách 2 | 0,0324 (64,2%) | 57,22% vs **58,89%** (margin=0) | Giữ =0 (Cách 3 gốc) |
+
+**Kết quả**: KHÔNG tham số nào cần đổi - mọi giá trị hiện tại đều thắng hoặc
+bằng phương án "tối ưu" tìm được qua grid search khi kiểm chứng khách quan.
+Mẫu hình lặp lại rất nhất quán qua cả 5 lần: bất kỳ tham số nào "làm đẹp" số
+trên Tune đều MẤT ĐIỂM trên Holdout - bằng chứng thực nghiệm trực tiếp,
+nhiều lần cho đúng cảnh báo của mentor.
+
+Script: `Scoring/tune_negation_window.py`, `Scoring_Intensity/tune_negation_window.py`,
+`Scoring/tune_neutral_margin.py`, `Scoring_Intensity/tune_neutral_margin.py`
+(viết lại), `Scoring_Intensity/tune_intensity_coefficients.py` (viết lại).
+
+### Việc còn lại
+
+- [ ] Thêm caveat sai số chuẩn vào `METHODOLOGY_SUMMARY.qmd` mỗi chỗ so
+      sánh % giữa các bước (giờ n=599, sai số chuẩn accuracy còn ~±2 điểm %,
+      vẫn không nhỏ).
+- [ ] Cân nhắc báo cáo lại accuracy chính thức bằng con số Holdout (58,89%)
+      thay vì accuracy trên toàn bộ Tune+Holdout gộp, để nhất quán với tinh
+      thần "không dùng cùng 1 tập để vừa tune vừa báo cáo" (dù ở đây không
+      có gì bị tune thêm nữa, accuracy toàn tập 599 bài vẫn hợp lý dùng làm
+      con số chính thức).
+
+**Trạng thái**: tune/holdout cho toàn bộ tham số scoring-time đã xong.
 
 ---
 
@@ -205,14 +235,90 @@ Thứ tự mentor đề xuất (không nhảy thẳng vào fine-tune):
 
 ---
 
-## F. Chi tiết nhỏ (điểm 7) — `Lexicon_based/Scoring/classify_and_evaluate.py`
+## F. Nhãn Neutral mập mờ (điểm 7) — ĐÃ XONG chẩn đoán + Mức 1, 2
 
-- [ ] Tách 2 trường hợp Neutral trong `assign_three_class_label()`:
-      (a) `positive_score = negative_score = 0` vì bài **không match từ nào**
-      trong dictionary, (b) hai điểm khác 0 nhưng bằng nhau — báo tỉ lệ riêng
-      từng loại thay vì gộp chung "Neutral".
+Mentor: *"Luật gán nhãn hiện tại cho Neutral khi positive_score đúng bằng
+negative_score. Trường hợp hai điểm khác 0 nhưng bằng nhau và trường hợp bài
+hoàn toàn không có từ nào khớp là hai tình huống rất khác nhau, nên tách ra
+để xem tỷ lệ mỗi loại."*
 
-**Trạng thái**: việc nhỏ, làm nhanh, có thể làm kèm lúc sửa mục A.
+### Chẩn đoán (`diagnose_neutral_split.py`)
+
+Tách `Neutral` thành `Neutral_balanced` (positive_score = negative_score > 0
+— có tín hiệu, hòa nhau) và `Neutral_no_match` (positive_score =
+negative_score = 0 — không khớp từ nào, đoán mặc định):
+
+- Trên toàn corpus 126.576 bài: `Neutral_no_match` chiếm **~95% số bài bị gán
+  Neutral** (ban đầu 44,1% tổng corpus, sau Mức 2 giảm còn 41,3%).
+  `Neutral_balanced` chỉ 1,6-2,2% — không đáng kể.
+- Trên ground truth: chỉ ~55-70% bài `Neutral_no_match` thực sự là Neutral
+  thật (phần còn lại là Positive/Negative bị bỏ sót vì không match được từ
+  nào) → **độ phủ từ điển (coverage) là vấn đề lớn hơn hướng chấm điểm.**
+
+Kết luận: 3 mức xử lý, ưu tiên từ rẻ/an toàn nhất:
+- **Mức 1** (thống kê, không đổi logic): báo cáo riêng tỷ lệ 2 loại Neutral
+  thay vì gộp chung — đã có sẵn qua `diagnose_neutral_split.py`.
+- **Mức 2** (sửa gốc — mở rộng độ phủ): xem bên dưới, **ĐÃ LÀM**.
+- **Mức 3** (đổi luật gán nhãn khi không match): chưa làm, xem "Việc còn lại".
+
+### Mức 2 — mở rộng độ phủ: ĐÃ LÀM, 2 phần
+
+**(a) Sửa bug tính `ngram_n`** (`Scoring/build_weighted_dictionary.py`,
+`Scoring_Intensity/build_intensity_dictionary.py`): code cũ tính
+`ngram_n = term.count(" ") + 1` — đếm DẤU CÁCH, nhưng seed nối từ ghép bằng
+GẠCH DƯỚI theo quy ước VNCoreNLP. Với cụm KHÔNG phải compound thật của
+VNCoreNLP (VD `tăng_mạnh`, `giảm_mạnh`, `có_lãi`, `nợ_xấu` — tokenizer luôn
+tách thành 2 token rời `tăng`+`mạnh`, không gộp), bug này gán nhầm
+`ngram_n=1` khiến term **không bao giờ khớp được** (0 lần trên 126.576 bài,
+đã kiểm chứng). Sửa: kiểm tra thật với tập token của corpus, term nào không
+tồn tại như 1 token literal thì tách lại theo `_` và nối bằng dấu cách (đúng
+định dạng candidate mà `score_sentence()` dùng khi tra n-gram > 1).
+
+Kết quả đo được (chỉ sửa bug, không thêm/bớt từ nào):
+| | Trước | Sau |
+|---|---:|---:|
+| Term "chết" (0 match/126.576 bài) | 209/1729 (12,1%) | 141/1729 (8,2%) |
+| Neutral_no_match / toàn corpus | 44,1% | 41,3% |
+| Accuracy Cách 1 PMI / new_250 (OOS) | 55,2% | 56,8% |
+| Accuracy Cách 2 Intensity / new_250 (OOS) | 54,8% | 56,4% |
+
+Cả 2 tập (in-sample lẫn out-of-sample) đều tăng → cải thiện thật, không phải
+in-sample overfit (khác hẳn phép thử khôi phục 37 từ nhiễu ở mục A, nơi
+old_152 tăng nhưng new_250 đứng yên/giảm nhẹ).
+
+**(b) Đào ứng viên từ còn thiếu** (`diagnose_missing_terms.py`, output
+`data/missing_term_candidates.csv`): lấy đúng các bài Neutral_no_match nhưng
+nhãn thật là Positive/Negative trong ground truth, đếm tần suất từ CHƯA có
+trong dictionary. Kết quả: phần lớn bài bị bỏ sót còn lại là **tin công bố
+sự kiện thuần túy** (trả cổ tức, lãnh đạo/cổ đông lớn đăng ký mua/bán cổ
+phiếu...) — sentiment được suy ra từ KIẾN THỨC TÀI CHÍNH (nhận cổ tức = tốt,
+lãnh đạo bán ra = tín hiệu xấu), không nằm ở từ ngữ trong bài. Ứng viên đào
+được (`cổ_đông`, `cổ_tức`, `bán`, `mua`, `đăng_ký`...) đều là danh từ thực
+thể/từ chức năng/động từ giao dịch trung tính — rủi ro lặp lại lỗi
+over-predict như `tăng`/`giảm` nếu thêm cứng. Người dùng đã tự review toàn
+bộ danh sách và chỉ thêm 2 từ qua kiểm chứng riêng lẻ: `thấp` (mới, negative)
+và `phát_triển` (negative→dùng lại 1 mình, positive - trước đó nằm trong 37
+từ bị revert ở mục A nhưng test riêng lẻ cho kết quả khác, không regression).
+Kết quả: Cách 2 Intensity tăng thêm ~0,5 điểm % (cả 2 tập), Cách 1 PMI không
+đổi, không có regression ở tập nào.
+
+**Kết luận Mức 2**: đã khai thác gần hết dư địa an toàn (sửa bug + vài từ
+kiểm chứng riêng lẻ). Phần no-match còn lại (~41%) chủ yếu là giới hạn cấu
+trúc của lexicon (không suy luận được "ai làm gì, theo hướng nào" từ tin sự
+kiện) — nên ghi nhận là giới hạn đã biết, không cố nhét thêm từ đại trà.
+
+### Việc còn lại
+
+- [ ] **Mức 3** (đổi luật gán nhãn khi `Neutral_no_match`): cân nhắc coi
+      "không khớp từ nào" là **không dự đoán được** (bỏ qua khi tính
+      accuracy) thay vì mặc định Neutral — hiện đang default-Neutral nên
+      pha loãng độ chính xác 1 cách không công bằng cho ~41% bài.
+- [ ] Áp Mức 1 (báo cáo tách riêng 2 loại Neutral) vào
+      `Scoring/classify_and_evaluate.py` chính thức (hiện chỉ có ở script
+      chẩn đoán riêng).
+
+**Trạng thái**: chẩn đoán + Mức 2 xong, có số liệu; Mức 1/3 còn lại là việc
+nhỏ.
 
 ---
 

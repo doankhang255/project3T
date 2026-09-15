@@ -35,6 +35,8 @@ HIGH_COLUMN = "high_price"
 LOW_COLUMN = "low_price"
 VOLUME_COLUMN = "vol_total"
 VALUE_COLUMN = "val_total"
+BUY_VOL_FOREIGN_COLUMN = "buy_vol_foreign"
+SELL_VOL_FOREIGN_COLUMN = "sell_vol_foreign"
 
 SENTIMENT_SCORE_COLUMN = "sentiment_index"
 ARTICLE_COUNT_COLUMN = "article_count"
@@ -62,6 +64,8 @@ def prepare_vnindex_daily(df: pd.DataFrame) -> pd.DataFrame:
         CLOSE_COLUMN,
         VOLUME_COLUMN,
         VALUE_COLUMN,
+        BUY_VOL_FOREIGN_COLUMN,
+        SELL_VOL_FOREIGN_COLUMN,
     ]:
         if column in out.columns:
             out[column] = pd.to_numeric(out[column], errors="coerce")
@@ -88,25 +92,43 @@ def prepare_vnindex_daily(df: pd.DataFrame) -> pd.DataFrame:
     out["log_vol_total"] = np.log1p(out[VOLUME_COLUMN])
     out["log_val_total"] = np.log1p(out[VALUE_COLUMN])
 
-    return out[
-        [
-            DATE_COLUMN,
-            OPEN_COLUMN,
-            HIGH_COLUMN,
-            LOW_COLUMN,
-            CLOSE_COLUMN,
-            VOLUME_COLUMN,
-            VALUE_COLUMN,
-            "daily_return",
-            "future_ret_1d",
-            "future_ret_5d",
-            "future_ret_20d",
-            "return_lag_1d",
-            "volatility_20d",
-            "log_vol_total",
-            "log_val_total",
-        ]
+    # Khối ngoại (buy_vol_foreign/sell_vol_foreign) - có sẵn trong dữ liệu
+    # gốc nhưng trước giờ chưa được đưa vào pipeline merge/regression. Khối
+    # nội = tổng volume trừ đi khối ngoại (xấp xỉ, không phải cột gốc).
+    has_foreign_columns = BUY_VOL_FOREIGN_COLUMN in out.columns and SELL_VOL_FOREIGN_COLUMN in out.columns
+    if has_foreign_columns:
+        out["foreign_vol_total"] = out[BUY_VOL_FOREIGN_COLUMN] + out[SELL_VOL_FOREIGN_COLUMN]
+        out["foreign_vol_net"] = out[BUY_VOL_FOREIGN_COLUMN] - out[SELL_VOL_FOREIGN_COLUMN]
+        out["domestic_vol_total"] = (out[VOLUME_COLUMN] - out["foreign_vol_total"]).clip(lower=0)
+        out["log_foreign_vol_total"] = np.log1p(out["foreign_vol_total"])
+        out["log_domestic_vol_total"] = np.log1p(out["domestic_vol_total"])
+
+    output_columns = [
+        DATE_COLUMN,
+        OPEN_COLUMN,
+        HIGH_COLUMN,
+        LOW_COLUMN,
+        CLOSE_COLUMN,
+        VOLUME_COLUMN,
+        VALUE_COLUMN,
+        "daily_return",
+        "future_ret_1d",
+        "future_ret_5d",
+        "future_ret_20d",
+        "return_lag_1d",
+        "volatility_20d",
+        "log_vol_total",
+        "log_val_total",
     ]
+    if has_foreign_columns:
+        output_columns += [
+            "foreign_vol_total",
+            "foreign_vol_net",
+            "domestic_vol_total",
+            "log_foreign_vol_total",
+            "log_domestic_vol_total",
+        ]
+    return out[output_columns]
 
 
 def map_to_next_trading_date(
@@ -227,6 +249,11 @@ def merge_vnindex_daily_with_sentiment(
         "volatility_20d",
         "log_vol_total",
         "log_val_total",
+        "foreign_vol_total",
+        "foreign_vol_net",
+        "domestic_vol_total",
+        "log_foreign_vol_total",
+        "log_domestic_vol_total",
     ]
     ordered_columns = [column for column in ordered_columns if column in merged_df.columns]
     merged_df = merged_df[ordered_columns]

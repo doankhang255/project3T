@@ -1,7 +1,17 @@
-"""Dò nhiều tổ hợp hệ số cho Cách 2 (intensity_weight) - CHỈ chấm điểm 152
-bài trong ground_truth_labeled.csv (không phải toàn bộ 126,576 bài) để chạy
-nhanh, KHÔNG ghi file cho từng tổ hợp - chỉ giữ kết quả trong bộ nhớ, in
-bảng so sánh cuối cùng và chọn tổ hợp tốt nhất.
+"""Dò nhiều tổ hợp hệ số cho Cách 2 (intensity_weight) bằng quy trình
+TUNE/HOLDOUT (sửa lại từ bản gốc dò trực tiếp trên 152 bài
+ground_truth_labeled.csv - đúng lỗi in-sample mentor nêu ở điểm 2, xem
+MENTOR_FEEDBACK_PLAN.md mục A).
+
+Quy trình:
+    1. Đọc split cố định từ Lexicon_based/data/ground_truth_tune_holdout_split.csv
+       (419 bài Tune / 180 bài Holdout, stratified theo sentiment,
+       random_state=42 - xem tune_negation_window.py).
+    2. Dò 125 tổ hợp (5 base_config x 5 marker_delta x 5 intensifier_scale)
+       CHỈ trên 419 bài Tune, chọn tổ hợp accuracy/macro-F1 cao nhất.
+    3. Chấm lại 180 bài Holdout ĐÚNG 1 LẦN với tổ hợp đã chọn, so sánh với
+       cấu hình hiện tại (A_current, marker_delta=1.0, intensifier_scale=1.0)
+       cũng đo trên Holdout - đây là phép so sánh công bằng, khách quan.
 
 3 nhóm hệ số được dò:
 1. base_weight theo nguồn (final_seed..round4) - độ dốc của thang.
@@ -10,10 +20,8 @@ bảng so sánh cuối cùng và chọn tổ hợp tốt nhất.
    (VD hệ số gốc 1.3 cho "rất" -> lệch +0.3 so với 1.0; scale=2.0 nghĩa là
    lệch +0.6 -> hệ số thành 1.6).
 
-CẢNH BÁO: dò tham số TRỰC TIẾP trên đúng 152 bài dùng để đánh giá cuối cùng
-có rủi ro overfit vào chính 152 bài này. Sau khi chọn được tổ hợp tốt nhất,
-BẮT BUỘC chạy lại toàn bộ 126,576 bài để xem phân phối điểm có hợp lý không,
-không chỉ tin vào accuracy trên 152 mẫu.
+Sau khi chọn được tổ hợp tốt nhất, BẮT BUỘC chạy lại toàn bộ 126,576 bài để
+xem phân phối điểm có hợp lý không, không chỉ tin vào accuracy trên Tune.
 """
 
 from __future__ import annotations
@@ -32,8 +40,16 @@ PROVENANCE_PATH = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Lexicon_bas
 NEGATION_PATH = SEED_SET_PREPARE_DIR / "negation_cue_words.txt"
 CLAUSE_BOUNDARY_PATH = SEED_SET_PREPARE_DIR / "clause_boundary_words.txt"
 TOKENIZED_CORPUS_PATH = PROJECT_ROOT / "data_news" / "data_tokenized" / "equity_news_tokenized_vncorenlp.parquet"
-GROUND_TRUTH_PATH = PROJECT_ROOT / "data_news" / "ground_truth_labeled.csv"
+SPLIT_PATH = SCORING_DIR.parent / "data" / "ground_truth_tune_holdout_split.csv"
 OUTPUT_SUMMARY_PATH = SCORING_DIR / "data" / "intensity_coefficient_tuning.csv"
+
+# Cấu hình ĐANG DÙNG THẬT trong build_intensity_dictionary.py (BASE_WEIGHT_BY_SOURCE
+# + MARKER_DELTA) - KHÁC với "A_current" trong BASE_WEIGHT_CONFIGS bên dưới
+# (label đó đã lỗi thời, không còn khớp production kể từ lần chỉnh trước).
+# Dùng đúng 3 giá trị này làm mốc so sánh công bằng trên Holdout.
+PRODUCTION_BASE_WEIGHTS = {"final_seed": 5.0, "round1": 4.0, "round2": 3.0, "round3": 2.0, "round4": 1.0}
+PRODUCTION_MARKER_DELTA = 0.0
+PRODUCTION_INTENSIFIER_SCALE = 1.0
 
 CATEGORY_NAMES = [
     "negative", "positive", "uncertainty", "litigious",
@@ -69,8 +85,8 @@ INTENSIFIER_BASE = {
 NEGATION_WINDOW = 4
 
 BASE_WEIGHT_CONFIGS: dict[str, dict[str, float]] = {
-    "A_current":  {"final_seed": 4.0, "round1": 3.5, "round2": 3.0, "round3": 2.5, "round4": 2.0},
-    "B_steep":    {"final_seed": 5.0, "round1": 4.0, "round2": 3.0, "round3": 2.0, "round4": 1.0},
+    "A_moderate": {"final_seed": 4.0, "round1": 3.5, "round2": 3.0, "round3": 2.5, "round4": 2.0},
+    "B_production": {"final_seed": 5.0, "round1": 4.0, "round2": 3.0, "round3": 2.0, "round4": 1.0},  # = PRODUCTION_BASE_WEIGHTS
     "C_flat":     {"final_seed": 3.0, "round1": 2.8, "round2": 2.6, "round3": 2.4, "round4": 2.2},
     "D_steepest": {"final_seed": 4.0, "round1": 3.0, "round2": 2.0, "round3": 1.0, "round4": 0.5},
     "E_uniform":  {"final_seed": 3.0, "round1": 3.0, "round2": 3.0, "round3": 3.0, "round4": 3.0},
@@ -190,6 +206,48 @@ def evaluate(scores: dict[int, dict[str, float]], gt_df: pd.DataFrame) -> tuple[
     return accuracy, macro_f1
 
 
+def build_weight_table(
+    base_weights: dict[str, float],
+    marker_delta: float,
+    term_rows: list[tuple[str, str, int]],
+    source_lookup: dict[tuple[str, str], str],
+) -> tuple[dict[int, dict[str, list[tuple[str, float]]]], int]:
+    by_ngram: dict[int, dict[str, list[tuple[str, float]]]] = {}
+    for category, term, ngram_n in term_rows:
+        source = source_lookup.get((category, term), "final_seed")
+        base = base_weights[source]
+        subtokens = term.split(" ")
+        adjustment = 0.0
+        for tok in subtokens:
+            if tok in EXTREME_MARKERS:
+                adjustment += marker_delta
+            elif tok in MILD_MARKERS:
+                adjustment -= marker_delta
+        weight = max(1.0, min(5.0, base + adjustment))
+        by_ngram.setdefault(ngram_n, {}).setdefault(term, []).append((category, weight))
+    return by_ngram, max(by_ngram.keys())
+
+
+def score_and_eval_combo(
+    base_weights: dict[str, float],
+    marker_delta: float,
+    intensifier_scale: float,
+    term_rows: list[tuple[str, str, int]],
+    source_lookup: dict[tuple[str, str], str],
+    gt_sentences: dict[int, list],
+    gt_total_tokens: dict[int, int],
+    gt_df: pd.DataFrame,
+    negation_words: set[str],
+    clause_boundary_words: set[str],
+) -> tuple[float, float]:
+    by_ngram, max_ngram = build_weight_table(base_weights, marker_delta, term_rows, source_lookup)
+    intensifier_multipliers = {tok: 1.0 + (mult - 1.0) * intensifier_scale for tok, mult in INTENSIFIER_BASE.items()}
+    scores = score_ground_truth_articles(
+        gt_sentences, gt_total_tokens, by_ngram, max_ngram, negation_words, clause_boundary_words, intensifier_multipliers
+    )
+    return evaluate(scores, gt_df)
+
+
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -205,72 +263,81 @@ def main() -> None:
     negation_words = load_word_set_from_file(NEGATION_PATH)
     clause_boundary_words = load_word_set_from_file(CLAUSE_BOUNDARY_PATH)
 
-    print("Đọc corpus, trích riêng các bài trong ground_truth_labeled.csv ...")
-    gt_df = pd.read_csv(GROUND_TRUTH_PATH, encoding="utf-8-sig")
+    print("Đọc split Tune/Holdout ...")
+    split_df = pd.read_csv(SPLIT_PATH, encoding="utf-8-sig")
+    tune_gt_df = split_df.loc[split_df["split"] == "tune", ["source_row_id", "sentiment"]].reset_index(drop=True)
+    holdout_gt_df = split_df.loc[split_df["split"] == "holdout", ["source_row_id", "sentiment"]].reset_index(drop=True)
+    print(f"  Tune: {len(tune_gt_df)} bài | Holdout: {len(holdout_gt_df)} bài")
+
+    print("Đọc corpus, trích riêng các bài trong Tune + Holdout ...")
     corpus_df = pd.read_parquet(TOKENIZED_CORPUS_PATH)
-    row_ids = gt_df["source_row_id"].astype(int).tolist()
-    gt_sentences = {rid: corpus_df.iloc[rid]["Tokenize_content_sentences"] for rid in row_ids}
-    gt_total_tokens = {rid: corpus_df.iloc[rid]["total_tokenizer"] for rid in row_ids}
+    all_row_ids = pd.concat([tune_gt_df["source_row_id"], holdout_gt_df["source_row_id"]]).astype(int).tolist()
+    sentences_by_id = {rid: corpus_df.iloc[rid]["Tokenize_content_sentences"] for rid in all_row_ids}
+    total_tokens_by_id = {rid: corpus_df.iloc[rid]["total_tokenizer"] for rid in all_row_ids}
     del corpus_df
-    print(f"  {len(gt_sentences)} bài (khớp ground truth)")
+    tune_sentences = {rid: sentences_by_id[rid] for rid in tune_gt_df["source_row_id"].astype(int)}
+    tune_total_tokens = {rid: total_tokens_by_id[rid] for rid in tune_gt_df["source_row_id"].astype(int)}
+    holdout_sentences = {rid: sentences_by_id[rid] for rid in holdout_gt_df["source_row_id"].astype(int)}
+    holdout_total_tokens = {rid: total_tokens_by_id[rid] for rid in holdout_gt_df["source_row_id"].astype(int)}
 
     results = []
     total_combos = len(BASE_WEIGHT_CONFIGS) * len(MARKER_DELTAS) * len(INTENSIFIER_SCALES)
-    print(f"\nBắt đầu dò {total_combos} tổ hợp (không ghi file từng tổ hợp) ...")
+    print(f"\n=== BƯỚC 1: dò {total_combos} tổ hợp TRÊN TUNE ({len(tune_gt_df)} bài) ===")
     done = 0
     for base_name, base_weights in BASE_WEIGHT_CONFIGS.items():
         for marker_delta in MARKER_DELTAS:
-            # Tính intensity_weight cho toàn bộ term với (base_name, marker_delta) này.
-            by_ngram: dict[int, dict[str, list[tuple[str, float]]]] = {}
-            for category, term, ngram_n in term_rows:
-                source = source_lookup.get((category, term), "final_seed")
-                base = base_weights[source]
-                subtokens = term.split(" ")
-                adjustment = 0.0
-                for tok in subtokens:
-                    if tok in EXTREME_MARKERS:
-                        adjustment += marker_delta
-                    elif tok in MILD_MARKERS:
-                        adjustment -= marker_delta
-                weight = max(1.0, min(5.0, base + adjustment))
-                by_ngram.setdefault(ngram_n, {}).setdefault(term, []).append((category, weight))
-            max_ngram = max(by_ngram.keys())
-
             for scale in INTENSIFIER_SCALES:
-                intensifier_multipliers = {
-                    tok: 1.0 + (mult - 1.0) * scale for tok, mult in INTENSIFIER_BASE.items()
-                }
-                scores = score_ground_truth_articles(
-                    gt_sentences, gt_total_tokens, by_ngram, max_ngram,
-                    negation_words, clause_boundary_words, intensifier_multipliers,
+                accuracy, macro_f1 = score_and_eval_combo(
+                    base_weights, marker_delta, scale, term_rows, source_lookup,
+                    tune_sentences, tune_total_tokens, tune_gt_df, negation_words, clause_boundary_words,
                 )
-                accuracy, macro_f1 = evaluate(scores, gt_df)
                 results.append(
                     {
                         "base_config": base_name,
                         "marker_delta": marker_delta,
                         "intensifier_scale": scale,
-                        "accuracy": accuracy,
-                        "macro_f1": macro_f1,
+                        "accuracy_tune": accuracy,
+                        "macro_f1_tune": macro_f1,
                     }
                 )
                 done += 1
                 if done % 20 == 0:
                     print(f"  ... đã dò {done}/{total_combos} tổ hợp")
 
-    results_df = pd.DataFrame(results).sort_values(["accuracy", "macro_f1"], ascending=False)
-    OUTPUT_SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    results_df.to_csv(OUTPUT_SUMMARY_PATH, index=False, encoding="utf-8-sig")
-
-    print(f"\nĐã lưu bảng tổng hợp {len(results_df)} tổ hợp vào: {OUTPUT_SUMMARY_PATH}")
-    print("\n=== TOP 10 TỔ HỢP TỐT NHẤT (theo accuracy, rồi macro_f1) ===")
+    results_df = pd.DataFrame(results).sort_values(["accuracy_tune", "macro_f1_tune"], ascending=False)
+    print("\n=== TOP 10 TỔ HỢP TỐT NHẤT TRÊN TUNE (theo accuracy, rồi macro_f1) ===")
     print(results_df.head(10).to_string(index=False))
 
     best = results_df.iloc[0]
-    print(f"\nTỐT NHẤT: base_config={best['base_config']}, marker_delta={best['marker_delta']}, "
-          f"intensifier_scale={best['intensifier_scale']} "
-          f"-> accuracy={best['accuracy']:.4f}, macro_f1={best['macro_f1']:.4f}")
-    print(f"(So sánh: cấu hình hiện tại A_current/1.0/1.0 -> xem dòng tương ứng trong file CSV)")
+    print(
+        f"\nTỐT NHẤT TRÊN TUNE: base_config={best['base_config']}, marker_delta={best['marker_delta']}, "
+        f"intensifier_scale={best['intensifier_scale']} "
+        f"-> accuracy_tune={best['accuracy_tune']:.4f}, macro_f1_tune={best['macro_f1_tune']:.4f}"
+    )
+
+    print(f"\n=== BƯỚC 2: chấm Holdout ({len(holdout_gt_df)} bài) ĐÚNG 1 LẦN, so sánh tổ hợp tốt nhất vs cấu hình production hiện tại ===")
+    acc_best_holdout, f1_best_holdout = score_and_eval_combo(
+        BASE_WEIGHT_CONFIGS[best["base_config"]], best["marker_delta"], best["intensifier_scale"],
+        term_rows, source_lookup, holdout_sentences, holdout_total_tokens, holdout_gt_df,
+        negation_words, clause_boundary_words,
+    )
+    acc_prod_holdout, f1_prod_holdout = score_and_eval_combo(
+        PRODUCTION_BASE_WEIGHTS, PRODUCTION_MARKER_DELTA, PRODUCTION_INTENSIFIER_SCALE,
+        term_rows, source_lookup, holdout_sentences, holdout_total_tokens, holdout_gt_df,
+        negation_words, clause_boundary_words,
+    )
+    print(
+        f"  Tổ hợp chọn từ Tune ({best['base_config']}/{best['marker_delta']}/{best['intensifier_scale']}) "
+        f"trên Holdout: accuracy={acc_best_holdout:.4f}  macro_f1={f1_best_holdout:.4f}"
+    )
+    print(
+        f"  Production hiện tại (base=round-giảm-dần 5-4-3-2-1, marker_delta=0.0, intensifier_scale=1.0) "
+        f"trên Holdout: accuracy={acc_prod_holdout:.4f}  macro_f1={f1_prod_holdout:.4f}"
+    )
+
+    OUTPUT_SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    results_df.to_csv(OUTPUT_SUMMARY_PATH, index=False, encoding="utf-8-sig")
+    print("\nĐã lưu:", OUTPUT_SUMMARY_PATH)
 
 
 if __name__ == "__main__":

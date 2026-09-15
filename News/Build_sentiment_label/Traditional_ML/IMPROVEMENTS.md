@@ -1,28 +1,35 @@
 # Traditional_ML — Backlog cải tiến gán nhãn sentiment
 
-> **Trạng thái:** ghi lại để làm sau. Hiện ground truth chỉ **152 dòng**
-> (neg 49 / neu 68 / pos 35) nên mọi thay đổi bên dưới **chưa chắc tối ưu** —
-> sai số CV ±0.02 macro-F1 lớn hơn phần lớn kỳ vọng cải thiện. Chỉ nên
-> triển khai + đo lại khi GT đã lên **vài trăm → vài nghìn dòng** và cân bằng
-> hơn giữa 3 lớp.
->
-> **Cách thử an toàn:** làm từng ý thành thí nghiệm riêng trong
-> `experiment_vocab/` (import hàm thuần, tự wiring, chỉ xuất bảng so sánh),
-> **không sửa pipeline chính** cho tới khi có bằng chứng CV rõ ràng.
+> **Trạng thái:** ground truth đã lên **1064 dòng**
+> (neg 295 / neu 493 / pos 276, `data_news/ground_truth_combined.csv`) —
+> pipeline chính (`prepare_ground_truth.py` → `run_pipeline.py`) dùng tập
+> này (152 dòng cũ chỉ còn là tập con lịch sử). Ý A/B (feature lexicon) đã
+> **promote vào production** cho `random_forest` sau khi replicate được trên
+> holdout sạch (xem mục A). Một phần ý D (calibration, ensemble) cũng đã
+> triển khai — xem trạng thái từng mục bên dưới.
 
-## Baseline hiện tại (đối chiếu khi thử cải tiến)
+## Baseline hiện tại (1064 dòng, đối chiếu khi thử cải tiến)
 
-5-fold stratified CV, TF-IDF fit per-fold, tokenizer VNCoreNLP.
+5-fold stratified CV, TF-IDF fit per-fold, tokenizer VNCoreNLP. Từ
+`RESULTS_SUMMARY.txt` (single-seed — xem `improve/run_improve.py` cho mean ±
+std trên nhiều seed):
 
 | model | macro F1 | accuracy |
 |---|--:|--:|
-| random_forest | 0.634 | 0.658 |
-| naive_bayes | 0.605 | 0.632 |
-| logistic_regression | 0.593 | 0.632 |
-| svm | 0.562 | 0.638 |
+| **random_forest** (isotonic-calibrated, **+lexicon features**) | **0.663** | 0.680 |
+| ensemble (LR+NB+RF, RF dùng +lexicon) | 0.648 | 0.663 |
+| naive_bayes | 0.621 | 0.634 |
+| logistic_regression | 0.611 | 0.626 |
+| svm (margin-softmax, không calibrate) | 0.583 | 0.602 |
 
-Vocab (fit toàn bộ 152): 1.468 term (449 uni / 630 bi / 389 tri).
-Lớp `positive` là lớp yếu nhất ở mọi model (F1 0.30–0.56).
+`random_forest` không có lexicon feature: 0.645 (macro-F1) — tức feature này
+đóng góp thật +0.018 trên chính tập 1064 dòng, khớp hướng với kết quả đã
+validate trên tune/holdout (xem mục A).
+
+Lớp `positive`/`negative` vẫn là lớp yếu nhất ở phần lớn model (F1 0.50–0.66).
+
+Con số 599-dòng / 152-dòng cũ không còn so sánh được trực tiếp — cỡ mẫu khác
+và RF giờ có thêm lexicon feature mà các bảng cũ không có.
 
 ---
 
@@ -58,7 +65,29 @@ Nền tảng ổn — cải tiến nằm ở **feature** và **methodology**, kh
 
 ## A. Feature theo 7 nhóm lexicon tài chính
 
-- [ ] **Trạng thái:** chưa làm — *ưu tiên #1*
+- [x] **Trạng thái: ĐÃ PROMOTE vào `model/common.py` cho `random_forest`,
+  sau 2 lần thất bại và 1 lần replicate thành công.**
+  (`model/lexicon_features.py` — promoted từ `experiment_lexicon_features/`;
+  dùng `Seed_set_Prepare/seed_round4/` sau khi sửa 3 bug: scale-mismatch,
+  seed folder sai, single-token matching bỏ sót từ 3+ âm tiết — lịch sử đầy
+  đủ trong `experiment_lexicon_features/README.md`).
+
+  | lần thử | ground truth | thiết kế | tune Δ (random_forest) | holdout Δ | lặp lại? |
+  |---|---|---|---|---|---|
+  | #1 | 599 (419/180) | negation chỉ `positive` (đúng LM 2011) | +0.027, CI loại 0, p=0.021 | +0.003, CI chạm 0, p=0.794 | Không |
+  | #2 | 599 (419/180) | negation cả `positive` + `negative` | +0.029, CI loại 0, p=0.011 | +0.012, CI chạm 0, p=0.381 | Không |
+  | **#3** | **1064 (744/320, holdout mới hoàn toàn)** | negation cả 2 bên (giống #2) | +0.016, CI loại 0, p=0.039 | **+0.038, CI [+0.011,+0.066], p=0.004** | **Có** |
+
+  Lần #3 dùng ground truth lớn hơn (1064 dòng) và **holdout hoàn toàn mới**
+  (chưa từng được nhìn ở #1/#2) — kết quả replicate rõ ràng, thậm chí hiệu
+  ứng trên holdout còn lớn hơn trên tune. Chỉ `random_forest` có bằng chứng
+  (LR/SVM không bao giờ có CI loại 0 ở cả 3 lần; NB bị loại vì `net_polarity`
+  âm). Đã đưa `extra_features` vào `model/common.py::run_cross_validation`
+  (chuẩn hoá z-score trong fold, giống hệt logic đã validate ở
+  `improve/repeated_cv.py`), `model/random_forest.py` truyền lexicon matrix
+  vào, `model/ensemble.py` cũng dùng đúng bản RF này khi tổng hợp. Kết quả
+  production trên 1064 dòng: RF 0.645 → **0.663** macro-F1 (+0.018, khớp
+  hướng với validate).
 
 **Ý tưởng.** Ghép cạnh ma trận TF-IDF một khối feature nhỏ (~16 cột) đếm hit
 theo từng nhóm từ điển tài chính đã curate.
@@ -70,7 +99,9 @@ theo từng nhóm từ điển tài chính đã curate.
 - Tetlock 2007: trong 77 category chỉ **Negative** và **Weak-modal** tải tín
   hiệu → kỳ vọng `neg_prop`, `weak_modal_prop` mạnh nhất.
 
-**Nguồn dữ liệu (đã có).** `News/Build_sentiment_label/Seed_set_Prepare/final_seed/`:
+**Nguồn dữ liệu (đã có).** `News/Build_sentiment_label/Seed_set_Prepare/seed_round4/`
+(danh sách lớn nhất, đang được cập nhật — **không phải** `final_seed/`, dù tên
+gọi vậy đó lại là snapshot cũ nhỏ hơn nhiều lần):
 `negative_word.txt`, `positive_word.txt`, `uncertainty_word.txt`,
 `litigious_word.txt`, `strong_modal_word.txt`, `weak_modal_word.txt`,
 `constraining_word.txt` (+ `../negation_cue_words.txt`).
@@ -103,7 +134,13 @@ nhiều hơn RF.
 
 ## B. Xử lý phủ định
 
-- [ ] **Trạng thái:** chưa làm — *ưu tiên #1 (đi kèm A)*
+- [x] **Trạng thái: ĐÃ PROMOTE cùng mục A** (`model/lexicon_features.py`,
+  `NEGATION_WINDOW=3`, cùng danh sách negation cue words) — nằm trong cùng
+  khối feature nên đi cùng số phận: promoted cho `random_forest` sau khi
+  replicate trên holdout mới (xem mục A). **Lưu ý:** bản đã promote áp dụng
+  negation cho **cả `positive` VÀ `negative`** (`NEGATABLE_CATEGORIES`),
+  lệch khỏi LM 2011 gốc (chỉ negate positive) — đây là biến thể đã test và
+  thắng, không phải bản nguyên gốc mô tả bên dưới.
 
 **Ý tưởng.** Lật / triệt tiêu hit **positive** khi có từ phủ định ngay trước.
 
@@ -205,17 +242,17 @@ SO-PMI trong `News/Build_sentiment_label/Lexicon_based/build_sentiment_dictionar
 
 ## D. Model & methodology
 
-- [ ] **Trạng thái:** chưa làm — *ưu tiên #2 (rẻ, gần như free)*
+- [~] **Trạng thái:** một phần đã làm — xem cột "Trạng thái" từng dòng
 
-| Việc | Cách làm | Căn cứ |
-|---|---|---|
-| **Nested-CV tuning** | Vòng CV trong: grid `C ∈ {0.01..10}` (LogReg/SVM), `alpha ∈ {0.1..2}` (NB), `min_samples_leaf`/`max_features` (RF). Vòng ngoài giữ nguyên 5-fold để báo cáo. Thêm hàm `tune_estimator(factory, param_grid, x_train, y_train)` gọi trong `run_cross_validation`. | Cawley & Talbot 2010: phải **nested** để không lạc quan hoá. |
-| **ComplementNB** thay `MultinomialNB` | 1 dòng trong `model/naive_bayes.py::build_estimator`. | Rennie et al. 2003 — cho text mất cân bằng. |
-| **Bỏ Platt calibration SVM** | `model/svm.py`: dùng `LinearSVC` + `decision_function`, hoặc bỏ hẳn SVM và chỉ dùng LogReg cho xác suất. | Platt trên inner-fold ~40 dòng rất nhiễu → nghi là lý do recall positive SVM sụp còn 0.20. |
-| **Calibrate RF** | `CalibratedClassifierCV(rf, method="isotonic", cv=...)` nếu `sentiment_score_ml` dùng ở bước index. | Xác suất RF lệch calibration. |
-| **Repeated stratified CV** | `RepeatedStratifiedKFold(n_splits=5, n_repeats=10, random_state=...)`, báo cáo mean ± std. | 5-fold đơn trên 152 dòng → nhiễu ±0.02. |
-| **McNemar / paired t-test** giữa 2 model | `statsmodels` McNemar trên out-of-fold predictions trước khi kết luận model nào thắng. | Dietterich 1998. |
-| **Ensemble** | Trung bình xác suất (đã calibrate) của 4 model → argmax. Thêm `model/ensemble.py`. | Thường +1–2 macro-F1, gần như free. |
+| Việc | Cách làm | Căn cứ | Trạng thái |
+|---|---|---|---|
+| **Nested-CV tuning** | Vòng CV trong: grid `C ∈ {0.01..10}` (LogReg/SVM), `alpha ∈ {0.1..2}` (NB), `min_samples_leaf`/`max_features` (RF). Vòng ngoài giữ nguyên 5-fold để báo cáo. Thêm hàm `tune_estimator(factory, param_grid, x_train, y_train)` gọi trong `run_cross_validation`. | Cawley & Talbot 2010: phải **nested** để không lạc quan hoá. | Chưa làm. |
+| **ComplementNB** thay `MultinomialNB` | 1 dòng trong `model/naive_bayes.py::build_estimator`. | Rennie et al. 2003 — cho text mất cân bằng. | Đã test (M2.1, `improve/run_improve.py`) ở cả 152/419/599 dòng — **không khác biệt đáng kể** (Δ≈−0.001 ở 599 dòng, CI hẹp). Giữ `MultinomialNB`, không đổi. |
+| **Bỏ Platt calibration SVM** | `model/svm.py`: dùng `LinearSVC` + `decision_function`, hoặc bỏ hẳn SVM và chỉ dùng LogReg cho xác suất. | Platt trên inner-fold ~40 dòng rất nhiễu → nghi là lý do recall positive SVM sụp còn 0.20. | **Đã làm.** `model/svm.py::MarginSoftmaxSVC` (softmax của `decision_function`, không fit gì). Đo bằng `improve/calibration_check.py` trên 599 dòng: macro-F1 tăng 0.504→0.554, NHƯNG calibration (ECE/Brier) lại **tệ hơn** (ECE 0.057→0.097) — Platt tệ ở ranking nhưng khớp tần suất tốt hơn softmax thô. Vì model được xếp hạng theo macro-F1 nên giữ softmax, và loại SVM khỏi ensemble (xem dưới) vì xác suất của nó không đáng tin. |
+| **Calibrate RF** | `CalibratedClassifierCV(rf, method="isotonic", cv=...)` nếu `sentiment_score_ml` dùng ở bước index. | Xác suất RF lệch calibration. | **Đã làm.** `model/random_forest.py::build_estimator`. Đo bằng `improve/calibration_check.py`: ECE 0.061→0.027, Brier 0.523→0.507 (cả 2 cải thiện rõ), đổi lại macro-F1 giảm nhẹ 0.587→0.568 (đánh đổi chấp nhận được vì mục tiêu là xác suất đáng tin, không phải macro-F1 tối đa). |
+| **Repeated stratified CV** | `RepeatedStratifiedKFold(n_splits=5, n_repeats=10, random_state=...)`, báo cáo mean ± std. | 5-fold đơn trên 152 dòng → nhiễu ±0.02. | Đã làm (M2.2, `improve/repeated_cv.py` + `improve/nadeau_bengio.py` cho corrected variance). `RESULTS_SUMMARY.txt` vẫn single-seed — xem `improve/README.md` "Promotion path". |
+| **McNemar / paired t-test** giữa 2 model | `statsmodels` McNemar trên out-of-fold predictions trước khi kết luận model nào thắng. | Dietterich 1998. | Đã làm (M2.3, `improve/mcnemar.py`, hand-rolled không cần `statsmodels`). |
+| **Ensemble** | Trung bình xác suất (đã calibrate) của 4 model → argmax. Thêm `model/ensemble.py`. | Thường +1–2 macro-F1, gần như free. | **Đã làm**, nhưng chỉ 3 model (LR+NB+RF — loại SVM vì lý do ở dòng trên). Kết quả single-seed trên 599 dòng: ensemble F1=0.593, **thấp hơn** LR một mình (0.596) — chưa thấy lợi ích rõ trong lần chạy đơn lẻ này; cần repeated CV + bootstrap (như M2.2/M2.4) trước khi kết luận. |
 
 ---
 

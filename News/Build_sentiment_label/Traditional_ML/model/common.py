@@ -129,7 +129,19 @@ def run_cross_validation(
     stopwords: set[str] | None = None,
     n_splits: int = N_SPLITS,
     max_features: int = MAX_FEATURES,
+    extra_features: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """``extra_features`` (optional): a ``(n_rows, k)`` array of precomputed,
+    non-fitted feature columns (e.g. lexicon-category hit ratios - see
+    ``model/lexicon_features.py``) to hstack onto the TF-IDF matrix after
+    feature selection. Standardized (z-score, train-fold-only mean/std, same
+    discipline as the TF-IDF idf) before hstacking - without this, columns on
+    a much smaller scale than the TF-IDF weights get an effectively-zero
+    coefficient from any linear model with fixed regularization (verified in
+    ``experiment_lexicon_features/``, where this exact logic was validated
+    before being promoted here). Default ``None`` keeps every existing caller
+    byte-identical to the pre-``extra_features`` behaviour.
+    """
     y = np.asarray(y, dtype=int)
     stopwords = _load_stopwords(stopwords)
     resolved_splits = resolve_n_splits(y, n_splits)
@@ -161,6 +173,19 @@ def run_cross_validation(
             x_train, vocabulary_df, max_features=max_features
         )
         x_val_selected = x_val[:, selected_indices]
+
+        if extra_features is not None:
+            train_extra = extra_features[train_indices]
+            val_extra = extra_features[validation_indices]
+            extra_mean = train_extra.mean(axis=0)
+            extra_std = train_extra.std(axis=0)
+            extra_std = np.where(extra_std > 1e-8, extra_std, 1.0)
+            x_train_selected = np.hstack(
+                [x_train_selected, (train_extra - extra_mean) / extra_std]
+            )
+            x_val_selected = np.hstack(
+                [x_val_selected, (val_extra - extra_mean) / extra_std]
+            )
 
         model = estimator_factory(RANDOM_SEED + fold_id)
         model.fit(x_train_selected, y[train_indices])
