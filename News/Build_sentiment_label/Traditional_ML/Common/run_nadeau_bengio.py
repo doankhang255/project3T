@@ -1,11 +1,11 @@
 """Does the Nadeau-Bengio (2003) correction change any conclusion here?
 
-    python News/Build_sentiment_label/Traditional_ML/improve/run_nadeau_bengio.py
+    python News/Build_sentiment_label/Traditional_ML/Common/run_nadeau_bengio.py
 
 Reuses ``run_repeated_cv`` (same OOF arrays as ``run_improve.py``) and applies
 ``nadeau_bengio.py`` on top - no retraining beyond the repeated CV itself.
 
-The naive per-repeat std (what ``improve/README.md`` / ``run_improve.py``
+The naive per-repeat std (what ``Common/README.md`` / ``run_improve.py``
 already report) treats the ``n_repeats`` repeat-level scores as independent.
 They are not independent at the *fold* level - every repeat's training folds
 overlap. Nadeau & Bengio's correction re-derives the variance from the
@@ -28,22 +28,24 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
-from News.Build_sentiment_label.Traditional_ML.improve.nadeau_bengio import (
+from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import build_document_term_counts
+from News.Build_sentiment_label.Traditional_ML.Common.nadeau_bengio import (
     nadeau_bengio_ci,
     nadeau_bengio_paired_test,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import (
+from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import (
     N_REPEATS,
     load_stopword_set,
     run_repeated_cv,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.run_improve import (
+from News.Build_sentiment_label.Traditional_ML.Common.model_factories import (
     MODEL_FACTORIES,
-    load_frame_from_csv,
     summarize,
 )
-from News.Build_sentiment_label.Traditional_ML.model.common import encode_labels
+from News.Build_sentiment_label.Traditional_ML.Common.prepare_ground_truth import (
+    load_frame_from_csv,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.model.common import encode_labels
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_GROUND_TRUTH_CSV = SCRIPT_DIR / "tune_holdout" / "ground_truth_tune.csv"
@@ -77,7 +79,7 @@ def render_report(
     )
     add(
         "Naive SE below = std/sqrt(n) over the n_repeats*5 individual FOLD "
-        "scores (not the repeat-level mean+/-std elsewhere in improve/ - that"
+        "scores (not the repeat-level mean+/-std elsewhere in Common/ - that"
     )
     add(
         "one already averages 5 folds per repeat first). Corrected SE inflates "

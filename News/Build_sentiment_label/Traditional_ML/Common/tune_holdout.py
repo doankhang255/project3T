@@ -6,11 +6,11 @@ number on a part that was never looked at while iterating) - so every method
 (Lexicon, Traditional ML, later PhoBERT) is tuned and reported on the exact
 same rows. Does NOT create a new split.
 
-    python News/Build_sentiment_label/Traditional_ML/improve/tune_holdout.py
+    python News/Build_sentiment_label/Traditional_ML/Common/tune_holdout.py
 
-Writes only into improve/tune_holdout/ (two CSVs, same schema as
+Writes only into Common/tune_holdout/ (two CSVs, same schema as
 ground_truth_combined.csv, ready to feed straight into
-run_improve.py --ground-truth-csv / experiment_lexicon_features/run_experiment.py).
+run_improve.py --ground-truth-csv / experiment_Lexicon_features/run_experiment.py).
 """
 
 from __future__ import annotations

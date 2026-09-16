@@ -1,24 +1,24 @@
-"""M2.1 + M2.2 + M2.3 for the Traditional_ML branch, run together.
+"""M2.1 + M2.2 + M2.3 + M2.4 - compare all 5 models on TF-IDF features only
+(no lexicon feature block - see ../experiment_Lexicon_features/ for that).
 
-    python News/Build_sentiment_label/Traditional_ML/improve/run_improve.py
-    python .../improve/run_improve.py --repeats 3        # quick smoke run
+    python News/Build_sentiment_label/Traditional_ML/experiment_only_TF_IDF/compare_models_tfidf_only.py
+    python .../compare_models_tfidf_only.py --repeats 3        # quick smoke run
 
-    # retest on a bigger / different ground-truth CSV without touching the
-    # n=152 baseline report (writes to --out-dir instead of improve/):
-    python .../improve/run_improve.py \\
+    # retest on a different ground-truth CSV without touching this folder's own report:
+    python .../compare_models_tfidf_only.py \\
         --ground-truth-csv data_news/ground_truth_combined.csv \\
-        --out-dir News/Build_sentiment_label/Traditional_ML/improve/gt599
+        --out-dir News/Build_sentiment_label/Traditional_ML/experiment_only_TF_IDF/gt_custom
 
-By default writes only into ``improve/`` (``RESULTS.txt`` + ``data/*.csv``).
-Does not touch the main pipeline. Once a change here is confirmed useful, fold
-it into ``model/*.py`` and regenerate ``RESULTS_SUMMARY.txt``.
+By default writes only into this folder (``RESULTS.txt`` + ``data/*.csv``).
+Does not touch the main pipeline or model/*.py.
 
 M2.1  Multinomial vs Complement Naive Bayes. Rennie et al. (2003): Complement
-      NB is built for class-imbalanced text; here ``positive`` is 23% of rows.
+      NB is built for class-imbalanced text; here ``positive`` is ~25% of rows.
 M2.2  Repeated stratified 5-fold CV -> mean +/- std over ``--repeats`` runs,
       so a ~0.02 macro-F1 gap is visibly inside the noise band.
 M2.3  McNemar's test between every model pair on the out-of-fold predictions
       -> is model A really better than model B, or is it the split?
+M2.4  Bootstrap 95% CI on macro-F1 and on every pairwise delta(macro-F1).
 """
 
 from __future__ import annotations
@@ -29,110 +29,42 @@ import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.naive_bayes import ComplementNB
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import (
+from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import (
     build_document_term_counts,
-    build_document_terms,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.bootstrap import (
+from News.Build_sentiment_label.Traditional_ML.Common.bootstrap import (
     N_BOOT,
     bootstrap_samples,
     ci,
     mean_macro_f1,
     two_sided_p,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.mcnemar import mcnemar_test
-from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import (
+from News.Build_sentiment_label.Traditional_ML.Common.mcnemar import mcnemar_test
+from News.Build_sentiment_label.Traditional_ML.Common.model_factories import (
+    MODEL_FACTORIES,
+    SINGLE_RUN_REFERENCE,
+    summarize,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.prepare_ground_truth import (
+    load_frame_from_csv,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import (
     N_REPEATS,
     load_stopword_set,
     run_repeated_cv,
 )
-from News.Build_sentiment_label.Traditional_ML import prepare_ground_truth
-from News.Build_sentiment_label.Traditional_ML.model.common import (
-    VALID_LABELS,
+from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     encode_labels,
     load_ground_truth_frame,
-    normalize_label,
-)
-from News.Build_sentiment_label.Traditional_ML.model.logistic_regression import (
-    build_estimator as build_logistic_regression,
-)
-from News.Build_sentiment_label.Traditional_ML.model.naive_bayes import (
-    build_estimator as build_multinomial_nb,
-)
-from News.Build_sentiment_label.Traditional_ML.model.random_forest import (
-    build_estimator as build_random_forest,
-)
-from News.Build_sentiment_label.Traditional_ML.model.svm import (
-    build_estimator as build_svm,
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 # default output location; --out-dir overrides both (see main())
-
-METRIC_COLUMNS = ["macro_f1", "accuracy", "f1_negative", "f1_neutral", "f1_positive"]
-
-# Single-split numbers from the committed RESULTS_SUMMARY.txt, shown for
-# reference only (one fold seed, MultinomialNB).
-SINGLE_RUN_REFERENCE = {
-    "random_forest": (0.634, 0.658),
-    "naive_bayes": (0.605, 0.632),
-    "logistic_regression": (0.593, 0.632),
-    "svm": (0.562, 0.638),
-}
-
-
-def load_frame_from_csv(path: Path) -> pd.DataFrame:
-    """Same join as ``prepare_ground_truth.main()`` (source_row_id ->
-    VNCoreNLP corpus, with the title/publication_date alignment check), but
-    against an arbitrary ground-truth CSV instead of the pipeline's default
-    ``data_news/ground_truth_labeled.csv`` / the pre-built tokenized parquet.
-    Reuses ``prepare_ground_truth``'s functions and the same label
-    normalization as ``model/common.load_ground_truth_frame`` - no separate
-    join or labeling logic.
-    """
-    ground_truth = prepare_ground_truth.load_ground_truth(path)
-    corpus_rows = prepare_ground_truth.lookup_vncorenlp_rows(ground_truth)
-    prepare_ground_truth.assert_alignment(ground_truth, corpus_rows)
-    frame = prepare_ground_truth.build_output(ground_truth, corpus_rows)
-    frame["ground_truth_label"] = frame["sentiment"].apply(normalize_label)
-    valid_mask = frame["ground_truth_label"].isin(VALID_LABELS)
-    frame = frame.loc[valid_mask].reset_index(drop=True)
-
-    # same n-gram extraction TF_IDF.load_tokenized_ground_truth does for the
-    # pipeline's own tokenized parquet - build_document_term_counts needs it.
-    frame["_document_terms"] = frame.apply(build_document_terms, axis=1)
-    frame = frame.loc[frame["_document_terms"].map(len).gt(0)].reset_index(drop=True)
-    return frame
-
-
-def build_complement_nb(random_state: int) -> ComplementNB:
-    del random_state  # ComplementNB has no randomness; uniform factory signature
-    return ComplementNB()
-
-
-MODEL_FACTORIES = {
-    "logistic_regression": build_logistic_regression,
-    "multinomial_nb": build_multinomial_nb,
-    "complement_nb": build_complement_nb,
-    "random_forest": build_random_forest,
-    "svm": build_svm,
-}
-
-
-def summarize(per_repeat: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    return {
-        column: (
-            float(per_repeat[column].mean()),
-            float(per_repeat[column].std(ddof=1)),
-        )
-        for column in METRIC_COLUMNS
-    }
 
 
 def mcnemar_pairwise(
@@ -231,7 +163,7 @@ def render_report(
     add = lines.append
 
     total = sum(label_counts.values())
-    add("IMPROVE - M2.1 / M2.2 / M2.3 / M2.4  (Traditional_ML methodology fixes)")
+    add("COMPARE MODELS - TF-IDF ONLY  (M2.1 / M2.2 / M2.3 / M2.4)")
     add("=" * 68)
     add("")
     add(
@@ -242,7 +174,8 @@ def render_report(
     )
     add(
         f"Repeated stratified 5-fold CV, {n_repeats} repeats, TF-IDF fit per "
-        "fold (leak-free)."
+        "fold (leak-free). No lexicon feature block (see "
+        "../experiment_Lexicon_features/ for that)."
     )
     add(
         "Repeat r uses fold seed r; every model sees the SAME split in repeat r "
@@ -282,10 +215,9 @@ def render_report(
         low, high = boot_ci_by_model[name]
         add(f"    {name:<20} {boot_point_by_model[name]:.3f}  [{low:.3f}, {high:.3f}]")
     add("")
-    add("  RESULTS_SUMMARY.txt still shows SINGLE-SEED numbers (one lucky fold")
-    add("  split) - do NOT cite them; the mean +/- std above supersedes. Making")
-    add("  RESULTS_SUMMARY.txt honest needs run_pipeline.py on repeated CV")
-    add("  (deferred - see README 'Promotion path').")
+    add("  RESULTS_SUMMARY.txt reports the production pipeline (random_forest")
+    add("  there uses the lexicon feature block; the random_forest here does not -")
+    add("  the two are not directly comparable).")
     reference_to_repeat = {"naive_bayes": "multinomial_nb"}
     for name, (macro_f1, _accuracy) in SINGLE_RUN_REFERENCE.items():
         repeat_name = reference_to_repeat.get(name, name)
@@ -297,36 +229,40 @@ def render_report(
         )
     add("")
 
-    add("M2.1  MULTINOMIAL vs COMPLEMENT NAIVE BAYES")
-    add("-" * 68)
-    multinomial = summary_by_model["multinomial_nb"]
-    complement = summary_by_model["complement_nb"]
-    for name, stats in (("multinomial_nb", multinomial), ("complement_nb", complement)):
+    have_nb_pair = "multinomial_nb" in summary_by_model and "complement_nb" in summary_by_model
+    delta_macro = None
+    inside = None
+    if have_nb_pair:
+        add("M2.1  MULTINOMIAL vs COMPLEMENT NAIVE BAYES")
+        add("-" * 68)
+        multinomial = summary_by_model["multinomial_nb"]
+        complement = summary_by_model["complement_nb"]
+        for name, stats in (("multinomial_nb", multinomial), ("complement_nb", complement)):
+            add(
+                f"  {name:<16} macro_f1 {_fmt_mean_std(stats['macro_f1'])}   "
+                f"accuracy {_fmt_mean_std(stats['accuracy'])}"
+            )
+        delta_macro = complement["macro_f1"][0] - multinomial["macro_f1"][0]
+        pooled_std = max(multinomial["macro_f1"][1], complement["macro_f1"][1])
+        inside = abs(delta_macro) <= pooled_std
         add(
-            f"  {name:<16} macro_f1 {_fmt_mean_std(stats['macro_f1'])}   "
-            f"accuracy {_fmt_mean_std(stats['accuracy'])}"
+            f"  delta (complement - multinomial): {delta_macro:+.3f} macro_f1  "
+            f"({'inside' if inside else 'outside'} one std -> "
+            f"{'noise' if inside else 'possibly real'})"
         )
-    delta_macro = complement["macro_f1"][0] - multinomial["macro_f1"][0]
-    pooled_std = max(multinomial["macro_f1"][1], complement["macro_f1"][1])
-    inside = abs(delta_macro) <= pooled_std
-    add(
-        f"  delta (complement - multinomial): {delta_macro:+.3f} macro_f1  "
-        f"({'inside' if inside else 'outside'} one std -> "
-        f"{'noise' if inside else 'possibly real'})"
-    )
-    nb_pair = mcnemar_df[
-        (mcnemar_df["model_a"] == "multinomial_nb")
-        & (mcnemar_df["model_b"] == "complement_nb")
-    ]
-    if not nb_pair.empty:
-        row = nb_pair.iloc[0]
-        add(
-            f"  McNemar: mean_b(mnb right, cnb wrong)={row['mean_b']:.1f}  "
-            f"mean_c={row['mean_c']:.1f}  median_p={row['median_p']:.3f}  "
-            f"sig_repeats={row['sig_repeats']}/{row['n_repeats']}  "
-            f"-> {'reliably different' if row['sig_repeats'] > row['n_repeats'] / 2 else 'not reliably different'}"
-        )
-    add("")
+        nb_pair = mcnemar_df[
+            (mcnemar_df["model_a"] == "multinomial_nb")
+            & (mcnemar_df["model_b"] == "complement_nb")
+        ]
+        if not nb_pair.empty:
+            row = nb_pair.iloc[0]
+            add(
+                f"  McNemar: mean_b(mnb right, cnb wrong)={row['mean_b']:.1f}  "
+                f"mean_c={row['mean_c']:.1f}  median_p={row['median_p']:.3f}  "
+                f"sig_repeats={row['sig_repeats']}/{row['n_repeats']}  "
+                f"-> {'reliably different' if row['sig_repeats'] > row['n_repeats'] / 2 else 'not reliably different'}"
+            )
+        add("")
 
     add("M2.3  McNEMAR PAIRWISE  (are the model gaps real, or the split?)")
     add("-" * 68)
@@ -388,10 +324,11 @@ def render_report(
             "  No model pair is reliably different (no pair significant in a "
             "majority of repeats)."
         )
-    add(
-        f"  delta(complement - multinomial) = {delta_macro:+.3f} macro-F1; "
-        f"{'within' if inside else 'beyond'} one std."
-    )
+    if delta_macro is not None:
+        add(
+            f"  delta(complement - multinomial) = {delta_macro:+.3f} macro-F1; "
+            f"{'within' if inside else 'beyond'} one std."
+        )
     excludes_zero = boot_delta_df.loc[~boot_delta_df["crosses_zero"], ["model_a", "model_b"]]
     if excludes_zero.empty:
         add(
@@ -442,14 +379,14 @@ def main() -> None:
             "retest against a different ground-truth CSV (same schema as "
             "data_news/ground_truth_labeled.csv, joined to the VNCoreNLP "
             "corpus by source_row_id) instead of the pipeline's committed "
-            "152-row tokenized parquet"
+            "tokenized parquet"
         ),
     )
     parser.add_argument(
         "--out-dir",
         type=Path,
         default=None,
-        help="where to write RESULTS.txt + data/ (default: this improve/ folder)",
+        help="where to write RESULTS.txt + data/ (default: this folder)",
     )
     args = parser.parse_args()
 

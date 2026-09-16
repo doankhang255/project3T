@@ -5,8 +5,9 @@
 > pipeline chính (`prepare_ground_truth.py` → `run_pipeline.py`) dùng tập
 > này (152 dòng cũ chỉ còn là tập con lịch sử). Ý A/B (feature lexicon) đã
 > **promote vào production** cho `random_forest` sau khi replicate được trên
-> holdout sạch (xem mục A). Một phần ý D (calibration, ensemble) cũng đã
-> triển khai — xem trạng thái từng mục bên dưới.
+> holdout sạch (xem mục A). Ý D: **nested-CV tuning đã làm và promote**
+> (LogReg/SVM: `C=0.1`), calibration + ensemble cũng đã triển khai — xem
+> trạng thái từng mục bên dưới.
 
 ## Baseline hiện tại (1064 dòng, đối chiếu khi thử cải tiến)
 
@@ -16,20 +17,24 @@ std trên nhiều seed):
 
 | model | macro F1 | accuracy |
 |---|--:|--:|
-| **random_forest** (isotonic-calibrated, **+lexicon features**) | **0.663** | 0.680 |
-| ensemble (LR+NB+RF, RF dùng +lexicon) | 0.648 | 0.663 |
+| **random_forest** (isotonic-calibrated, **+lexicon features**) | **0.660** | 0.677 |
+| ensemble (LR+NB+RF, RF dùng +lexicon) | 0.645 | 0.660 |
+| logistic_regression (**C=0.1**, đã tune) | 0.637 | 0.651 |
 | naive_bayes | 0.621 | 0.634 |
-| logistic_regression | 0.611 | 0.626 |
-| svm (margin-softmax, không calibrate) | 0.583 | 0.602 |
+| svm (margin-softmax, **C=0.1**, đã tune) | 0.612 | 0.631 |
 
 `random_forest` không có lexicon feature: 0.645 (macro-F1) — tức feature này
-đóng góp thật +0.018 trên chính tập 1064 dòng, khớp hướng với kết quả đã
-validate trên tune/holdout (xem mục A).
+đóng góp thật +0.015~0.018 trên chính tập 1064 dòng, khớp hướng với kết quả
+đã validate trên tune/holdout (xem mục A).
+
+`logistic_regression`/`svm` với `C=1.0` (mặc định cũ): 0.611 / 0.583 — tune
+`C=0.1` đóng góp thật +0.026 / +0.029 trên chính tập 1064 dòng (xem mục D
+"Nested-CV tuning").
 
 Lớp `positive`/`negative` vẫn là lớp yếu nhất ở phần lớn model (F1 0.50–0.66).
 
 Con số 599-dòng / 152-dòng cũ không còn so sánh được trực tiếp — cỡ mẫu khác
-và RF giờ có thêm lexicon feature mà các bảng cũ không có.
+và RF/LogReg/SVM giờ dùng feature/hyperparameter khác các bảng cũ.
 
 ---
 
@@ -246,10 +251,10 @@ SO-PMI trong `News/Build_sentiment_label/Lexicon_based/build_sentiment_dictionar
 
 | Việc | Cách làm | Căn cứ | Trạng thái |
 |---|---|---|---|
-| **Nested-CV tuning** | Vòng CV trong: grid `C ∈ {0.01..10}` (LogReg/SVM), `alpha ∈ {0.1..2}` (NB), `min_samples_leaf`/`max_features` (RF). Vòng ngoài giữ nguyên 5-fold để báo cáo. Thêm hàm `tune_estimator(factory, param_grid, x_train, y_train)` gọi trong `run_cross_validation`. | Cawley & Talbot 2010: phải **nested** để không lạc quan hoá. | Chưa làm. |
+| **Nested-CV tuning** | Vòng CV trong: grid `C ∈ {0.1,0.3,1,3,10}` (LogReg/SVM), `alpha ∈ {0.1,0.3,0.5,1,2}` (NB), `min_samples_leaf ∈ {1,2,5}` × `max_features ∈ {sqrt,0.4}` (RF). Vòng ngoài giữ nguyên 5-fold để báo cáo. | Cawley & Talbot 2010: phải **nested** để không lạc quan hoá. | **Đã làm và promote cho LogReg/SVM.** `improve/tune_hyperparameters.py`. Trên tune (744 dòng): LogReg `C=0.1` thắng ở **cả 5/5 outer fold**, macro-F1 0.614→0.644 (CI [+0.011,+0.052], p=0.000); SVM `C=0.1` cũng thắng 5/5 fold, 0.572→0.617 (CI [+0.022,+0.071], p=0.000). Xác nhận trên holdout (320 dòng, lần dùng thứ 2 cho câu hỏi độc lập với mục A): LogReg 0.568→0.595 (CI [+0.011,+0.044], p=0.001), SVM 0.539→0.563 (CI [+0.009,+0.041], p=0.002) — cả 2 **lặp lại**. Đã cập nhật `LOGISTIC_C`/`SVM_C = 0.1` trong `model/logistic_regression.py`/`model/svm.py`. NB (`alpha`) và RF (`min_samples_leaf`/`max_features`) không có cải thiện đáng tin (CI chạm 0) — giữ nguyên default. |
 | **ComplementNB** thay `MultinomialNB` | 1 dòng trong `model/naive_bayes.py::build_estimator`. | Rennie et al. 2003 — cho text mất cân bằng. | Đã test (M2.1, `improve/run_improve.py`) ở cả 152/419/599 dòng — **không khác biệt đáng kể** (Δ≈−0.001 ở 599 dòng, CI hẹp). Giữ `MultinomialNB`, không đổi. |
-| **Bỏ Platt calibration SVM** | `model/svm.py`: dùng `LinearSVC` + `decision_function`, hoặc bỏ hẳn SVM và chỉ dùng LogReg cho xác suất. | Platt trên inner-fold ~40 dòng rất nhiễu → nghi là lý do recall positive SVM sụp còn 0.20. | **Đã làm.** `model/svm.py::MarginSoftmaxSVC` (softmax của `decision_function`, không fit gì). Đo bằng `improve/calibration_check.py` trên 599 dòng: macro-F1 tăng 0.504→0.554, NHƯNG calibration (ECE/Brier) lại **tệ hơn** (ECE 0.057→0.097) — Platt tệ ở ranking nhưng khớp tần suất tốt hơn softmax thô. Vì model được xếp hạng theo macro-F1 nên giữ softmax, và loại SVM khỏi ensemble (xem dưới) vì xác suất của nó không đáng tin. |
-| **Calibrate RF** | `CalibratedClassifierCV(rf, method="isotonic", cv=...)` nếu `sentiment_score_ml` dùng ở bước index. | Xác suất RF lệch calibration. | **Đã làm.** `model/random_forest.py::build_estimator`. Đo bằng `improve/calibration_check.py`: ECE 0.061→0.027, Brier 0.523→0.507 (cả 2 cải thiện rõ), đổi lại macro-F1 giảm nhẹ 0.587→0.568 (đánh đổi chấp nhận được vì mục tiêu là xác suất đáng tin, không phải macro-F1 tối đa). |
+| **Bỏ Platt calibration SVM** | `model/svm.py`: dùng `LinearSVC` + `decision_function`, hoặc bỏ hẳn SVM và chỉ dùng LogReg cho xác suất. | Platt trên inner-fold ~40 dòng rất nhiễu → nghi là lý do recall positive SVM sụp còn 0.20. | **Đã làm.** `model/svm.py::MarginSoftmaxSVC` (softmax của `decision_function`, không fit gì). Đo bằng `improve/calibration_check.py`, xác nhận lại trên 1064 dòng: macro-F1 tăng 0.554→0.583, NHƯNG calibration (ECE/Brier) lại **tệ hơn** (ECE 0.079→0.149) — cùng chiều với lần đo ở 599 dòng (0.504→0.554 / ECE 0.057→0.097). Platt tệ ở ranking nhưng khớp tần suất tốt hơn softmax thô, ở cả 2 cỡ dữ liệu. Vì model được xếp hạng theo macro-F1 nên giữ softmax, và loại SVM khỏi ensemble (xem dưới) vì xác suất của nó không đáng tin. |
+| **Calibrate RF** | `CalibratedClassifierCV(rf, method="isotonic", cv=...)` nếu `sentiment_score_ml` dùng ở bước index. | Xác suất RF lệch calibration. | **Đã làm.** `model/random_forest.py::build_estimator`. Đo bằng `improve/calibration_check.py`, xác nhận lại trên 1064 dòng: ECE 0.085→0.026, Brier 0.469→0.457 (cả 2 cải thiện rõ, cùng chiều với lần đo 599 dòng: ECE 0.061→0.027), đổi lại macro-F1 giảm nhẹ 0.653→0.645 (đánh đổi chấp nhận được vì mục tiêu là xác suất đáng tin, không phải macro-F1 tối đa; RF vẫn dùng thêm lexicon feature ở bản production nên số production khác 2 số này). |
 | **Repeated stratified CV** | `RepeatedStratifiedKFold(n_splits=5, n_repeats=10, random_state=...)`, báo cáo mean ± std. | 5-fold đơn trên 152 dòng → nhiễu ±0.02. | Đã làm (M2.2, `improve/repeated_cv.py` + `improve/nadeau_bengio.py` cho corrected variance). `RESULTS_SUMMARY.txt` vẫn single-seed — xem `improve/README.md` "Promotion path". |
 | **McNemar / paired t-test** giữa 2 model | `statsmodels` McNemar trên out-of-fold predictions trước khi kết luận model nào thắng. | Dietterich 1998. | Đã làm (M2.3, `improve/mcnemar.py`, hand-rolled không cần `statsmodels`). |
 | **Ensemble** | Trung bình xác suất (đã calibrate) của 4 model → argmax. Thêm `model/ensemble.py`. | Thường +1–2 macro-F1, gần như free. | **Đã làm**, nhưng chỉ 3 model (LR+NB+RF — loại SVM vì lý do ở dòng trên). Kết quả single-seed trên 599 dòng: ensemble F1=0.593, **thấp hơn** LR một mình (0.596) — chưa thấy lợi ích rõ trong lần chạy đơn lẻ này; cần repeated CV + bootstrap (như M2.2/M2.4) trước khi kết luận. |

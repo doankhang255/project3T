@@ -1,7 +1,5 @@
 """Dò nhiều tổ hợp hệ số cho Cách 2 (intensity_weight) bằng quy trình
-TUNE/HOLDOUT (sửa lại từ bản gốc dò trực tiếp trên 152 bài
-ground_truth_labeled.csv - đúng lỗi in-sample mentor nêu ở điểm 2, xem
-MENTOR_FEEDBACK_PLAN.md mục A).
+TUNE/HOLDOUT
 
 Quy trình:
     1. Đọc split cố định từ Lexicon_based/data/ground_truth_tune_holdout_split.csv

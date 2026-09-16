@@ -21,12 +21,12 @@ from News.Build_sentiment_label.Common.stopword_utils import (
     DEFAULT_STOPWORDS_PATH,
     load_stopwords,
 )
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import (
+from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import (
     REMOVE_STOPWORDS,
     fit_tfidf_vocabulary,
     transform_tfidf,
 )
-from News.Build_sentiment_label.Traditional_ML.model.common import (
+from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     MAX_FEATURES,
     RANDOM_SEED,
     VALID_LABELS,

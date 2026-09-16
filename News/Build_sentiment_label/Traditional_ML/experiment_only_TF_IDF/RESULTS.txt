@@ -1,0 +1,88 @@
+COMPARE MODELS - TF-IDF ONLY  (M2.1 / M2.2 / M2.3 / M2.4)
+====================================================================
+
+Ground truth: 1064 rows (neg 295 / neu 493 / pos 276) | tokenizer VNCoreNLP
+Repeated stratified 5-fold CV, 10 repeats, TF-IDF fit per fold (leak-free). No lexicon feature block (see ../experiment_Lexicon_features/ for that).
+Repeat r uses fold seed r; every model sees the SAME split in repeat r (paired).
+
+M2.2  REPEATED CV  -  mean +/- std over 10 repeats
+--------------------------------------------------------------------
+  model                       macro_f1        accuracy
+  logistic_regression  0.645 +/- 0.010 0.659 +/- 0.009
+  random_forest        0.642 +/- 0.010 0.664 +/- 0.009
+  complement_nb        0.620 +/- 0.005 0.631 +/- 0.005
+  multinomial_nb       0.617 +/- 0.004 0.629 +/- 0.004
+  svm                  0.612 +/- 0.011 0.628 +/- 0.010
+
+  model                    f1_negative      f1_neutral     f1_positive
+  logistic_regression  0.649 +/- 0.012 0.713 +/- 0.008 0.571 +/- 0.015
+  random_forest        0.635 +/- 0.012 0.735 +/- 0.007 0.557 +/- 0.014
+  complement_nb        0.645 +/- 0.008 0.682 +/- 0.005 0.534 +/- 0.008
+  multinomial_nb       0.634 +/- 0.006 0.686 +/- 0.006 0.530 +/- 0.007
+  svm                  0.613 +/- 0.014 0.691 +/- 0.009 0.531 +/- 0.016
+
+  95% bootstrap CI on mean macro-F1 (B=2000, resample the 1064 rows):
+    logistic_regression  0.645  [0.617, 0.670]
+    random_forest        0.642  [0.615, 0.670]
+    complement_nb        0.620  [0.592, 0.648]
+    multinomial_nb       0.617  [0.588, 0.644]
+    svm                  0.612  [0.585, 0.635]
+
+  RESULTS_SUMMARY.txt reports the production pipeline (random_forest
+  there uses the lexicon feature block; the random_forest here does not -
+  the two are not directly comparable).
+    random_forest        single 0.634   repeated mean 0.642
+    naive_bayes          single 0.605   repeated mean 0.617
+    logistic_regression  single 0.593   repeated mean 0.645
+    svm                  single 0.562   repeated mean 0.612
+
+M2.1  MULTINOMIAL vs COMPLEMENT NAIVE BAYES
+--------------------------------------------------------------------
+  multinomial_nb   macro_f1 0.617 +/- 0.004   accuracy 0.629 +/- 0.004
+  complement_nb    macro_f1 0.620 +/- 0.005   accuracy 0.631 +/- 0.005
+  delta (complement - multinomial): +0.003 macro_f1  (inside one std -> noise)
+  McNemar: mean_b(mnb right, cnb wrong)=15.5  mean_c=17.4  median_p=0.705  sig_repeats=0/10  -> not reliably different
+
+M2.3  McNEMAR PAIRWISE  (are the model gaps real, or the split?)
+--------------------------------------------------------------------
+  pair                                      mean_b  mean_c   med_p   sig/N   pool_p
+  logistic_regression vs multinomial_nb      105.2    73.8   0.018    7/10    0.000
+  logistic_regression vs complement_nb       105.2    75.7   0.045    6/10    0.000
+  logistic_regression vs random_forest        72.5    78.0   0.352    0/10    0.164
+  logistic_regression vs svm                  63.8    31.8   0.002   10/10    0.000
+  multinomial_nb vs complement_nb             15.5    17.4   0.705    0/10    0.321
+  multinomial_nb vs random_forest             68.2   105.1   0.011    9/10    0.000
+  multinomial_nb vs svm                      115.9   115.3   0.649    0/10    0.917
+  complement_nb vs random_forest              72.4   107.4   0.020    8/10    0.000
+  complement_nb vs svm                       115.8   113.3   0.689    0/10    0.616
+  random_forest vs svm                       123.0    85.5   0.008    7/10    0.000
+
+  mean_b = rows first model right & second wrong (averaged over repeats)
+  sig/N  = repeats with p < 0.05 out of N; pool_p pools all repeats
+           (optimistic - repeats are not independent)
+
+M2.4  BOOTSTRAP  -  95% CI on delta(macro-F1) between models (paired, B=2000)
+--------------------------------------------------------------------
+  pair                                      d_macroF1  95% CI                  p
+  logistic_regression vs multinomial_nb        +0.028  [+0.008, +0.048]    0.008   EXCLUDES 0
+  logistic_regression vs complement_nb         +0.024  [+0.005, +0.045]    0.019   EXCLUDES 0
+  logistic_regression vs random_forest         +0.002  [-0.015, +0.020]    0.780   overlaps 0
+  logistic_regression vs svm                   +0.033  [+0.022, +0.044]    0.000   EXCLUDES 0
+  multinomial_nb vs complement_nb              -0.003  [-0.010, +0.002]    0.268   overlaps 0
+  multinomial_nb vs random_forest              -0.025  [-0.046, -0.006]    0.008   EXCLUDES 0
+  multinomial_nb vs svm                        +0.005  [-0.019, +0.028]    0.707   overlaps 0
+  complement_nb vs random_forest               -0.022  [-0.043, -0.002]    0.026   EXCLUDES 0
+  complement_nb vs svm                         +0.009  [-0.015, +0.031]    0.505   overlaps 0
+  random_forest vs svm                         +0.031  [+0.009, +0.052]    0.011   EXCLUDES 0
+
+  delta = (row1 mean macro-F1) - (row2). McNemar (M2.3) tests the
+  accuracy gap; this tests the macro-F1 gap, which is the ranking
+  metric. CI straddling 0 -> gap not distinguishable from split noise.
+
+READ
+--------------------------------------------------------------------
+  Best mean macro-F1: logistic_regression 0.645 +/- 0.010 (95% CI [0.617, 0.670]).
+  Reliably different (majority of repeats significant): logistic_regression vs multinomial_nb, logistic_regression vs complement_nb, logistic_regression vs svm, multinomial_nb vs random_forest, complement_nb vs random_forest, random_forest vs svm.
+  delta(complement - multinomial) = +0.003 macro-F1; within one std.
+  Bootstrap: macro-F1 gap CI excludes 0 only for: logistic_regression vs multinomial_nb, logistic_regression vs complement_nb, logistic_regression vs svm, multinomial_nb vs random_forest, complement_nb vs random_forest, random_forest vs svm.
+  With 1064 rows, check whether gaps still sit inside the +/- std band before locking in a model choice (see ../IMPROVEMENTS.md).

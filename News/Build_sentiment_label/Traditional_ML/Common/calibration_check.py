@@ -1,6 +1,6 @@
 """Before/after calibration check for RF and SVM (IMPROVEMENTS.md section D).
 
-    python News/Build_sentiment_label/Traditional_ML/improve/calibration_check.py
+    python News/Build_sentiment_label/Traditional_ML/Common/calibration_check.py
 
 Compares, on the SAME leak-free 5-fold CV (``model/common.run_cross_validation``
 - no separate CV wiring here):
@@ -44,20 +44,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
-from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import load_stopword_set
-from News.Build_sentiment_label.Traditional_ML.model.common import (
+from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import build_document_term_counts
+from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import load_stopword_set
+from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     VALID_LABELS,
     compute_metrics,
     encode_labels,
     load_ground_truth_frame,
     run_cross_validation,
 )
-from News.Build_sentiment_label.Traditional_ML.model.random_forest import (
+from News.Build_sentiment_label.Traditional_ML.Common.model.random_forest import (
     build_base_random_forest,
     build_estimator as build_rf_isotonic,
 )
-from News.Build_sentiment_label.Traditional_ML.model.svm import (
+from News.Build_sentiment_label.Traditional_ML.Common.model.svm import (
     build_base_svm,
     build_estimator as build_svm_softmax,
 )

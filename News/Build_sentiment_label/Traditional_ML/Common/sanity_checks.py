@@ -22,7 +22,7 @@ two checks here are deliberately independent of it:
    fold inside cross_val_predict - a pre-fit matrix would leak exactly the
    way the original (pre-fix) TF_IDF.py used to.
 
-    python News/Build_sentiment_label/Traditional_ML/improve/sanity_checks.py
+    python News/Build_sentiment_label/Traditional_ML/Common/sanity_checks.py
 """
 
 from __future__ import annotations
@@ -37,18 +37,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
-from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import (
+from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import build_document_term_counts
+from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import (
     load_stopword_set,
     run_single_cv,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.run_improve import load_frame_from_csv
-from News.Build_sentiment_label.Traditional_ML.model.common import (
+from News.Build_sentiment_label.Traditional_ML.Common.prepare_ground_truth import (
+    load_frame_from_csv,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     compute_metrics,
     encode_labels,
     load_ground_truth_frame,
 )
-from News.Build_sentiment_label.Traditional_ML.model.naive_bayes import (
+from News.Build_sentiment_label.Traditional_ML.Common.model.naive_bayes import (
     build_estimator as build_naive_bayes,
 )
 
@@ -174,7 +176,7 @@ def main() -> None:
     print(f"  sklearn vocab size (fit on all rows, for reference only): {ref['vocab_size']}")
     print(
         "  Compare to this project's logistic_regression result on the same rows "
-        "(see improve/RESULTS.txt or improve/gt1064_tune/RESULTS.txt) - should land in "
+        "(see Common/RESULTS.txt or Common/gt1064_tune/RESULTS.txt) - should land in "
         "the same ballpark (+/- ~0.05), not wildly higher or lower."
     )
 

@@ -26,20 +26,20 @@ top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold va
 2. KẾT QUẢ TỪNG MODEL
 ----------------------------------------------------------------
 
---- Logistic Regression (class_weight=balanced) ---
+--- Logistic Regression (class_weight=balanced, C=0.1 tuned) ---
   Class      Precision  Recall   F1
-  negative   0.631      0.597      0.613
-  neutral    0.678      0.692      0.685
-  positive   0.528      0.540      0.534
+  negative   0.667      0.617      0.641
+  neutral    0.701      0.714      0.708
+  positive   0.550      0.576      0.563
   ----------------------------------------
-  Accuracy      : 0.626
-  Macro F1      : 0.611
+  Accuracy      : 0.651
+  Macro F1      : 0.637
 
   Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    176        75       44
-  true_neutral      63       341       89
-  true_positive     40        87      149
+  true_negative    182        69       44
+  true_neutral      55       352       86
+  true_positive     36        81      159
 
 --- Naive Bayes (MultinomialNB) ---
   Class      Precision  Recall   F1
@@ -58,66 +58,66 @@ top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold va
 
 --- Random Forest (300 trees, isotonic-calibrated, +lexicon features) ---
   Class      Precision  Recall   F1
-  negative   0.656      0.641      0.648
-  neutral    0.718      0.763      0.739
-  positive   0.631      0.576      0.602
+  negative   0.661      0.627      0.643
+  neutral    0.709      0.763      0.735
+  positive   0.626      0.576      0.600
   ----------------------------------------
-  Accuracy      : 0.680
-  Macro F1      : 0.663
+  Accuracy      : 0.677
+  Macro F1      : 0.660
 
   Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    189        74       32
-  true_neutral      56       376       61
-  true_positive     43        74      159
+  true_negative    185        75       35
+  true_neutral      57       376       60
+  true_positive     38        79      159
 
---- SVM (LinearSVC, margin-softmax - not a calibrated probability) ---
+--- SVM (LinearSVC, C=0.1 tuned, margin-softmax - not a calibrated probability) ---
   Class      Precision  Recall   F1
-  negative   0.603      0.556      0.578
-  neutral    0.651      0.688      0.669
-  positive   0.506      0.496      0.501
+  negative   0.629      0.603      0.616
+  neutral    0.678      0.712      0.694
+  positive   0.540      0.514      0.527
   ----------------------------------------
-  Accuracy      : 0.602
-  Macro F1      : 0.583
+  Accuracy      : 0.631
+  Macro F1      : 0.612
 
   Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    164        84       47
-  true_neutral      67       339       87
-  true_positive     41        98      137
+  true_negative    178        77       40
+  true_neutral      61       351       81
+  true_positive     44        90      142
 
 --- Ensemble (average probability of LR + NB + RF) ---
   Class      Precision  Recall   F1
-  negative   0.661      0.654      0.658
-  neutral    0.726      0.716      0.721
-  positive   0.556      0.576      0.566
+  negative   0.652      0.668      0.660
+  neutral    0.726      0.710      0.718
+  positive   0.554      0.562      0.558
   ----------------------------------------
-  Accuracy      : 0.663
-  Macro F1      : 0.648
+  Accuracy      : 0.660
+  Macro F1      : 0.645
 
   Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    193        67       35
-  true_neutral      48       353       92
-  true_positive     51        66      159
+  true_negative    197        66       32
+  true_neutral      50       350       93
+  true_positive     55        66      155
 
 
 3. BẢNG XẾP HẠNG TỔNG HỢP (macro F1)
 ----------------------------------------------------------------
-  1. random_forest          F1 = 0.663   Accuracy = 0.680
-  2. ensemble               F1 = 0.648   Accuracy = 0.663
-  3. naive_bayes            F1 = 0.621   Accuracy = 0.634
-  4. logistic_regression    F1 = 0.611   Accuracy = 0.626
-  5. svm                    F1 = 0.583   Accuracy = 0.602
+  1. random_forest          F1 = 0.660   Accuracy = 0.677
+  2. ensemble               F1 = 0.645   Accuracy = 0.660
+  3. logistic_regression    F1 = 0.637   Accuracy = 0.651
+  4. naive_bayes            F1 = 0.621   Accuracy = 0.634
+  5. svm                    F1 = 0.612   Accuracy = 0.631
 
 
 4. NHẬN XÉT
 ----------------------------------------------------------------
-- logistic_regression: class yếu nhất = positive (F1 = 0.534, recall = 0.540).
+- logistic_regression: class yếu nhất = positive (F1 = 0.563, recall = 0.576).
 - naive_bayes: class yếu nhất = positive (F1 = 0.531, recall = 0.551).
-- random_forest: class yếu nhất = positive (F1 = 0.602, recall = 0.576).
-- svm: class yếu nhất = positive (F1 = 0.501, recall = 0.496).
-- ensemble: class yếu nhất = positive (F1 = 0.566, recall = 0.576).
+- random_forest: class yếu nhất = positive (F1 = 0.600, recall = 0.576).
+- svm: class yếu nhất = positive (F1 = 0.527, recall = 0.514).
+- ensemble: class yếu nhất = positive (F1 = 0.558, recall = 0.562).
 - Class 'positive' ít dữ liệu nhất (276/1064) nên thường là class yếu nhất.
 
 
@@ -135,7 +135,7 @@ accuracy/F1 ở trên vẫn còn dao động theo cách chia fold.
   Ground truth: 152 -> 1064 dòng (data_news/ground_truth_combined.csv).
   Random Forest: thêm isotonic calibration (CalibratedClassifierCV) -
   predict_proba dạng vote-fraction trước đây bị lệch calibration
-  (đo bằng reliability diagram, xem improve/calibration_check.py).
+  (đo bằng reliability diagram, xem Common/calibration_check.py).
   SVM: bỏ Platt scaling (CalibratedClassifierCV) - dữ liệu calibrate
   trong từng inner-fold vẫn không đủ ổn định; predict_proba giờ là
   softmax của decision_function, CHỈ để xếp hạng, không phải xác suất
@@ -147,7 +147,11 @@ accuracy/F1 ở trên vẫn còn dao động theo cách chia fold.
   đầu không lặp lại được, lần 3 với GT lớn hơn + holdout mới thì
   replicate: holdout Delta=+0.038 CI[+0.011,+0.066] p=0.004). Chỉ RF
   dùng feature này (LR/SVM không có bằng chứng); xem IMPROVEMENTS.md
-  mục A và experiment_lexicon_features/README.md.
+  mục A và experiment_Lexicon_features/README.md.
+  Nested-CV tuning (Common/tune_hyperparameters.py): LogReg/SVM
+  đổi C=1.0 -> C=0.1, thắng ở toàn bộ outer fold khi tune, xác nhận
+  lại trên holdout (LogReg +0.027 CI loại 0 p=0.001, SVM +0.024 CI
+  loại 0 p=0.002). NB/RF không có cải thiện đáng tin, giữ default.
 
 Còn lại: cần gán nhãn thêm ground truth (hàng nghìn dòng, cân bằng hơn
 giữa 3 class) trước khi kết luận model nào tốt hơn và so sánh công bằng

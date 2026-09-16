@@ -30,8 +30,8 @@ import pandas as pd
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = SCRIPT_DIR / "data"
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+DATA_DIR = SCRIPT_DIR.parent / "data"
 
 GROUND_TRUTH_CSV_PATH = PROJECT_ROOT / "data_news" / "ground_truth_combined.csv"
 VNCORENLP_TOKENIZED_PATH = (
@@ -151,6 +151,37 @@ def build_output(ground_truth: pd.DataFrame, corpus_rows: pd.DataFrame) -> pd.Da
         )
 
     return out[OUTPUT_COLUMNS].reset_index(drop=True)
+
+
+def load_frame_from_csv(path: Path) -> pd.DataFrame:
+    """Same join as ``main()`` (source_row_id -> VNCoreNLP corpus, with the
+    title/publication_date alignment check), but against an arbitrary
+    ground-truth CSV instead of the default ``GROUND_TRUTH_CSV_PATH``. Used
+    by every experiment/tuning script that needs to retest on the tune or
+    holdout split instead of the full committed set - one join, reused
+    everywhere, so a fix here fixes it for all callers.
+    """
+    from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import (
+        build_document_terms,
+    )
+    from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
+        VALID_LABELS,
+        normalize_label,
+    )
+
+    ground_truth = load_ground_truth(path)
+    corpus_rows = lookup_vncorenlp_rows(ground_truth)
+    assert_alignment(ground_truth, corpus_rows)
+    frame = build_output(ground_truth, corpus_rows)
+    frame["ground_truth_label"] = frame["sentiment"].apply(normalize_label)
+    valid_mask = frame["ground_truth_label"].isin(VALID_LABELS)
+    frame = frame.loc[valid_mask].reset_index(drop=True)
+
+    # same n-gram extraction TF_IDF.load_tokenized_ground_truth does for the
+    # pipeline's own tokenized parquet - build_document_term_counts needs it.
+    frame["_document_terms"] = frame.apply(build_document_terms, axis=1)
+    frame = frame.loc[frame["_document_terms"].map(len).gt(0)].reset_index(drop=True)
+    return frame
 
 
 def main() -> None:

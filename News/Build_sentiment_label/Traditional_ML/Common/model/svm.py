@@ -1,3 +1,11 @@
+"""Linear SVM - build_estimator() + build_top_features() only.
+
+Pure model-definition module, shared by whichever script actually runs the
+CV and writes output (``../../experiment_only_TF_IDF/svm.py`` for the
+production run - this model never uses the lexicon feature block). No
+``main()`` here on purpose: this module is a library, not a runnable step.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,35 +16,27 @@ import pandas as pd
 from sklearn.svm import LinearSVC
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
-from News.Build_sentiment_label.Traditional_ML.model.common import (
-    DATA_DIR,
+from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     RANDOM_SEED,
     VALID_LABELS,
-    build_full_fit_features,
-    build_prediction_output,
-    compute_metrics,
-    confusion_matrix,
-    encode_labels,
-    load_ground_truth_frame,
-    run_cross_validation,
 )
 
 
-OUTPUT_METRICS_PATH = DATA_DIR / "svm_metrics.csv"
-OUTPUT_PREDICTIONS_PATH = DATA_DIR / "svm_predictions.csv"
-OUTPUT_CONFUSION_MATRIX_PATH = DATA_DIR / "svm_confusion_matrix.csv"
-OUTPUT_TOP_FEATURES_PATH = DATA_DIR / "svm_top_features.csv"
-
 MAX_ITER = 5000
+SVM_C = 0.1
+# Tuned via Common/tune_hyperparameters.py (nested 5-fold outer x 3-fold
+# inner CV, grid C in {0.1,0.3,1,3,10}) - C=0.1 (stronger L2) beat the
+# default C=1.0 across every outer fold, tune-set macro-F1 0.572 -> 0.617
+# (bootstrap CI [+0.022,+0.071], p=0.000), confirmed on a never-tuned-against
+# holdout: 0.539 -> 0.563 (CI [+0.009,+0.041], p=0.002).
 
 # Used to calibrate via Platt scaling (CalibratedClassifierCV(cv=3), i.e. an
 # inner 3-fold split of an already ~120-row training fold to fit the sigmoid
-# A,B). improve/calibration_check.py measured that directly: Platt was
+# A,B). Common/calibration_check.py measured that directly: Platt was
 # overconfident relative to the observed frequency in several probability
 # bins (see RESULTS.txt), consistent with too little data per inner fold for
 # a one-vs-rest calibration where the positive class is a minority to begin
@@ -61,8 +61,8 @@ class MarginSoftmaxSVC:
       from.
     """
 
-    def __init__(self, random_state: int) -> None:
-        self._svc = build_base_svm(random_state)
+    def __init__(self, random_state: int, C: float = SVM_C) -> None:
+        self._svc = build_base_svm(random_state, C=C)
 
     def fit(self, x: np.ndarray, y: np.ndarray) -> "MarginSoftmaxSVC":
         self._svc.fit(x, y)
@@ -76,8 +76,9 @@ class MarginSoftmaxSVC:
         return exp_scores / exp_scores.sum(axis=1, keepdims=True)
 
 
-def build_base_svm(random_state: int) -> LinearSVC:
+def build_base_svm(random_state: int, C: float = SVM_C) -> LinearSVC:
     return LinearSVC(
+        C=C,
         class_weight="balanced",
         random_state=random_state,
         max_iter=MAX_ITER,
@@ -115,51 +116,3 @@ def build_top_features(
                 }
             )
     return pd.DataFrame(rows)
-
-
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-
-    df = load_ground_truth_frame()
-    term_counts = build_document_term_counts(df)
-    y = encode_labels(df["ground_truth_label"])
-
-    print("Model: Linear SVM (LinearSVC, margin-softmax - NOT a calibrated probability)")
-    print("Documents:", len(df))
-    print("Label counts:")
-    print(df["ground_truth_label"].value_counts().to_string())
-
-    probabilities, predictions, fold_of_row = run_cross_validation(
-        build_estimator, term_counts, y
-    )
-    metrics_df = compute_metrics(y, predictions)
-    prediction_df = build_prediction_output(df, probabilities, predictions, fold_of_row)
-
-    confusion_df = pd.DataFrame(
-        confusion_matrix(y, predictions),
-        index=[f"true_{label}" for label in VALID_LABELS],
-        columns=[f"pred_{label}" for label in VALID_LABELS],
-    ).reset_index(names="true_label")
-
-    x_full, vocabulary_full = build_full_fit_features(term_counts)
-    top_features_df = build_top_features(x_full, y, vocabulary_full)
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    metrics_df.to_csv(OUTPUT_METRICS_PATH, index=False, encoding="utf-8-sig")
-    prediction_df.to_csv(OUTPUT_PREDICTIONS_PATH, index=False, encoding="utf-8-sig")
-    confusion_df.to_csv(OUTPUT_CONFUSION_MATRIX_PATH, index=False, encoding="utf-8-sig")
-    top_features_df.to_csv(OUTPUT_TOP_FEATURES_PATH, index=False, encoding="utf-8-sig")
-
-    print("\nMetrics:")
-    print(metrics_df.to_string(index=False))
-    print("\nConfusion matrix:")
-    print(confusion_df.to_string(index=False))
-    print("\nOutput metrics:", OUTPUT_METRICS_PATH)
-    print("Output predictions:", OUTPUT_PREDICTIONS_PATH)
-    print("Output confusion matrix:", OUTPUT_CONFUSION_MATRIX_PATH)
-    print("Output top features:", OUTPUT_TOP_FEATURES_PATH)
-
-
-if __name__ == "__main__":
-    main()

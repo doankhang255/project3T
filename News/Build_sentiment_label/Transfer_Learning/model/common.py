@@ -39,7 +39,7 @@ TRADITIONAL_ML_TUNE_HOLDOUT_DIR = (
     / "News"
     / "Build_sentiment_label"
     / "Traditional_ML"
-    / "improve"
+    / "Common"
     / "tune_holdout"
 )
 TUNE_SPLIT_PATH = TRADITIONAL_ML_TUNE_HOLDOUT_DIR / "ground_truth_tune.csv"

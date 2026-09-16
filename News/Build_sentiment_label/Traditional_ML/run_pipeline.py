@@ -4,11 +4,17 @@
 
 Steps, stopping on the first failure:
 
-1. prepare_ground_truth.py  - join VNCoreNLP tokens onto the labeled rows
-2. TF_IDF.py                - whole-corpus TF-IDF artifact (descriptive only)
-3. model/*.py               - leak-free 5-fold CV for each classifier
-4. compare_models.py        - merge per-model metrics + rank by macro F1
-5. RESULTS_SUMMARY.txt      - regenerated from the fresh CSV outputs
+1. Common/prepare_ground_truth.py            - join VNCoreNLP tokens onto the labeled rows
+2. Common/TF_IDF.py                          - whole-corpus TF-IDF artifact (descriptive only)
+3. experiment_only_TF_IDF/run_model.py       - LR/NB/SVM: leak-free 5-fold CV, TF-IDF only
+4. experiment_Lexicon_features/run_model.py  - RF (+lexicon) and the ensemble (RF member +lexicon)
+5. compare_models.py                         - merge per-model metrics + rank by macro F1
+6. RESULTS_SUMMARY.txt                       - regenerated from the fresh CSV outputs
+
+Model definitions (build_estimator) live in Common/model/*.py, shared by
+every runnable step above - only the "run CV + write CSV" step is split
+across the two experiment folders, by whether that model uses the lexicon
+feature block (see IMPROVEMENTS.md section A).
 """
 
 from __future__ import annotations
@@ -26,21 +32,18 @@ DATA_DIR = SCRIPT_DIR / "data"
 RESULTS_SUMMARY_PATH = SCRIPT_DIR / "RESULTS_SUMMARY.txt"
 
 PIPELINE_STEPS = [
-    SCRIPT_DIR / "prepare_ground_truth.py",
-    SCRIPT_DIR / "TF_IDF.py",
-    SCRIPT_DIR / "model" / "logistic_regression.py",
-    SCRIPT_DIR / "model" / "naive_bayes.py",
-    SCRIPT_DIR / "model" / "random_forest.py",
-    SCRIPT_DIR / "model" / "svm.py",
-    SCRIPT_DIR / "model" / "ensemble.py",
+    SCRIPT_DIR / "Common" / "prepare_ground_truth.py",
+    SCRIPT_DIR / "Common" / "TF_IDF.py",
+    SCRIPT_DIR / "experiment_only_TF_IDF" / "run_model.py",
+    SCRIPT_DIR / "experiment_Lexicon_features" / "run_model.py",
     SCRIPT_DIR / "compare_models.py",
 ]
 
 MODEL_LABELS = {
-    "logistic_regression": "Logistic Regression (class_weight=balanced)",
+    "logistic_regression": "Logistic Regression (class_weight=balanced, C=0.1 tuned)",
     "naive_bayes": "Naive Bayes (MultinomialNB)",
     "random_forest": "Random Forest (300 trees, isotonic-calibrated, +lexicon features)",
-    "svm": "SVM (LinearSVC, margin-softmax - not a calibrated probability)",
+    "svm": "SVM (LinearSVC, C=0.1 tuned, margin-softmax - not a calibrated probability)",
     "ensemble": "Ensemble (average probability of LR + NB + RF)",
 }
 
@@ -225,7 +228,7 @@ def write_results_summary() -> None:
         "  predict_proba dạng vote-fraction trước đây bị lệch calibration"
     )
     add(
-        "  (đo bằng reliability diagram, xem improve/calibration_check.py)."
+        "  (đo bằng reliability diagram, xem Common/calibration_check.py)."
     )
     add(
         "  SVM: bỏ Platt scaling (CalibratedClassifierCV) - dữ liệu calibrate"
@@ -256,7 +259,19 @@ def write_results_summary() -> None:
     add(
         "  dùng feature này (LR/SVM không có bằng chứng); xem IMPROVEMENTS.md"
     )
-    add("  mục A và experiment_lexicon_features/README.md.")
+    add("  mục A và experiment_Lexicon_features/README.md.")
+    add(
+        "  Nested-CV tuning (Common/tune_hyperparameters.py): LogReg/SVM"
+    )
+    add(
+        "  đổi C=1.0 -> C=0.1, thắng ở toàn bộ outer fold khi tune, xác nhận"
+    )
+    add(
+        "  lại trên holdout (LogReg +0.027 CI loại 0 p=0.001, SVM +0.024 CI"
+    )
+    add(
+        "  loại 0 p=0.002). NB/RF không có cải thiện đáng tin, giữ default."
+    )
     add("")
     add(
         "Còn lại: cần gán nhãn thêm ground truth (hàng nghìn dòng, cân bằng hơn"

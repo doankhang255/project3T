@@ -1,10 +1,10 @@
 """Financial-lexicon category features (IMPROVEMENTS.md, priority 1).
 
-Promoted from ``experiment_lexicon_features/`` after the feature block
+Promoted from ``experiment_Lexicon_features/`` after the feature block
 cleared both a tune-split check AND an independent, previously-untouched
 holdout check on the 1064-row ground truth (random_forest: tune
 Delta=+0.016 CI[+0.001,+0.033] p=0.039, holdout Delta=+0.038
-CI[+0.011,+0.066] p=0.004 - see ``experiment_lexicon_features/README.md``
+CI[+0.011,+0.066] p=0.004 - see ``experiment_Lexicon_features/README.md``
 for the full validation history, including two earlier attempts that did
 NOT replicate on holdout before this one did). Only ``model/random_forest.py``
 passes this as ``extra_features`` to ``run_cross_validation`` - logistic
@@ -55,7 +55,7 @@ import sys
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

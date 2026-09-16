@@ -1,6 +1,6 @@
 """Nadeau & Bengio (2003) corrected variance for repeated k-fold CV.
 
-``improve/repeated_cv.py`` reports ``mean +/- std`` of the macro-F1 across
+``Common/repeated_cv.py`` reports ``mean +/- std`` of the macro-F1 across
 ``n_repeats`` *repeat-level* scores (each already an aggregate over 5 folds).
 That naive ``std/sqrt(n_repeats)`` treats the repeats as independent draws.
 They are not: every repeat's 5 training folds overlap with every other
@@ -28,7 +28,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import stats
 
-from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import stratified_folds
+from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import stratified_folds
 
 
 def _fold_macro_f1(y_true: np.ndarray, y_pred: np.ndarray, n_labels: int = 3) -> float:

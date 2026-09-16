@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -42,7 +42,7 @@ from News.Build_sentiment_label.Common.stopword_utils import (
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
+DATA_DIR = SCRIPT_DIR.parent / "data"
 
 INPUT_PARQUET_PATH = DATA_DIR / "ground_truth_labeled_tokenized.parquet"
 

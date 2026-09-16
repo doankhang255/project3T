@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -16,7 +16,7 @@ from News.Build_sentiment_label.Common.stopword_utils import (
     DEFAULT_STOPWORDS_PATH,
     load_stopwords,
 )
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import (
+from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import (
     REMOVE_STOPWORDS,
     build_document_term_counts,
     fit_tfidf_vocabulary,
@@ -26,7 +26,7 @@ from News.Build_sentiment_label.Traditional_ML.TF_IDF import (
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR.parent / "data"
+DATA_DIR = SCRIPT_DIR.parent.parent / "data"
 
 LABEL_COLUMN = "sentiment"
 VALID_LABELS = ["negative", "neutral", "positive"]
@@ -138,7 +138,7 @@ def run_cross_validation(
     discipline as the TF-IDF idf) before hstacking - without this, columns on
     a much smaller scale than the TF-IDF weights get an effectively-zero
     coefficient from any linear model with fixed regularization (verified in
-    ``experiment_lexicon_features/``, where this exact logic was validated
+    ``experiment_Lexicon_features/``, where this exact logic was validated
     before being promoted here). Default ``None`` keeps every existing caller
     byte-identical to the pre-``extra_features`` behaviour.
     """

@@ -2,21 +2,19 @@
 beat the TF-IDF-only baseline? (IMPROVEMENTS.md priority 1; Loughran &
 McDonald 2011, Tetlock 2007.)
 
-Self-contained, same pattern as ``../improve/`` and ``../experiment_vocab/``:
-imports pure helpers from the main pipeline and from ``../improve``
-(TF-IDF fit/transform, the leak-free repeated-CV harness, the bootstrap CI)
-and adds only the lexicon-feature block. Does not edit ``model/*.py``,
-``TF_IDF.py``, ``model/common.py`` or ``improve/mcnemar.py`` /
-``improve/bootstrap.py``. The one change made to shared code
-(``improve/repeated_cv.py``) is an optional ``extra_features`` parameter,
+Self-contained: imports pure helpers from ``../Common`` (TF-IDF fit/transform,
+the leak-free repeated-CV harness, the bootstrap CI) and adds only the
+lexicon-feature block. Does not edit ``Common/model/*.py`` or
+``Common/model/common.py``. The one change made to shared code
+(``Common/repeated_cv.py``) is an optional ``extra_features`` parameter,
 default ``None`` - every existing caller is unaffected (verified: reproduces
 the pre-change out-of-fold predictions exactly).
 
-Runs on the TUNE split by default (see ``../improve/tune_holdout.py``) - this
+Runs on the TUNE split by default (see ``../Common/tune_holdout.py``) - this
 is exploratory feature engineering, not the final number for the holdout.
 
-    python News/Build_sentiment_label/Traditional_ML/experiment_lexicon_features/run_experiment.py
-    python .../run_experiment.py --repeats 3 --n-boot 400   # quick smoke run
+    python News/Build_sentiment_label/Traditional_ML/experiment_Lexicon_features/compare_baseline_vs_lexicon.py
+    python .../compare_baseline_vs_lexicon.py --repeats 3 --n-boot 400   # quick smoke run
 
 MultinomialNB / ComplementNB are excluded from the "+lexicon" arm: both
 require non-negative input, and ``net_polarity`` can be negative.
@@ -35,41 +33,43 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from News.Build_sentiment_label.Traditional_ML.TF_IDF import build_document_term_counts
-from News.Build_sentiment_label.Traditional_ML.model.lexicon_features import (
+from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import build_document_term_counts
+from News.Build_sentiment_label.Traditional_ML.Common.model.lexicon_features import (
     FEATURE_NAMES,
     build_lexicon_feature_matrix,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.bootstrap import (
+from News.Build_sentiment_label.Traditional_ML.Common.bootstrap import (
     N_BOOT,
     bootstrap_samples,
     ci,
     mean_macro_f1,
     two_sided_p,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.repeated_cv import (
+from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import (
     N_REPEATS,
     load_stopword_set,
     run_repeated_cv,
 )
-from News.Build_sentiment_label.Traditional_ML.improve.run_improve import load_frame_from_csv
-from News.Build_sentiment_label.Traditional_ML.model.common import (
+from News.Build_sentiment_label.Traditional_ML.Common.prepare_ground_truth import (
+    load_frame_from_csv,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     encode_labels,
     load_ground_truth_frame,
 )
-from News.Build_sentiment_label.Traditional_ML.model.logistic_regression import (
+from News.Build_sentiment_label.Traditional_ML.Common.model.logistic_regression import (
     build_estimator as build_logistic_regression,
 )
-from News.Build_sentiment_label.Traditional_ML.model.random_forest import (
+from News.Build_sentiment_label.Traditional_ML.Common.model.random_forest import (
     build_estimator as build_random_forest,
 )
-from News.Build_sentiment_label.Traditional_ML.model.svm import (
+from News.Build_sentiment_label.Traditional_ML.Common.model.svm import (
     build_estimator as build_svm,
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_GROUND_TRUTH_CSV = (
-    SCRIPT_DIR.parent / "improve" / "tune_holdout" / "ground_truth_tune.csv"
+    SCRIPT_DIR.parent / "Common" / "tune_holdout" / "ground_truth_tune.csv"
 )
 
 MODEL_FACTORIES = {
@@ -175,10 +175,10 @@ def render_report(
         add(f"  Reliably hurt: {', '.join(hurt)}.")
     if not helped and not hurt:
         add("  No model shows a reliable change - lexicon features are not distinguishable")
-        add("  from noise here. Do not promote into model/*.py yet.")
+        add("  from noise here. Do not promote into Common/model/*.py yet.")
     add(
         "  This ran on the TUNE split only. If promoting, re-check once on the "
-        "HOLDOUT split (../improve/tune_holdout.py) - exactly once, not iteratively."
+        "HOLDOUT split (../Common/tune_holdout.py) - exactly once, not iteratively."
     )
     return "\n".join(lines)
 
@@ -194,7 +194,7 @@ def main() -> None:
         "--ground-truth-csv",
         type=Path,
         default=DEFAULT_GROUND_TRUTH_CSV,
-        help="defaults to the tune split (../improve/tune_holdout.py output)",
+        help="defaults to the tune split (../Common/tune_holdout.py output)",
     )
     parser.add_argument(
         "--out-dir",

@@ -33,9 +33,6 @@ cũng như base_weight theo round là CHỌN BAN ĐẦU, CHƯA hiệu chỉnh th
 nghiệm (giống tình trạng NEGATION_WINDOW trước khi được compare_*.py kiểm
 chứng) - nên chạy classify_and_evaluate_intensity.py để so sánh với PMI
 trước khi quyết định dùng chính thức.
-
-Output: data/intensity_dictionary.csv với các cột:
-    category, term, ngram_n, intensity_weight, source, matched_markers
 """
 
 from __future__ import annotations
