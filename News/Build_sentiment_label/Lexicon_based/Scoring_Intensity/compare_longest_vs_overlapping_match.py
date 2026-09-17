@@ -154,8 +154,8 @@ def main() -> None:
         acc_tune, f1_tune = score_and_evaluate(strategy, tune_corpus_df, tune_gt, by_ngram, negation_words, clause_boundary_words, max_ngram)
         acc_holdout, f1_holdout = score_and_evaluate(strategy, holdout_corpus_df, holdout_gt, by_ngram, negation_words, clause_boundary_words, max_ngram)
         print(f"\n=== {label} ===")
-        print(f"  Tune    (419 bài): accuracy={acc_tune:.4f}  macro_f1={f1_tune:.4f}")
-        print(f"  Holdout (180 bài): accuracy={acc_holdout:.4f}  macro_f1={f1_holdout:.4f}")
+        print(f"  Tune    ({len(tune_gt)} bài): accuracy={acc_tune:.4f}  macro_f1={f1_tune:.4f}")
+        print(f"  Holdout ({len(holdout_gt)} bài): accuracy={acc_holdout:.4f}  macro_f1={f1_holdout:.4f}")
         results.append(
             {
                 "strategy": strategy,

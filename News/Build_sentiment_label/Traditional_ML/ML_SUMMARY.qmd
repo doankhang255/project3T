@@ -24,48 +24,54 @@ format:
       - right=2cm
 ---
 
-\newpage 
+\newpage
 
 # 1. Bối cảnh và vị trí của phương pháp
 
 Dự án đo sentiment tin tức chứng khoán Việt Nam rồi phân tích tác động lên
 VN-Index. Việc gán nhãn sentiment cấp bài (`positive` / `negative` / `neutral`)
-được làm theo **bốn hướng độc lập để so sánh**:
+được làm theo **ba hướng độc lập để so sánh**:
 
 1. Lexicon-based (từ điển + công thức) — baseline.
 2. **Traditional ML (TF-IDF + classifier) — nội dung tài liệu này.**
 3. Transfer Learning (fine-tune PhoBERT).
-4. PCA-based index (tổng hợp, ở tầng chỉ số).
 
 Traditional ML đóng vai **baseline có giám sát, giải thích được**: bag-of-words
 + TF-IDF + mô hình tuyến tính/cây, để đối chiếu công bằng với Lexicon và
 Transformer trên cùng một tập ground truth.
 
+Bản thân nhánh Traditional ML lại tách thành **hai hướng con** để so sánh:
+
+- **Hướng A — chỉ TF-IDF**: 4 model production
+  (Logistic Regression, MultinomialNB, ComplementNB, Linear SVM) chạy thuần
+  trên ma trận TF-IDF.
+- **Hướng B — +lexicon (Random Forest)**:
+  Random Forest ghép thêm 9 cột đặc trưng từ điển tài chính, cộng một
+  ensemble trung bình xác suất 3 model.
+
 # 2. Dữ liệu
 
 | | |
 |---|---|
-| Ground truth | **152 bài** gán nhãn tay trên Label Studio |
-| Phân bố nhãn | negative 49 (32%), neutral 68 (45%), positive 35 (23%) |
+| Ground truth | **1064 bài** gán nhãn tay (tăng từ 152 bài ban đầu) |
+| Phân bố nhãn | negative 295 (27.7%), neutral 493 (46.3%), positive 276 (25.9%) |
+| Tách tune/holdout (cho các kiểm định methodology) | tune 744 bài (neg 206 / neu 345 / pos 193), holdout 320 bài — holdout dùng đúng **một lần** cho câu hỏi xác nhận lexicon feature (mục 6.2), không tái sử dụng |
 
 # 3. Đặc trưng (features)
 
-## 3.1. N-gram + lọc từ vựng
+## 3.1. TF-IDF trên n-gram
 
-- N-gram **1--3** trên token tiếng Việt.
+- N-gram **1–3** trên token tiếng Việt.
 - Lọc từ vựng (vocabulary):
   - `min_df` **theo tỷ lệ** số tài liệu (`{1-gram: 2%, 2-gram: 1.3%, 3-gram: 1.3%}`,
-    sàn tối thiểu 2 tài liệu) 
-  - `max_df_ratio = 0.85` -- bỏ term xuất hiện hơn 85% số bài (quá phổ biến,
-    vô ích cho phân loại).
+    sàn tối thiểu 2 tài liệu) — không đổi so với thiết kế ban đầu.
+  - `max_df_ratio = 0.85` — bỏ term xuất hiện hơn 85% số bài.
   - Bỏ stopword tiếng Việt; bỏ token dạng số / shape lỗi.
-- Từ vựng thực tế: **1.468 term** (449 unigram / 630 bigram / 389 trigram) khi
-  fit trên toàn bộ 152 bài.
+- Từ vựng thực tế trên 1064 bài: **1011 term** (581 unigram / 297 bigram /
+  133 trigram)
 
-## 3.2. Công thức TF-IDF
-
-Dùng đúng công thức trọng số của **Loughran & McDonald (2011)** cho văn bản
-tài chính:
+Công thức trọng số dùng đúng **Loughran & McDonald (2011)** cho văn bản tài
+chính:
 
 $$
 w_{i,j} \;=\;
@@ -75,153 +81,298 @@ w_{i,j} \;=\;
 \qquad \text{nếu } \mathrm{tf}_{i,j} \ge 1
 $$
 
-- $\mathrm{tf}_{i,j}$: số lần term $i$ xuất hiện trong bài $j$; $\log$ giảm ảnh
-  hưởng của term lặp nhiều lần.
-- $a_j$: tổng số token (trong từ vựng) của bài $j$ -- chuẩn hoá độ dài, để bài
-  dài và bài ngắn so được với nhau.
-- $\log(N / \mathrm{df}_i)$: IDF -- term hiếm (df nhỏ) được coi trọng hơn, term
-  phổ biến bị hạ gần 0.
+- $\mathrm{tf}_{i,j}$: số lần term $i$ xuất hiện trong bài $j$.
+- $a_j$: tổng số token (trong từ vựng) của bài $j$ — chuẩn hoá độ dài.
+- $\log(N / \mathrm{df}_i)$: IDF — term hiếm được coi trọng hơn.
+
+Từ vựng, `df`, `idf` và bước chọn top-feature (`MAX_FEATURES = 5000`) đều
+được **fit lại riêng trong từng train-fold**, tránh rò rỉ dữ liệu (mục 7.1
+kiểm định trực tiếp điều này bằng permutation test).
+
+## 3.2. Đặc trưng từ điển tài chính (lexicon) + phủ định — chỉ dùng cho Random Forest
+
+9 cột số, ghép cạnh ma trận TF-IDF (`np.hstack`) trong từng fold, chuẩn hoá
+z-score trên train-fold:
+
+- 7 cột `<category>_prop` = số hit / tổng số token, cho 7 nhóm từ điển tài
+  chính (negative, positive, uncertainty, litigious, strong_modal, weak_modal,
+  constraining)
+- `net_polarity = positive_prop − negative_prop`.
+- `coverage = positive_prop + negative_prop` (dùng số hit đã lọc phủ định).
+
+**Xử lý phủ định:** một hit bị loại nếu có từ phủ định (`negation_cue_words.txt`)
+trong cửa sổ 3 token ngay trước nó (`NEGATION_WINDOW = 3`) áp
+dụng quy tắc phủ định cho **cả `positive` lẫn `negative`**
+
+**Khớp cụm nhiều token:** nhiều từ trong từ điển dài 3–6 âm tiết, trong khi
+so khớp đơn-token bỏ sót phần lớn (chỉ 5.6–37.5% mỗi nhóm khớp dưới dạng
+1 token). Bản hiện tại dựng mọi n-gram nối `_` của chuỗi token tới độ dài
+cụm dài nhất trong từ điển rồi mới so khớp — đây là 1 trong 3 lỗi đã sửa
+trước khi feature này được promote
+
+Chỉ `random_forest` dùng khối feature này trong production; `MultinomialNB`/
+`ComplementNB` không dùng được vì `net_polarity` có thể âm (input NB phải
+không âm); `LogisticRegression`/`SVM` có dùng thử nhưng chưa bao giờ có bằng
+chứng cải thiện đáng tin (mục 6.2).
 
 # 4. Mô hình
 
-Bốn classifier chạy trên **cùng một quy trình đặc trưng**, để so sánh:
+**Hướng A (chỉ TF-IDF)** chạy 4 model, **Hướng B** chạy Random Forest
+(+lexicon) và một ensemble — tổng cộng 6 model production:
 
-| Model | Cấu hình |
-|---|---|
-| Logistic Regression | `C = 1`, `class_weight = balanced` |
-| Multinomial Naive Bayes | mặc định |
-| Random Forest | 300 cây, `class_weight = balanced` |
-| Linear SVM | `LinearSVC` + Platt calibration để có xác suất, `class_weight = balanced` |
-
-Tất cả dùng `class_weight = balanced` để bù lớp `positive` ít dữ liệu.
+| Model | Cấu hình | Căn cứ lựa chọn |
+|---|---|---|
+| Logistic Regression | C = 0.1 (đã tune), `class_weight=balanced` | Nested-CV: tune 0.614→0.644, CI[+0.011,+0.052] p=0.000; xác nhận holdout +0.027, CI loại 0, p=0.001 |
+| Multinomial Naive Bayes | mặc định | Câu hỏi "thay hẳn ComplementNB" đã test — không khác biệt đáng kể, giữ nguyên |
+| Complement Naive Bayes | mặc định (Rennie et al. 2003) | Bổ sung làm model thứ 4 độc lập, **không thay** Multinomial NB — xem mục 6.2 |
+| Linear SVM | `LinearSVC`, C = 0.1 (đã tune), `class_weight=balanced`; xác suất = softmax của decision_function (**không phải** Platt) | Tune tương tự LogReg. Bỏ Platt vì calibration trên ~40 dòng/inner-fold quá nhiễu (mục 7.2); softmax chỉ để xếp hạng, bị loại khỏi ensemble |
+| Random Forest | 300 cây, `class_weight=balanced`, isotonic calibration (cv=3), **+lexicon** (chỉ production) | Isotonic cải thiện ECE/Brier rõ rệt, đổi lại macro-F1 giảm nhẹ — đánh đổi chấp nhận được (mục 7.2) |
+| Ensemble | Trung bình xác suất LR + NB + RF (RF dùng +lexicon) | Loại SVM vì xác suất không hiệu chỉnh |
 
 Đầu ra mỗi bài: nhãn dự đoán + xác suất 3 lớp, và
 `sentiment_score_ml` $=$ P(positive) $-$ P(negative).
 
-# 5. Đánh giá -- điểm mấu chốt về phương pháp
+# 5. Hướng A — chỉ TF-IDF
 
-**5-fold stratified cross-validation** (mỗi fold giữ nguyên tỷ lệ 3 lớp).
-Không có test hold-out riêng vì 152 dòng quá ít; CV cho mỗi bài được dự đoán
-đúng một lần khi nó nằm ở fold validation, rồi gộp lại tính metric trên toàn
-bộ 152.
+## 5.1. Kết quả production
 
-**Không rò rỉ dữ liệu (data leakage).** Đây là điểm được xử lý kỹ:
-
-- Từ vựng, `df`, `idf` và bước chọn feature được **fit lại riêng trong từng
-  train-fold** (khoảng 121 bài), rồi mới `transform` lên fold validation.
-- Term chỉ xuất hiện trong fold validation thì không vào từ vựng, bị bỏ qua khi
-  transform (đúng như tình huống gặp bài mới ngoài đời).
-- `idf = log(n_train / df_train)`, mẫu số là số bài **train**, không dính
-  validation.
-- Một đường CV chung cho cả 4 model; `n_splits = min(5, số dòng lớp nhỏ nhất)`.
-
-**Chỉ số báo cáo.** Macro-F1 (chính), accuracy, precision/recall/F1 từng lớp,
-confusion matrix.
-
-# 6. Kết quả (5-fold CV, tokenizer VNCoreNLP)
+5-fold stratified CV, single-seed, trên toàn bộ 1064 dòng
 
 | Model | Macro F1 | Accuracy | F1 negative | F1 neutral | F1 positive |
 |---|--:|--:|--:|--:|--:|
-| **Random Forest** | **0.634** | 0.658 | 0.625 | 0.721 | 0.557 |
-| Naive Bayes | 0.605 | 0.632 | 0.673 | 0.686 | 0.455 |
-| Logistic Regression | 0.593 | 0.632 | 0.674 | 0.684 | 0.421 |
-| SVM | 0.562 | 0.638 | 0.667 | 0.716 | 0.304 |
+| **Logistic Regression** | **0.637** | 0.651 | 0.641 | 0.708 | 0.563 |
+| Complement NB | 0.624 | 0.636 | 0.651 | 0.692 | 0.529 |
+| Naive Bayes (Multinomial) | 0.621 | 0.634 | 0.637 | 0.696 | 0.531 |
+| SVM | 0.612 | 0.631 | 0.616 | 0.694 | 0.527 |
 
-**Nhận xét.**
+Lớp `positive` yếu nhất ở mọi model (F1 0.53–0.56), đúng như quan sát trước
+đây (từ ít data + hiện tượng "từ tích cực ít giá trị thông tin trong tin tài
+chính" — Loughran & McDonald 2011, Tetlock 2007).
 
-- Random Forest ổn định nhất qua cả 3 lớp.
-- Lớp **`positive` yếu nhất** ở mọi model (F1 0.30--0.56). Ngoài lý do ít dữ
-  liệu (35 bài), đây còn là hiện tượng đã ghi nhận trong tài liệu: Loughran &
-  McDonald (2011), Tetlock (2007), Engelberg (2008) đều thấy **từ ngữ tích cực
-  trong tin tài chính ít giá trị thông tin** vì hay bị phủ định ("không hoàn
-  thành kế hoạch"). Nên yếu ở lớp positive **một phần là bản chất bài toán**.
-- Các con số dao động khoảng 0.02 macro-F1 giữa các lần chia fold khác nhau,
-  nên với 152 dòng **chưa kết luận chắc chắn model nào tốt hơn**.
+## 5.2. Kiểm định methodology
 
-Một thí nghiệm khác em đã làm (để từ vựng gọn hơn: bỏ trigram + nâng `min_df`
-sàn) giảm từ vựng 50% nhưng macro-F1 gần như không đổi (trung bình +0.006),
-xác nhận vocab "rác" không phải nút thắt; **nút thắt là số lượng ground truth**.
+**M2.2 — Repeated CV, mean ± std qua 10 lần lặp:**
 
-# 7. Các quyết định thiết kế và lý do
+| Model | Macro F1 | Accuracy |
+|---|--:|--:|
+| Logistic Regression | 0.645 ± 0.010 | 0.659 ± 0.009 |
+| Random Forest (không lexicon) | 0.643 ± 0.010 | 0.664 ± 0.009 |
+| Complement NB | 0.620 ± 0.005 | 0.631 ± 0.005 |
+| Multinomial NB | 0.617 ± 0.004 | 0.629 ± 0.004 |
+| SVM | 0.612 ± 0.011 | 0.628 ± 0.010 |
 
-| Quyết định | Lý do | Tham chiếu |
-|---|---|---|
-| Công thức TF-IDF $(1+\log tf)/(1+\log a_j) \times \log(N/df)$ | Chuẩn textual analysis tài chính, xử lý attenuation bias | Loughran & McDonald 2011, eq. (1) |
-| `max_df 0.85` + IDF | Giảm ảnh hưởng từ tần suất cao | LM 2011 |
-| TF-IDF + chọn feature fit **trong từng fold** | Tránh data leakage, điểm CV phản ánh đúng khả năng ngoài mẫu | Cawley & Talbot 2010 (chung về selection bias) |
-| 5-fold **stratified** CV, `class_weight=balanced` | Dữ liệu ít và mất cân bằng | chuẩn ML |
-| Chạy 4 model song song | So sánh, chưa cố định lựa chọn khi dữ liệu còn ít | -- |
-| `min_df` theo tỷ lệ | Ngưỡng tự co giãn khi ground truth lớn dần | -- |
+95% bootstrap CI trên macro-F1 trung bình (B=2000, resample 1064 dòng):
+Logistic Regression 0.645 [0.617, 0.670]; Random Forest 0.643 [0.616, 0.671];
+Complement NB 0.620 [0.592, 0.648]; Multinomial NB 0.617 [0.588, 0.644];
+SVM 0.612 [0.585, 0.635].
 
-# 8. Hướng cải tiến khi có thêm ground truth
+**M2.1 — MultinomialNB vs ComplementNB:** delta = +0.003 macro-F1 (nằm trong
+1 std → nhiễu). McNemar: mean_b=15.5, mean_c=17.4, median p=0.705, 0/10 repeat
+có ý nghĩa → **không khác biệt đáng tin**. Khớp với số single-seed production
+(0.624 vs 0.621, cùng chiều +0.003).
 
-Khi ground truth lên **vài trăm đến vài nghìn dòng** (và cân bằng hơn), dự kiến
-triển khai + đo lại theo thứ tự dưới. Các ý tưởng **bám sát tài liệu trong
-`REF/`**:
+**M2.4 — Bootstrap CI trên delta(macro-F1), theo cặp (paired, B=2000):**
 
-**Ưu tiên 1 -- Đặc trưng từ điển tài chính + phủ định.**
-Ghép thêm các cột đếm hit theo 7 nhóm từ điển đã xây trong `Seed_set_Prepare`
-(negative / positive / uncertainty / litigious / strong-modal / weak-modal /
-constraining), cả dạng tỷ lệ thô lẫn tf-idf weighted; xử lý phủ định cho nhóm
-positive (cue trong 3 token trước).
-Căn cứ: *Loughran & McDonald (2011)* -- từ điển đa dụng phân loại sai khoảng
-74% từ tài chính; từ điển chuyên ngành giảm sai số. *Tetlock (2007)* -- nhóm
-Negative và Weak-modal là hai nhóm tải tín hiệu mạnh nhất.
+| Cặp | Δ macro-F1 | 95% CI | p | Kết luận (bootstrap) |
+|---|--:|---|--:|---|
+| LogReg vs Multinomial NB | +0.028 | [+0.008, +0.048] | 0.008 | loại 0 |
+| LogReg vs Complement NB | +0.024 | [+0.005, +0.045] | 0.019 | loại 0 |
+| LogReg vs Random Forest | +0.002 | [-0.016, +0.020] | 0.828 | chạm 0 |
+| LogReg vs SVM | +0.033 | [+0.022, +0.044] | 0.000 | loại 0 |
+| Multinomial NB vs Complement NB | -0.003 | [-0.010, +0.002] | 0.268 | chạm 0 |
+| Multinomial NB vs Random Forest | -0.026 | [-0.046, -0.006] | 0.006 | loại 0 |
+| Multinomial NB vs SVM | +0.005 | [-0.019, +0.028] | 0.707 | chạm 0 |
+| Complement NB vs Random Forest | -0.023 | [-0.043, -0.003] | 0.022 | loại 0 |
+| Complement NB vs SVM | +0.009 | [-0.015, +0.031] | 0.505 | chạm 0 |
+| Random Forest vs SVM | +0.031 | [+0.010, +0.052] | 0.011 | loại 0 |
 
-**Ưu tiên 2 -- Phương pháp đánh giá & mô hình.**
-Nested-CV tuning siêu tham số; đổi Naive Bayes sang ComplementNB (cho lớp mất
-cân bằng); ensemble trung bình xác suất 4 model; repeated stratified CV
-(5 lần x 10 fold) báo cáo mean và độ lệch chuẩn; kiểm định McNemar trước khi
-kết luận model thắng.
-Căn cứ: *Cawley & Talbot (2010)* (nested CV), *Rennie et al. (2003)*
-(ComplementNB), *Dietterich (1998)* (McNemar).
+McNemar pairwise (M2.3, trên accuracy) đồng thuận hướng với bootstrap: các
+cặp có CI loại 0 ở trên cũng là các cặp có `sig/N` cao (LogReg vs
+Multinomial NB 7/10, LogReg vs SVM 10/10, Multinomial NB vs Random Forest
+9/10, Complement NB vs Random Forest 8/10, Random Forest vs SVM 7/10),
+ngoại trừ LogReg vs Complement NB (chỉ 6/10 nhưng CI vẫn loại 0).
 
-**Ưu tiên 3 -- Làm sạch không gian đặc trưng.**
-N-gram giới hạn theo mẫu POS (part-of-speech / từ loại) mang sentiment, loại
-tên riêng; thay số / mã cổ phiếu / phần trăm bằng placeholder; chọn feature có
-giám sát (chi-square / Delta-IDF) trong fold; thêm đặc trưng SO-PMI cấp bài
-(tái dùng PMI đã tính ở nhánh Lexicon).
-Căn cứ: *Turney (2002)* -- trích cụm theo mẫu adjective/adverb, tránh proper
-noun, điểm bài = trung bình semantic orientation. *Yang & Pedersen (1997)* --
-chi-square / information gain. *Martineau & Finin (2009)* -- Delta TF-IDF.
+**M2.5 — Nadeau-Bengio corrected variance (điều chỉnh do các fold không độc
+lập giữa 10 lần lặp) — kết quả quan trọng nhất của mục này:**
 
-**Ưu tiên 4 -- Bán giám sát (không cần gán thêm tay).**
-Self-training / EM trên 126k bài chưa nhãn; hoặc mô hình nhãn kiểu Snorkel gộp
-rule lexicon + weak label PhoBERT; active learning nếu có gán thêm (gán bài
-uncertainty cao nhất thay vì ngẫu nhiên).
-Căn cứ: *Nigam et al. (2000)*, *Ratner et al. (2017)*, *Settles (2009)*.
+| Cặp | Δ | CI hiệu chỉnh | p hiệu chỉnh | Kết luận |
+|---|--:|---|--:|---|
+| LogReg vs Multinomial NB | +0.028 | [-0.000, +0.056] | 0.050 | chạm 0 |
+| LogReg vs Complement NB | +0.025 | [-0.007, +0.056] | 0.119 | chạm 0 |
+| LogReg vs Random Forest | +0.002 | [-0.026, +0.030] | 0.883 | chạm 0 |
+| **LogReg vs SVM** | **+0.033** | **[+0.013, +0.054]** | **0.002** | **loại 0** |
+| Multinomial NB vs Complement NB | -0.004 | [-0.017, +0.010] | 0.582 | chạm 0 |
+| Multinomial NB vs Random Forest | -0.026 | [-0.056, +0.004] | 0.091 | chạm 0 |
+| Multinomial NB vs SVM | +0.005 | [-0.027, +0.037] | 0.748 | chạm 0 |
+| Complement NB vs Random Forest | -0.022 | [-0.054, +0.009] | 0.159 | chạm 0 |
+| Complement NB vs SVM | +0.009 | [-0.025, +0.042] | 0.602 | chạm 0 |
+| Random Forest vs SVM | +0.031 | [-0.004, +0.067] | 0.085 | chạm 0 |
 
-# 9. Tham khảo
+CI hiệu chỉnh luôn rộng hơn CI bootstrap "ngây thơ" (`widen x3.67` cho mọi
+model) vì các fold ở 10 lần lặp dùng chung dữ liệu, không thực sự độc lập
+(Nadeau & Bengio 2003). Điều chỉnh này **lật ngược kết luận** của 5/6 cặp mà
+bootstrap "ngây thơ" báo là loại 0: LogReg vs Multinomial NB, LogReg vs
+Complement NB, Multinomial NB vs Random Forest, Complement NB vs Random
+Forest, Random Forest vs SVM — tất cả chuyển từ "khác biệt thật" sang
+"không phân biệt được với nhiễu chia fold".
 
-Trong `REF/`:
+**Kết luận đáng tin cậy nhất của hướng A:** trong 10 cặp so sánh, chỉ **một**
+cặp — **Logistic Regression vs SVM** (+0.033, CI hiệu chỉnh [+0.013,+0.054],
+p=0.002) — còn giữ ý nghĩa sau khi hiệu chỉnh Nadeau-Bengio. Mọi khác biệt
+khác giữa 4 model production (Logistic Regression, Multinomial NB, Complement
+NB — Random Forest ở đây chỉ là điểm so sánh methodology, không phải
+production) đều **chưa đủ bằng chứng để kết luận chắc chắn** ở quy mô 1064
+dòng, dù thứ hạng single-seed (mục 5.1) và repeated-mean (bảng M2.2) đều xếp
+Logistic Regression cao nhất.
 
-- **Loughran, T. & McDonald, B. (2011).** "When Is a Liability Not a Liability?
-  Textual Analysis, Dictionaries, and 10-Ks." *Journal of Finance* 66(1).
-- **Turney, P. D. (2002).** "Thumbs Up or Thumbs Down? Semantic Orientation
-  Applied to Unsupervised Classification of Reviews." *ACL 2002*.
-- **Tetlock, P. C. (2007).** "Giving Content to Investor Sentiment: The Role of
-  Media in the Stock Market." *Journal of Finance* 62(3).
-- **Allen, D. E., McAleer, M. & Singh, A. K. (2015).** "Daily Market News
-  Sentiment and Stock Prices." *Tinbergen Institute Discussion Paper 15-090/III*.
-- Baker, M. & Wurgler, J. -- investor sentiment cross-section (bước xây chỉ số).
+# 6. Hướng B — +lexicon (Random Forest)
 
-Ngoài `REF/` (dùng cho phần cải tiến):
+## 6.1. Kết quả production
 
-- Yang, Y. & Pedersen, J. O. (1997). "A Comparative Study on Feature Selection
-  in Text Categorization." *ICML*.
-- Martineau, J. & Finin, T. (2009). "Delta TFIDF: An Improved Feature Space for
-  Sentiment Analysis." *ICWSM*.
-- Rennie, J. D. M. et al. (2003). "Tackling the Poor Assumptions of Naive Bayes
-  Text Classifiers." *ICML*.
-- Cawley, G. C. & Talbot, N. L. C. (2010). "On Over-fitting in Model Selection
-  and Subsequent Selection Bias in Performance Evaluation." *JMLR*.
-- Dietterich, T. G. (1998). "Approximate Statistical Tests for Comparing
-  Supervised Classification Learning Algorithms." *Neural Computation*.
-- Nigam, K. et al. (2000). "Text Classification from Labeled and Unlabeled
-  Documents using EM." *Machine Learning*.
-- Ratner, A. et al. (2017). "Snorkel: Rapid Training Data Creation with Weak
-  Supervision." *VLDB*.
-- Settles, B. (2009). "Active Learning Literature Survey." *Univ. Wisconsin
-  Tech Report*.
-- Frank, E. & Hall, M. (2001). "A Simple Approach to Ordinal Classification."
-  *ECML*.
+Cùng bảng 5-fold single-seed, 1064 dòng (`RESULTS_SUMMARY.txt`):
+
+| Model | Macro F1 | Accuracy | F1 negative | F1 neutral | F1 positive |
+|---|--:|--:|--:|--:|--:|
+| **Random Forest (+lexicon, isotonic)** | **0.660** | 0.676 | 0.647 | 0.731 | 0.600 |
+| Ensemble (LR+NB+RF) | 0.646 | 0.661 | 0.661 | 0.719 | 0.558 |
+
+Random Forest hiện là model đơn lẻ tốt nhất trong toàn bộ 6 model production
+(0.660, cao hơn Logistic Regression 0.637 ở hướng A), và có F1 lớp `positive`
+tốt nhất (0.600) — lớp yếu nhất ở mọi model khác chỉ đạt 0.53–0.56.
+
+## 6.2. Xác nhận promote (ground truth 1064, holdout)
+Đo Δ macro-F1 (random forest) trên tập tune và xác nhận trên tập holdout (thiết kế
+`Δ = với_lexicon − không_lexicon`, bootstrap CI + p-value):
+
+| Ground truth | Thiết kế | Δ tune | Δ holdout |
+|---|---|--:|--:|
+| 1064 (744/320) | negation cả `positive` + `negative` | +0.016, CI [+0.001,+0.033], p=0.039 | **+0.038, CI [+0.011,+0.066], p=0.004** |
+
+Hiệu ứng trên holdout còn **lớn hơn** trên tune — không có dấu hiệu overfit
+vào tập tune. Chỉ `random_forest` có bằng chứng cải thiện đáng tin; `LogReg`/
+`SVM` cũng được thử feature này nhưng chưa bao giờ có CI loại 0;
+`MultinomialNB`/`ComplementNB` bị loại khỏi thí nghiệm này vì cột
+`net_polarity` có thể âm. Sau khi promote, số production trên 1064 dòng:
+Random Forest không lexicon (repeated-CV mean, mục 5.2) 0.643 ± 0.010 → có
+lexicon + isotonic (single-seed production) **0.660** — cùng chiều với hiệu
+ứng đã validate, dù không nên so trực tiếp single-seed với repeated-mean.
+
+## 6.3. Kiểm định methodology trên tập tune
+Tham số mặc định: repeated stratified 5-fold CV, **10 repeats**, bootstrap `B=2000`,
+**chỉ trên tập tune (744 dòng)** — đúng theo thiết kế: tập holdout (320 dòng)
+đã dùng đúng 1 lần cho câu hỏi xác nhận ở mục 6.2, disciplin "check once, không lặp lại" đã tiêu ở đó, nên không chạy lại script này trên
+holdout. `MultinomialNB`/`ComplementNB` bị loại (lý do như mục 6.2).
+
+**MACRO-F1: baseline (chỉ TF-IDF) vs +lexicon, trên tập tune:**
+
+| Model | Baseline | +lexicon | Δ |
+|---|--:|--:|--:|
+| Logistic Regression | 0.633 ± 0.008 | 0.636 ± 0.009 | +0.003 |
+| Random Forest | 0.637 ± 0.010 | 0.651 ± 0.006 | +0.014 |
+| SVM | 0.599 ± 0.009 | 0.600 ± 0.010 | +0.002 |
+
+**Bootstrap CI (paired, B=2000):**
+
+| Model | Δ | 95% CI | p | Kết luận |
+|---|--:|---|--:|---|
+| Logistic Regression | +0.003 | [-0.014, +0.021] | 0.691 | chạm 0 |
+| Random Forest | +0.014 | [-0.002, +0.030] | 0.082 | chạm 0 |
+| SVM | +0.002 | [-0.009, +0.013] | 0.761 | chạm 0 |
+
+McNemar (baseline vs +lexicon, per repeat): không model nào có `sig/N` quá
+1/10 (Random Forest: mean_b=36.5, mean_c=29.4, median p=0.507, 1/10, pool
+p=0.006). Nadeau-Bengio corrected cho kết luận cùng chiều (Random Forest
+Δ=+0.014, CI hiệu chỉnh [-0.016,+0.044], p=0.347 — chạm 0).
+
+**Vì sao không chạy trên holdout luôn để kiểm tra cho chắc?** 
+Về kỹ thuật hoàn toàn chạy được, nhưng **không nên**.
+320 dòng holdout đã bị "tiêu" đúng 1 lần ở mục 6.2 — đó chính là lần cho ra
+quyết định promote. Script có đổi gì (thêm McNemar, Nadeau-Bengio) không
+quan trọng, vì **dòng dữ liệu và câu hỏi đặt ra ("lexicon có giúp RF
+không?") vẫn y hệt** — nhìn lại lần 2 là đúng kiểu multiple-looks/selection
+bias mà tune/holdout dựng ra để chặn (Cawley & Talbot 2010, mục 9). Nếu chạy
+lại mà CI vẫn loại 0 thì cũng không còn tính là "xác nhận độc lập" nữa
+(đã nhìn dòng này rồi); nếu CI chạm 0 (giống tune) thì không thể phân biệt
+được đó là hiệu ứng đã yếu đi thật, hay chính lần xác nhận gốc vốn dĩ may
+mắn. Cách xác nhận sạch duy nhất: có thêm ground truth mới ngoài 1064 dòng
+hiện tại, dựng holdout mới **chỉ từ phần dữ liệu mới** chưa ai từng nhìn.
+
+# 7. Kiểm định hạ tầng dùng chung cho cả 2 hướng
+
+## 7.1. Không rò rỉ dữ liệu (sanity_checks)
+
+Permutation test (Ojala & Garriga 2010): xáo trộn nhãn (quan hệ text–nhãn
+= 0 theo thiết kế) rồi chạy đúng harness CV leak-free; nếu harness thật sự
+không rò rỉ, macro-F1 trên nhãn xáo trộn phải rơi về mức ngẫu nhiên. Chạy
+lại thật ngày 17/09/2026, tham số mặc định (**30 shuffles**, không phải bản
+smoke-test 5 shuffles trước đó), trên tập tune (744 dòng, mặc định của
+script):
+
+| Block | Real macro-F1 | Shuffled mean ± std | Max shuffled | Gap (std) | p |
+|---|--:|--:|--:|--:|--:|
+| naive_bayes, chỉ TF-IDF | 0.6021 | 0.3296 ± 0.0239 | 0.3803 | 11.4 | 0.0323 |
+| random_forest, +lexicon | 0.6531 | 0.2387 ± 0.0160 | 0.2716 | 26.0 | 0.0323 |
+
+Cả 2 block: điểm thật vượt qua **toàn bộ** 30 lần xáo trộn (p=0.0323 là mức
+p-value sàn với 30 shuffles, tức 0/30 lần xáo trộn đạt hoặc vượt điểm thật)
+→ không có dấu hiệu rò rỉ, kể cả ở nhánh +lexicon có thêm bước chuẩn hoá
+z-score trong fold (bước có nguy cơ rò rỉ riêng, cũng được kiểm tra độc lập).
+
+**Kiểm tra tham chiếu độc lập (sklearn thuần, không dùng code dự án):**
+pipeline `TfidfVectorizer` + `LogisticRegression` trong `sklearn.Pipeline`
+(refit trong từng fold qua `cross_val_predict`), trên cùng 744 dòng: macro-F1
+= 0.6705, accuracy = 0.6801, vocab 11712 term (không lọc theo thiết kế của dự
+án, chỉ để tham chiếu). So với Logistic Regression của dự án trên cùng tập
+tune, baseline hướng B mục 6.3 = 0.633 ± 0.008 — lệch khoảng +0.038, nằm
+trong ngưỡng ±0.05 mà script tự đặt ra để coi là "cùng tầm", không phải dấu
+hiệu bất thường.
+
+## 7.2. Chất lượng hiệu chỉnh xác suất (calibration_check)
+
+| Biến thể | Macro F1 | Brier | ECE |
+|---|--:|--:|--:|
+| rf_raw (TF-IDF, chưa calibrate) | 0.655 | 0.4692 | 0.0873 |
+| rf_isotonic (TF-IDF, đã calibrate) | 0.646 | 0.4562 | 0.0245 |
+| rf_raw_lexicon (+lexicon, chưa calibrate) | 0.668 | 0.4568 | 0.0821 |
+| rf_isotonic_lexicon (+lexicon, đã calibrate) | 0.660 | 0.4403 | 0.0150 |
+| svm_platt | 0.611 | 0.4993 | 0.0775 |
+| svm_softmax | 0.612 | 0.5170 | 0.0408 |
+
+(`rf_isotonic_lexicon` = 0.660 khớp đúng số production ở mục 6.1 — xác nhận
+chéo giữa 2 file kết quả.)
+
+**Kết luận chính — isotonic vẫn có ích sau khi thêm lexicon feature:** thêm
+lexicon feature không làm mất tác dụng của calibration. Cả ở nhánh TF-IDF
+thuần lẫn nhánh +lexicon, isotonic calibration đều cải thiện rõ rệt cả ECE
+(0.0873→0.0245 và 0.0821→0.0150) lẫn Brier (0.4692→0.4562 và 0.4568→0.4403),
+đổi lại macro-F1 giảm nhẹ (0.655→0.646 và 0.668→0.660) — đánh đổi chấp nhận
+được vì mục tiêu của calibration là xác suất đáng tin (dùng cho
+`sentiment_score_ml` ở bước index), không phải tối đa hoá macro-F1.
+
+SVM: bằng chứng trái chiều giữa 2 chỉ số — bỏ Platt cải thiện ECE
+(0.0775→0.0408) nhưng làm Brier tệ hơn (0.4993→0.5170); macro-F1 gần như
+không đổi (0.611→0.612). Quyết định giữ margin-softmax (không dùng Platt) vì
+Platt calibrate trên ~40 dòng/inner-fold quá nhiễu để tin cậy, và dù giữ
+softmax hay Platt thì SVM vẫn bị loại khỏi ensemble (mục 4) vì xác suất của
+nó không được xem là đã hiệu chỉnh.
+
+# 8. Hạn chế và hướng tiếp theo
+
+**Còn tồn đọng:**
+
+- **Ground truth vẫn còn nhỏ**, đặc biệt lớp `positive` (276/1064, ~55
+  dòng/fold khi 5-fold) — vẫn là lớp yếu nhất ở mọi model (F1 0.53–0.60).
+  Phần lớn kết luận "model nào hơn model nào" ở hướng A **chưa đủ bằng
+  chứng** sau hiệu chỉnh Nadeau-Bengio (mục 5.2) — cần thêm dữ liệu trước khi
+  chốt.
+- **POS-restricted n-gram + chuẩn hoá số** (Turney 2002) — chưa làm, ưu tiên
+  #3.
+- **Chọn feature có giám sát trong fold** (chi²/Delta-IDF, Yang & Pedersen
+  1997; Martineau & Finin 2009) — chưa làm, ưu tiên #3.
+- **SO-PMI cấp bài** (tái dùng bảng SO đã tính ở nhánh Lexicon_based) — chưa
+  làm, ưu tiên #3.
+- **Chất lượng nhãn:** chưa đo inter-annotator agreement (Cohen's κ, cần
+  annotator thứ 2), chưa kiểm tra anchoring bias, chưa thử ordinal loss
+  (neg < neutral < pos) — cần trước khi kết luận chắc model nào đã sát trần.
+- **Bán giám sát** (self-training / Snorkel-style label model trên 126k bài
+  chưa nhãn) — chưa làm, ưu tiên thấp nhất.

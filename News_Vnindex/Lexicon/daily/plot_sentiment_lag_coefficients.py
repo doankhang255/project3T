@@ -52,7 +52,8 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8")
 
     method_names = list(MERGED_DATA_PATHS_BY_METHOD.keys())
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8), sharey=True)
+    n_rows, n_cols = len(method_names), len(TARGET_COLUMNS)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 4 * n_rows), sharey=True)
 
     for row_index, method_name in enumerate(method_names):
         merged_df = pd.read_parquet(MERGED_DATA_PATHS_BY_METHOD[method_name])

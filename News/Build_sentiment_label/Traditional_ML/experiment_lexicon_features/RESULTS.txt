@@ -1,7 +1,7 @@
 EXPERIMENT - lexicon-category features + negation vs TF-IDF-only baseline
 ========================================================================
 
-Ground truth: C:\Users\doank\Documents\dev\project3T\News\Build_sentiment_label\Traditional_ML\Common\tune_holdout\ground_truth_tune.csv
+Ground truth: /Users/doankhang/Documents/project3T/News/Build_sentiment_label/Traditional_ML/Common/tune_holdout/ground_truth_tune.csv
   744 rows (neg 206 / neu 345 / pos 193)
 Repeated stratified 5-fold CV, 10 repeats, 2000 bootstrap resamples. TF-IDF fit per fold (leak-free); lexicon features are fixed word lists (Seed_set_Prepare + Loughran & McDonald 2011 negation rule), not fit from data, so adding them leaks nothing.
 Feature columns added: negative_prop, positive_prop, uncertainty_prop, litigious_prop, strong_modal_prop, weak_modal_prop, constraining_prop, net_polarity, coverage
@@ -11,28 +11,50 @@ MACRO-F1: baseline (TF-IDF only) vs +lexicon
 ------------------------------------------------------------------------
   model                           baseline          +lexicon     delta
   logistic_regression      0.633 +/- 0.008   0.636 +/- 0.009    +0.003
-  random_forest            0.636 +/- 0.011   0.650 +/- 0.007    +0.014
+  random_forest            0.637 +/- 0.010   0.651 +/- 0.006    +0.014
   svm                      0.599 +/- 0.009   0.600 +/- 0.010    +0.002
 
 PER-CLASS F1 (+lexicon arm)
 ------------------------------------------------------------------------
   model                        f1_negative        f1_neutral       f1_positive
   logistic_regression      0.653 +/- 0.012   0.705 +/- 0.008   0.550 +/- 0.012
-  random_forest            0.639 +/- 0.011   0.742 +/- 0.006   0.569 +/- 0.016
+  random_forest            0.641 +/- 0.011   0.742 +/- 0.005   0.570 +/- 0.015
   svm                      0.614 +/- 0.015   0.685 +/- 0.009   0.501 +/- 0.016
 
 BOOTSTRAP  -  95% CI on delta(macro-F1) = lexicon - baseline, paired, per model
 ------------------------------------------------------------------------
   model                     delta  95% CI                     p  verdict
   logistic_regression      +0.003  [-0.014, +0.021]       0.691  overlaps 0
-  random_forest            +0.014  [-0.002, +0.030]       0.088  overlaps 0
+  random_forest            +0.014  [-0.002, +0.030]       0.082  overlaps 0
   svm                      +0.002  [-0.009, +0.013]       0.761  overlaps 0
 
   delta > 0 and CI excludes 0 -> lexicon features reliably help this model.
   CI straddling 0 -> not distinguishable from split/resample noise.
 
+McNEMAR  -  baseline vs +lexicon, paired per repeat (are the flips real?)
+------------------------------------------------------------------------
+  model                   mean_b  mean_c   med_p   sig/N   pool_p
+  logistic_regression       36.5    37.2   0.858    0/10    0.825
+  random_forest             36.5    29.4   0.507    1/10    0.006
+  svm                       24.4    23.9   0.884    0/10    0.856
+
+  mean_b = rows +lexicon right & baseline wrong (averaged over repeats);
+  mean_c = the reverse. sig/N = repeats with p < 0.05 out of N; pool_p pools
+  all repeats (optimistic - repeats are not independent, see Nadeau-Bengio below).
+
+NADEAU-BENGIO CORRECTED  -  parametric counterpart to the bootstrap above
+------------------------------------------------------------------------
+  model                     delta  corrected 95% CI         corrected p  verdict
+  logistic_regression      +0.003  [-0.024, +0.030]               0.805  overlaps 0
+  random_forest            +0.014  [-0.016, +0.044]               0.347  overlaps 0
+  svm                      +0.002  [-0.023, +0.027]               0.870  overlaps 0
+
+  Corrects for fold non-independence across CV repeats (Nadeau & Bengio
+  2003); the bootstrap above instead resamples rows. Two different ways
+  to ask the same question - point estimates match, only the CI differs.
+
 READ
 ------------------------------------------------------------------------
   No model shows a reliable change - lexicon features are not distinguishable
-  from noise here. Do not promote into model/*.py yet.
-  This ran on the TUNE split only. If promoting, re-check once on the HOLDOUT split (../improve/tune_holdout.py) - exactly once, not iteratively.
+  from noise here. Do not promote into Common/model/*.py yet.
+  This ran on the TUNE split only. If promoting, re-check once on the HOLDOUT split (../Common/tune_holdout.py) - exactly once, not iteratively.

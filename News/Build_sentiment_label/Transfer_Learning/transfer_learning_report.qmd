@@ -1,0 +1,140 @@
+---
+title: "Transfer Learning"
+author: ""
+lang: vi
+format:
+  pdf:
+    documentclass: article
+    pdf-engine: xelatex
+    mainfont: "Times New Roman"
+    fontsize: 12pt
+    geometry: margin=1in
+    toc: true
+    number-sections: true
+    colorlinks: true
+---
+
+\newpage
+
+# Giới thiệu
+
+Nhánh **Transfer Learning** thử nghiệm việc dùng mô hình ngôn ngữ đã pretrain **PhoBERT** (`vinai/phobert-base-v2`, encoder 12 lớp, hidden size 768, ~135 triệu tham số) để phân loại cảm xúc (sentiment) của các bài báo tin tức chứng khoán thành 3 lớp: **negative**, **neutral**, **positive**.
+
+Hướng tiếp cận đi qua 3 bước theo đúng lộ trình mentor đề ra, mỗi bước sử dụng lại trọng số của bước trước làm điểm khởi đầu (trừ E2, chạy song song với E3 như một baseline đối chứng):
+
+1. **E1 — Domain-Adaptive Pretraining (DAPT):** tiếp tục pretrain PhoBERT bằng Masked Language Modeling (MLM) trên kho tin tức chứng khoán chưa gán nhãn, để mô hình học từ vựng/văn phong tài chính trước khi làm bất kỳ việc phân loại nào.
+2. **E2 — Frozen Feature Probe:** đóng băng encoder đã DAPT, trích đặc trưng (embedding) cố định, rồi huấn luyện một `LogisticRegression` nhẹ trên đặc trưng đó.
+3. **E3 — Fine-tune toàn phần:** lan truyền ngược qua toàn bộ encoder (khởi tạo từ checkpoint E1) cộng một classifier head mới, để trực tiếp tối ưu mục tiêu phân loại nhãn.
+
+# Dữ liệu
+
+| Thành phần | Số lượng | Vai trò |
+|:---|:---|:---|
+| Ground truth (có nhãn) | 1.064 dòng | Huấn luyện + đánh giá E2/E3 |
+| Kho ngữ liệu chưa gán nhãn (DAPT) | 125.511 bài (đã loại 1.064 bài trùng ground truth) | Pretrain MLM ở E1 |
+| Tune split | 744 dòng | Repeated cross-validation |
+| Holdout split | 320 dòng | Kiểm tra cuối, chỉ chạy một lần |
+
+: Nguồn dữ liệu sử dụng trong nhánh Transfer Learning {tbl-colwidths="[38,32,30]"}
+
+Tune/Holdout dùng chung split với nhánh Traditional_ML (chia theo `source_row_id`) để các phương pháp được so sánh trên đúng cùng một tập dòng dữ liệu.
+
+# Phương pháp
+
+## E1 — Domain-Adaptive Pretraining (DAPT)
+
+- Mỗi bài báo được tách câu sẵn; các câu được **gói (pack)** trọn vẹn vào từng khối (block) tối đa 256 token, không cắt giữa câu, không để một khối chứa câu của 2 bài khác nhau.
+- Che ngẫu nhiên 15% token (`DataCollatorForLanguageModeling`) và huấn luyện mô hình đoán lại token bị che (mục tiêu MLM).
+- Các bài trùng với ground truth bị loại khỏi corpus DAPT trước khi huấn luyện, để tránh mô hình "đã đọc" trước nội dung mà E2/E3 sẽ dùng để đánh giá.
+
+## E2 — Frozen Feature Probe + Logistic Regression
+
+- Dùng `AutoModel` (chỉ lấy encoder, bỏ MLM head) từ checkpoint E1, chạy forward-pass **một lần**, không cập nhật gradient (`torch.no_grad()`).
+- Mean-pool `last_hidden_state` theo attention mask → 1 vector 768 chiều / bài báo.
+- Huấn luyện `LogisticRegression` multinomial (softmax) trên các vector này — chỉ 768×3 + 3 = 2.307 tham số được học, PhoBERT hoàn toàn đứng yên.
+- Ưu điểm: ổn định, ít overfit khi lượng nhãn còn hạn chế; là baseline "mô hình domain-adapted đã biết được gì sẵn".
+
+## E3 — Fine-tune toàn phần sau khi có hơn 1k nhãn
+
+- Khởi tạo từ checkpoint E1, thay MLM head bằng một classifier head 3 lớp khởi tạo ngẫu nhiên (`AutoModelForSequenceClassification`, `ignore_mismatched_sizes=True`).
+- Lan truyền ngược qua **toàn bộ mạng** (encoder + classifier head) với `WeightedLossTrainer` — CrossEntropyLoss có trọng số cân bằng lớp (balanced class weights) tính từ tập huấn luyện của từng fold.
+
+## Giao thức đánh giá
+
+Cả E2 và E3 đều được đánh giá theo 3 cách, từ nhẹ đến nghiêm ngặt:
+
+1. **5-fold stratified CV một lần**, out-of-fold, trên toàn bộ 1.064 dòng ground truth 
+2. **Repeated CV**: 10 lần lặp × 5-fold trên tập Tune (744 dòng), báo cáo trung bình ± độ lệch chuẩn 
+3. **Holdout (320 dòng)**: chỉ kiểm tra **một lần duy nhất**, sau khi đã chọn xong mô hình trên Tune — số liệu "trung thực" cuối cùng, không bị dùng để tinh chỉnh.
+
+# Kết quả
+
+## E1 — Hiệu quả của Domain-Adaptive Pretraining
+
+| Chỉ số | Trước DAPT (baseline) | Sau DAPT |
+|---|---:|---:|
+| Eval loss | 2,116 | 1,336 |
+| Perplexity | 8,298 | 3,803 |
+
+*(Chạy trên 125.511 bài, loại 1.064 bài ground truth khỏi corpus)*
+
+Perplexity giảm từ **8,30 xuống 3,80** — cho thấy mô hình đã thích nghi rõ rệt với văn phong/thuật ngữ tài chính so với PhoBERT gốc.
+
+## E2 vs E3 — So sánh 3 cách đánh giá
+
+### 5-fold CV trên toàn bộ ground truth (1.064 dòng)
+
+| Phương pháp | Macro F1 | Accuracy |
+|---|---:|---:|
+| E2 — Frozen probe (LogReg) | 0,669 | 0,673 |
+| E3 — Fine-tune toàn phần | 0,685 | 0,689 |
+
+### Repeated CV (10 × 5-fold) trên Tune (744 dòng)
+
+| Phương pháp | Macro F1 (mean ± std) | Accuracy (mean ± std) |
+|---|---:|---:|
+| E2 — Frozen probe (LogReg) | 0,670 ± 0,010 | 0,676 ± 0,009 |
+| E3 — Fine-tune toàn phần | 0,697 ± 0,010 | 0,700 ± 0,010 |
+
+### Holdout (320 dòng, kiểm tra một lần)
+
+| Phương pháp | Macro F1 | Accuracy |
+|---|---:|---:|
+| E2 — Frozen probe (LogReg) | 0,682 | 0,688 |
+| E3 — Fine-tune toàn phần | 0,695 | 0,700 |
+
+**Nhận xét:** E3 (fine-tune toàn phần) vượt E2 (frozen probe) một cách **nhất quán** ở cả 3 cách đánh giá, chênh lệch khoảng 2–3 điểm macro-F1. Kết quả ổn định qua repeated CV (độ lệch chuẩn nhỏ, ~0,01) và được xác nhận lại trên Holdout — cho thấy chênh lệch này không phải do may rủi của một split cụ thể.
+
+## Chi tiết theo lớp (Holdout, 320 dòng)
+
+| Lớp | Support | F1 — E2 (Frozen) | F1 — E3 (Fine-tune) |
+|---|---:|---:|---:|
+| negative | 89 | 0,670 | 0,698 |
+| neutral | 148 | 0,714 | 0,734 |
+| positive | 83 | 0,663 | 0,652 |
+
+## Confusion matrix — Holdout (320 dòng)
+
+**E2 — Frozen probe:**
+
+| | Dự đoán negative | Dự đoán neutral | Dự đoán positive |
+|---|---:|---:|---:|
+| **Thực tế negative** | 63 | 18 | 8 |
+| **Thực tế neutral** | 25 | 101 | 22 |
+| **Thực tế positive** | 11 | 16 | 56 |
+
+**E3 — Fine-tune toàn phần:**
+
+| | Dự đoán negative | Dự đoán neutral | Dự đoán positive |
+|---|---:|---:|---:|
+| **Thực tế negative** | 67 | 12 | 10 |
+| **Thực tế neutral** | 21 | 98 | 29 |
+| **Thực tế positive** | 15 | 9 | 59 |
+
+# Kết luận
+
+- **DAPT (E1) có hiệu quả rõ rệt** về mặt ngôn ngữ (perplexity giảm hơn một nửa), là bước nền cho cả E2 và E3 — cả hai đều khởi tạo từ checkpoint đã DAPT thay vì PhoBERT gốc.
+- Với lượng nhãn hiện tại (1.064 dòng — đã đạt mức "vài trăm nhãn trở lên" mentor yêu cầu để cho phép fine-tune toàn phần), **fine-tune toàn phần (E3) cho kết quả tốt hơn frozen probe (E2)** một cách nhất quán qua cả 3 giao thức đánh giá, dù chênh lệch không quá lớn (~2-3 điểm macro-F1).
+- Lớp **positive** vẫn là lớp khó nhất ở cả 2 phương pháp (F1 thấp nhất trong 3 lớp), gợi ý đây là hướng cần cải thiện tiếp theo — có thể qua tăng thêm nhãn positive, hoặc tinh chỉnh trọng số lớp.
+
+---

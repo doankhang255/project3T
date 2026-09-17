@@ -9,21 +9,21 @@ M2.2  REPEATED CV  -  mean +/- std over 10 repeats
 --------------------------------------------------------------------
   model                       macro_f1        accuracy
   logistic_regression  0.645 +/- 0.010 0.659 +/- 0.009
-  random_forest        0.642 +/- 0.010 0.664 +/- 0.009
+  random_forest        0.643 +/- 0.010 0.664 +/- 0.009
   complement_nb        0.620 +/- 0.005 0.631 +/- 0.005
   multinomial_nb       0.617 +/- 0.004 0.629 +/- 0.004
   svm                  0.612 +/- 0.011 0.628 +/- 0.010
 
   model                    f1_negative      f1_neutral     f1_positive
   logistic_regression  0.649 +/- 0.012 0.713 +/- 0.008 0.571 +/- 0.015
-  random_forest        0.635 +/- 0.012 0.735 +/- 0.007 0.557 +/- 0.014
+  random_forest        0.635 +/- 0.012 0.736 +/- 0.007 0.558 +/- 0.014
   complement_nb        0.645 +/- 0.008 0.682 +/- 0.005 0.534 +/- 0.008
   multinomial_nb       0.634 +/- 0.006 0.686 +/- 0.006 0.530 +/- 0.007
   svm                  0.613 +/- 0.014 0.691 +/- 0.009 0.531 +/- 0.016
 
   95% bootstrap CI on mean macro-F1 (B=2000, resample the 1064 rows):
     logistic_regression  0.645  [0.617, 0.670]
-    random_forest        0.642  [0.615, 0.670]
+    random_forest        0.643  [0.616, 0.671]
     complement_nb        0.620  [0.592, 0.648]
     multinomial_nb       0.617  [0.588, 0.644]
     svm                  0.612  [0.585, 0.635]
@@ -31,7 +31,7 @@ M2.2  REPEATED CV  -  mean +/- std over 10 repeats
   RESULTS_SUMMARY.txt reports the production pipeline (random_forest
   there uses the lexicon feature block; the random_forest here does not -
   the two are not directly comparable).
-    random_forest        single 0.634   repeated mean 0.642
+    random_forest        single 0.634   repeated mean 0.643
     naive_bayes          single 0.605   repeated mean 0.617
     logistic_regression  single 0.593   repeated mean 0.645
     svm                  single 0.562   repeated mean 0.612
@@ -48,14 +48,14 @@ M2.3  McNEMAR PAIRWISE  (are the model gaps real, or the split?)
   pair                                      mean_b  mean_c   med_p   sig/N   pool_p
   logistic_regression vs multinomial_nb      105.2    73.8   0.018    7/10    0.000
   logistic_regression vs complement_nb       105.2    75.7   0.045    6/10    0.000
-  logistic_regression vs random_forest        72.5    78.0   0.352    0/10    0.164
+  logistic_regression vs random_forest        72.2    78.4   0.374    0/10    0.116
   logistic_regression vs svm                  63.8    31.8   0.002   10/10    0.000
   multinomial_nb vs complement_nb             15.5    17.4   0.705    0/10    0.321
-  multinomial_nb vs random_forest             68.2   105.1   0.011    9/10    0.000
+  multinomial_nb vs random_forest             67.5   105.1   0.013    9/10    0.000
   multinomial_nb vs svm                      115.9   115.3   0.649    0/10    0.917
-  complement_nb vs random_forest              72.4   107.4   0.020    8/10    0.000
+  complement_nb vs random_forest              71.8   107.5   0.014    8/10    0.000
   complement_nb vs svm                       115.8   113.3   0.689    0/10    0.616
-  random_forest vs svm                       123.0    85.5   0.008    7/10    0.000
+  random_forest vs svm                       123.6    85.4   0.009    7/10    0.000
 
   mean_b = rows first model right & second wrong (averaged over repeats)
   sig/N  = repeats with p < 0.05 out of N; pool_p pools all repeats
@@ -66,18 +66,45 @@ M2.4  BOOTSTRAP  -  95% CI on delta(macro-F1) between models (paired, B=2000)
   pair                                      d_macroF1  95% CI                  p
   logistic_regression vs multinomial_nb        +0.028  [+0.008, +0.048]    0.008   EXCLUDES 0
   logistic_regression vs complement_nb         +0.024  [+0.005, +0.045]    0.019   EXCLUDES 0
-  logistic_regression vs random_forest         +0.002  [-0.015, +0.020]    0.780   overlaps 0
+  logistic_regression vs random_forest         +0.002  [-0.016, +0.020]    0.828   overlaps 0
   logistic_regression vs svm                   +0.033  [+0.022, +0.044]    0.000   EXCLUDES 0
   multinomial_nb vs complement_nb              -0.003  [-0.010, +0.002]    0.268   overlaps 0
-  multinomial_nb vs random_forest              -0.025  [-0.046, -0.006]    0.008   EXCLUDES 0
+  multinomial_nb vs random_forest              -0.026  [-0.046, -0.006]    0.006   EXCLUDES 0
   multinomial_nb vs svm                        +0.005  [-0.019, +0.028]    0.707   overlaps 0
-  complement_nb vs random_forest               -0.022  [-0.043, -0.002]    0.026   EXCLUDES 0
+  complement_nb vs random_forest               -0.023  [-0.043, -0.003]    0.022   EXCLUDES 0
   complement_nb vs svm                         +0.009  [-0.015, +0.031]    0.505   overlaps 0
-  random_forest vs svm                         +0.031  [+0.009, +0.052]    0.011   EXCLUDES 0
+  random_forest vs svm                         +0.031  [+0.010, +0.052]    0.011   EXCLUDES 0
 
   delta = (row1 mean macro-F1) - (row2). McNemar (M2.3) tests the
   accuracy gap; this tests the macro-F1 gap, which is the ranking
   metric. CI straddling 0 -> gap not distinguishable from split noise.
+
+M2.5  NADEAU-BENGIO CORRECTED VARIANCE  (parametric counterpart to M2.4)
+--------------------------------------------------------------------
+  model                   mean        naive 95% CI        corrected 95% CI   widen x
+  logistic_regression    0.644    [+0.636, +0.653]        [+0.613, +0.676]      3.67
+  random_forest          0.642    [+0.634, +0.651]        [+0.610, +0.674]      3.67
+  complement_nb          0.620    [+0.611, +0.629]        [+0.588, +0.652]      3.67
+  multinomial_nb         0.616    [+0.607, +0.625]        [+0.583, +0.649]      3.67
+  svm                    0.611    [+0.602, +0.620]        [+0.579, +0.644]      3.67
+
+  pair                                        delta  corrected 95% CI       corrected p
+  logistic_regression vs multinomial_nb      +0.028  [-0.000, +0.056]             0.050   overlaps 0
+  logistic_regression vs complement_nb       +0.025  [-0.007, +0.056]             0.119   overlaps 0
+  logistic_regression vs random_forest       +0.002  [-0.026, +0.030]             0.883   overlaps 0
+  logistic_regression vs svm                 +0.033  [+0.013, +0.054]             0.002   EXCLUDES 0
+  multinomial_nb vs complement_nb            -0.004  [-0.017, +0.010]             0.582   overlaps 0
+  multinomial_nb vs random_forest            -0.026  [-0.056, +0.004]             0.091   overlaps 0
+  multinomial_nb vs svm                      +0.005  [-0.027, +0.037]             0.748   overlaps 0
+  complement_nb vs random_forest             -0.022  [-0.054, +0.009]             0.159   overlaps 0
+  complement_nb vs svm                       +0.009  [-0.025, +0.042]             0.602   overlaps 0
+  random_forest vs svm                       +0.031  [-0.004, +0.067]             0.085   overlaps 0
+
+  Corrects the naive repeated-CV std for fold overlap across repeats
+  (Nadeau & Bengio 2003) - only widens CIs, never narrows them, and
+  never moves the point estimate. Flags below if this widening changes
+  the M2.4 bootstrap verdict for any pair.
+  Correction FLIPS M2.4 (bootstrap: real gap -> Nadeau-Bengio: noise) for: logistic_regression vs multinomial_nb, logistic_regression vs complement_nb, multinomial_nb vs random_forest, complement_nb vs random_forest, random_forest vs svm.
 
 READ
 --------------------------------------------------------------------

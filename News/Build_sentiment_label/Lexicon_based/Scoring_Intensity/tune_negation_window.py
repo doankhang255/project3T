@@ -16,6 +16,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 SCORING_DIR = Path(__file__).resolve().parent
@@ -122,7 +123,7 @@ def main() -> None:
     print(f"  window={best_window} (chọn từ Tune) trên Holdout: accuracy={acc_best_holdout:.4f}  macro_f1={f1_best_holdout:.4f}")
     print(f"  window=4    (mặc định hiện tại) trên Holdout: accuracy={acc_default_holdout:.4f}  macro_f1={f1_default_holdout:.4f}")
 
-    tune_results_df["accuracy_holdout_if_chosen"] = ""
+    tune_results_df["accuracy_holdout_if_chosen"] = np.nan
     tune_results_df.loc[tune_results_df["negation_window"] == best_window, "accuracy_holdout_if_chosen"] = acc_best_holdout
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     tune_results_df.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")

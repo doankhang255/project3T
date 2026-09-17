@@ -9,8 +9,7 @@ format:
     fontsize: 12pt
     mainfont: "Times New Roman"
     linestretch: 1.3
-    toc: true
-    toc-title: "Mục lục"
+    toc: false
     toc-depth: 2
     number-sections: false
     colorlinks: true
@@ -24,191 +23,126 @@ format:
       - right=2cm
 ---
 
-{{< pagebreak >}}
-
-# PHẦN 1 — Scoring: trọng số PMI + xử lý ngữ cảnh (`Scoring/`)
-
-## 1. Kết quả Phần 1 (đối chiếu 599 bài ground truth, xem mục 6)
+## 1. Kết quả Scoring: trọng số PMI (`Scoring/`) 
 
 | Tập đánh giá | Accuracy |
 |---|---:|
-| Toàn bộ 599 bài | 60,4% |
-| Chỉ tập Holdout (180 bài, khách quan nhất) | 58,9% |
+| Toàn bộ 1.064 bài | 61,8% |
+| Chỉ tập Holdout (320 bài, khách quan nhất) | 65,3% |
 
-# PHẦN 2 — Scoring Intensity: trọng số nội tại kiểu VADER (`Scoring_Intensity/`)
-
-## 2. Kết quả Phần 2 (đối chiếu 599 bài ground truth, xem mục 6)
+## 2. Kết quả Scoring Intensity: trọng số nội tại kiểu VADER (`Scoring_Intensity/`)
 
 | Tập đánh giá | Accuracy |
 |---|---:|
-| Toàn bộ 599 bài | 60,3% |
-| Chỉ tập Holdout (180 bài, khách quan nhất) | 58,9% |
+| Toàn bộ 1.064 bài | 62,4% |
+| Chỉ tập Holdout (320 bài, khách quan nhất) | 65,3% |
 
-**"Dò 125 tổ hợp hệ số" nghĩa là gì**: grid-search — thử toàn bộ tổ hợp
-thay vì đoán tay. 3 tham số của công thức, mỗi tham số 5 giá trị:
-`base_weight` (5 cách gán mức trọng số theo round), `marker_delta` ∈
-`[0.0, 0.5, 1.0, 1.5, 2.0]`, `intensifier_scale` ∈ `[0.0, 0.5, 1.0, 1.5,
-2.0]` → 5×5×5 = 125 tổ hợp (kết quả cập nhật sau khi tune đúng cách trên
-Tune/Holdout — xem mục 6 — vẫn giữ nguyên cấu hình production hiện tại,
-không đổi).
-
-## 3. So sánh tổng hợp Phần 1 vs Phần 2 (số liệu cập nhật, xem mục 6)
+## 3. So sánh tổng hợp Phần 1 vs Phần 2 (xem mục 4)
 
 | | Phần 1 (PMI) | Phần 2 (nội tại) |
 |---|---:|---:|
-| Accuracy trên 599 bài | 60,4% | 60,3% |
-| Accuracy trên Holdout (180 bài, khách quan nhất) | 58,9% | 58,9% |
+| Accuracy trên 1.064 bài | 61,8% | 62,4% |
+| Accuracy trên Holdout (320 bài, khách quan nhất) | 65,3% | 65,3% |
 
-2 cách hiện cho kết quả gần như ngang nhau khi đánh giá khách quan trên
-Holdout — khác với chênh lệch 2 điểm % từng thấy trên 152 bài cũ.
+2 cách cho kết quả gần như giống hệt nhau khi đánh giá khách quan trên
+Holdout (trùng đến 65,31% cả hai; macro-F1 0,6447 vs 0,6448 — xem mục 4) —
+cùng 1 mẫu hình "2 cách ngang nhau" đã thấy ở lần đo trước trên 599 bài, giờ
+càng rõ hơn khi ground truth lớn hơn.
 
-## 4. Liên hệ tài liệu tham khảo (REF)
+| Longest-match vs chồng lấn — Cách 1 | chồng lấn nhỉnh hơn (62,8% vs 60,3%) | 65,31% = 65,31% (macro-F1 0,6464 vs 0,6447) | Giữ longest-match |
+| Longest-match vs chồng lấn — Cách 2 | chồng lấn nhỉnh hơn (63,0% vs 61,2%) | 65,31% = 65,31% (macro-F1 0,6452 vs 0,6448) | Giữ longest-match |
 
-- **Loughran & McDonald (2011)**, *"When Is a Liability Not a Liability?
-  Textual Analysis, Dictionaries, and 10-Ks"*, JF — khung 7-category gốc,
-  đơn vị đo `count/N_total` (dùng ở cả Phần 1 và Phần 2).
-- **Tetlock (2007)**, *"Giving Content to Investor Sentiment"*, JF — cơ sở
-  cho việc dùng ngôn ngữ media để đo sentiment tác động thị trường.
-- **Baker & Wurgler (2006)**, *"Investor Sentiment and the Cross-Section of
-  Stock Returns"*, JF — bối cảnh ứng dụng investor sentiment.
-- **VADER** (Hutto & Gilbert) — ý tưởng trọng số nội tại theo từ + hệ số
-  nhấn mạnh/phủ định, áp dụng ở Phần 2.
-- **SentProp** (Hamilton, Clark, Leskovec, Jurafsky 2016) — hướng thay thế
-  PMI bằng embedding + label propagation, đã tìm hiểu, **chưa triển khai**
-  (cần train embedding riêng trên corpus, xem mục 5).
+- **Khoảng cách longest-match vs khớp chồng lấn thu hẹp gần hết**: lần đo
+  152 bài cũ thấy chênh 2,6 điểm % (63,8% vs 61,2%). Lần này (1.064 bài, Holdout
+  320) accuracy 2 cách khớp **bằng nhau tuyệt đối** ở cả 2 phương pháp chấm
+  điểm (65,31%), chỉ còn lệch nhẹ ở macro-F1 (~0,001-0,002, không đáng kể).
+  Tín hiệu "chồng lấn tốt hơn" ở các lần đo trước nhiều khả năng là nhiễu
+  mẫu nhỏ - **giữ nguyên longest-match** (đơn giản hơn, không còn lý do đổi).
 
-## 5. Hạn chế đã biết & việc đang chờ
+**Xác nhận lại các chẩn đoán trước đó, trên dictionary/corpus build lại
+HOÀN TOÀN từ đầu (không phải đọc lại file cũ)**:
 
-1. Xem mục 6 cho các phát hiện/cải tiến mới nhất (ground truth mở rộng,
-   tune/holdout, so sánh longest-match vs khớp chồng lấn, chẩn đoán Neutral).
-2. 5 category còn lại (uncertainty/litigious/strong_modal/weak_modal/
+## 5. VN-Index (`News_Vnindex/`)
+
+Test trên cùng **4 cách tính sentiment** (PMI, Intensity, PCA_PMI,
+PCA_Intensity) - chỉ coi 1 phát hiện là đáng tin nếu nhất quán ở cả 4, đúng
+nguyên tắc đã áp dụng xuyên suốt.
+
+**4 cách này KHÔNG PHẢI 4 lần thử ngẫu nhiên** - mà là tổ hợp có chủ đích
+của 2 lựa chọn độc lập: (a) cách gán trọng số cho từng từ trong dictionary
+(đã giải thích ở mục 1/2), và (b) cách gộp 7 category (negative/positive/
+uncertainty/litigious/strong_modal/weak_modal/constraining) lại thành 1 chỉ
+số sentiment duy nhất mỗi ngày/tuần:
+
+| Tên | Trọng số từ (theo mục 1/2) | Cách gộp thành 1 chỉ số |
+|---|---|---|
+| **PMI** (Cách 1) | Phần 1 — PMI: `score_centered`, đo mức đồng-xuất-hiện với seed trong corpus | Đơn giản: `positive_score − negative_score` mỗi bài, rồi lấy trung bình theo ngày/tuần |
+| **Intensity** (Cách 2) | Phần 2 — nội tại kiểu VADER: base_weight theo vòng bootstrap + marker cực đoan/nhẹ + hệ số nhấn mạnh | Đơn giản: `positive_score − negative_score` mỗi bài, rồi lấy trung bình theo ngày/tuần |
+| **PCA_PMI** | Giống PMI (Phần 1) | PCA (lấy component 1) trên **cả 7 category**, kiểu Tetlock (2007) - không chỉ dùng riêng positive/negative |
+| **PCA_Intensity** | Giống Intensity (Phần 2) | PCA (lấy component 1) trên cả 7 category, giống PCA_PMI nhưng đổi nguồn trọng số |
+
+Nói cách khác: **PMI vs Intensity** khác nhau ở cách GÁN TRỌNG SỐ TỪ (2 cột
+"Phần 1/2" đã trình bày ở mục 1-2); **{PMI,Intensity} vs {PCA_PMI,
+PCA_Intensity}** khác nhau ở cách GỘP THÀNH CHỈ SỐ (chỉ dùng hiệu
+positive−negative, hay dùng PCA để giữ thông tin từ cả 7 category thay vì 1
+cặp, giống Tetlock gốc dùng PCA trên 77 category GI của ông thay vì chỉ
+positive/negative). Vì là 2×2 tổ hợp độc lập (không phải 4 phương án cùng
+loại), 1 phát hiện chỉ được coi là vững nếu nó xuất hiện ở CẢ 4 ô - nếu chỉ
+đúng ở 1-2 ô thì nhiều khả năng là do đặc thù của riêng lựa chọn đó (VD chỉ
+đúng ở PMI/Intensity nhưng mất ở 2 bản PCA → tín hiệu phụ thuộc cách gộp
+category, không phải tín hiệu sentiment thật).
+
+**Lợi suất (return) — kết luận không đổi, số liệu khớp gần như tuyệt đối
+với lần đo trước**:
+
+- **R² mô hình**: daily R²=1,404% (mô hình đầy đủ, có sentiment) so với
+  1,143% (không có sentiment) - sentiment chỉ thêm được ~0,26 điểm % R².
+- **F-test 5 lag sentiment**: F(5, 3332)=1,76, p=0,118 (so với 1,41%/0,106
+  lần trước - lệch nhỏ) → **vẫn không có ý nghĩa thống kê**, cùng kết luận
+  như lần đo trước.
+- **Lag4 daily**: vẫn "có tín hiệu" ở Cách 1 PMI (p=0,004) và Cách 2
+  Intensity (p=0,008), nhưng biến mất ở PCA_PMI/PCA_Intensity (p=0,57-0,65)
+  - đúng mẫu hình cũ, và đúng nguyên tắc "chỉ tin nếu nhất quán ở cả 4" (ở
+  đây KHÔNG nhất quán, nên không coi là phát hiện thật).
+- **Weekly (bản multi-lag, kiểm định tổng lag2-5)**: PMI/Intensity
+  p=0,078-0,108 (gần ngưỡng 10%, đúng như mô tả cũ), PCA_PMI/PCA_Intensity
+  p=0,75-0,99 (không có gì) - khớp gần như chính xác mẫu hình đã báo cáo.
+- **Kiểm định multicollinearity (VIF)**: không predictor nào VIF>10 (cao
+  nhất ~1,63, do dow dummy) → việc rút 5 lag volume xuống còn 1 lag vẫn
+  đúng đắn.
+- **Kiểm định định danh** (`verify_abnormal_return.py`): abnormal return +
+  expected return khớp với `daily_return`, sai lệch ~1e-18 (chỉ do làm
+  tròn float) → cách tính đúng.
+
+**Volume — xác nhận lại chính xác cả 2 vòng kiểm định chính**:
+
+1. *Vòng 1 (chưa control xu hướng)*:
+   sentiment lag1 → volume ngày kế tiếp dương ở cả 4 phương pháp (hệ số
+   0,0094-0,0121), có ý nghĩa (p<0,02) ở đúng **2/4 phương pháp**: Cách 1
+   PMI (p=0,0045) và Cách 2 Intensity (p=0,0165) - PCA_PMI/PCA_Intensity
+   không đạt (p=0,067-0,080). Khớp chính xác kết luận cũ.
+2. *Vòng 2 (year FE + tách khối ngoại/khối nội)*:
+   **Khối ngoại** vẫn không có tín hiệu ở bất kỳ phương pháp nào (p=0,28-0,63,
+   R²=71,9%, so với 72%/0,28-0,63 lần trước - gần như trùng khớp). **Khối
+   nội** lặp lại đúng mẫu hình: có ở PMI/Intensity (p=0,0006 và 0,0021, so
+   với 0,0007/0,0023 lần trước), mất ở PCA (p=0,195 và 0,170).
+
+**Kết luận tổng (không đổi)**: cải tiến lexicon không tạo tín hiệu dự báo
+lợi suất mới; tín hiệu volume (khối nội, PMI/Intensity) vẫn sống sau khi
+kiểm soát year FE và tách khối ngoại/nội, nhưng vẫn chỉ 2/4 phương pháp đạt
+chuẩn nhất quán - chưa đủ để kết luận chắc chắn, cần thêm dữ liệu hoặc góc
+kiểm định khác trước khi coi đây là phát hiện chính thức.
+
+{{< pagebreak >}}
+
+## 6. Hạn chế đã biết & việc đang chờ
+
+1. 5 category còn lại (uncertainty/litigious/strong_modal/weak_modal/
    constraining) chưa được đưa vào luật gán nhãn 3 lớp ở cả 2 phần — có thể
    là tín hiệu bổ sung hữu ích nhưng chưa thử nghiệm.
-3. SentProp (embedding-based) chưa triển khai — hướng tiềm năng nếu Phần
-   1/2 hiện tại chưa đủ tốt khi có ground truth lớn.
-4. Các hệ số cụ thể ở Phần 2 (base_weight theo vòng, hệ số nhấn mạnh) là
+2. SentProp (embedding-based, Hamilton/Clark/Leskovec/Jurafsky 2016) chưa
+   triển khai — hướng tiềm năng nếu Phần 1/2 hiện tại chưa đủ tốt khi có
+   ground truth lớn (cần train embedding riêng trên corpus).
+3. Các hệ số cụ thể ở Phần 2 (base_weight theo vòng, hệ số nhấn mạnh) là
    quy tắc tự thiết kế, không phải do người/chuyên gia chấm độc lập từng từ
-   như VADER gốc — dù đã tune/holdout xác nhận không cải thiện được thêm
-   (mục 6), vẫn chưa được đánh giá bởi con người độc lập.
-
-## 6. Cải tiến mới (sau khi mở rộng ground truth + sửa bug)
-
-**Bug đã sửa - `ngram_n` tính sai khiến 209 term (12,1%) không bao giờ
-khớp**: `build_weighted_dictionary.py` và `build_intensity_dictionary.py`
-tính `ngram_n = term.count(" ") + 1` — đếm DẤU CÁCH, nhưng seed nối từ ghép
-bằng GẠCH DƯỚI theo quy ước VNCoreNLP. Với cụm KHÔNG phải compound thật của
-VNCoreNLP (VD `tăng_mạnh`, `giảm_mạnh`, `có_lãi`, `nợ_xấu` — tokenizer luôn
-tách thành 2 token rời, không gộp), bug gán nhầm `ngram_n=1`, term không
-bao giờ khớp được. Đã sửa bằng cách kiểm tra thật với tập token của corpus.
-Kết quả (chỉ sửa bug, không thêm/bớt từ nào): term "chết" giảm 209→141,
-Neutral_no_match/toàn corpus giảm 44,1%→37-41%, accuracy out-of-sample tăng
-~1,6-2,5 điểm %.
-
-**Ground truth mở rộng 152 → 599 bài**: `ground_truth_combined.csv` =
-`ground_truth_labeled.csv` (152) + `ground_truth_news.csv` (447), xác nhận
-0 trùng `source_row_id`. Chia cố định **Tune 419 / Holdout 180** (stratified
-theo sentiment, `random_state=42`, `data/ground_truth_tune_holdout_split.csv`).
-
-**Tune/holdout cho toàn bộ tham số từng bị chọn in-sample trên 152 bài**:
-mọi tham số dưới đây được chọn trên Tune, xác nhận lại trên Holdout (chưa
-từng xem lúc chọn):
-
-| Tham số | Tốt nhất trên Tune | Trên Holdout (tốt nhất vs hiện tại) | Kết luận |
-|---|---|---|---|
-| `negation_window` — Cách 1 | window=10 (61,6%) | 58,3% vs **58,9%** (window=4) | Giữ =4 |
-| `negation_window` — Cách 2 | window=10 (61,6%) | 57,8% vs **58,9%** (window=4) | Giữ =4 |
-| 125 tổ hợp hệ số — Cách 2 | production/marker=0/scale=0 (61,1%) | 55,6% = **55,6%** (bằng nhau) | Giữ production |
-| `margin` (Neutral) — Cách 1 | 0,0037 (64,2%) | 57,2% vs **58,9%** (margin=0) | Giữ =0 |
-| `margin` (Neutral) — Cách 2 | 0,0324 (64,2%) | 57,2% vs **58,9%** (margin=0) | Giữ =0 |
-
-Cả 5 lần đều cho cùng 1 mẫu hình: tham số "đẹp trên Tune" luôn MẤT ĐIỂM
-trên Holdout — bằng chứng thực nghiệm nhiều lần cho đúng cảnh báo in-sample
-của mentor. Không tham số nào trong 5 tham số này cần đổi.
-
-**Longest-match vs khớp chồng lấn — khác với 5 kết quả trên**: test lại
-khớp chồng lấn (đếm cả n-gram ngắn lẫn n-gram dài hơn chứa nó, VD vừa đếm
-`nghĩa_vụ` vừa đếm `nghĩa_vụ công_bố`) cho: Tune gần ngang nhau (60,9% vs
-61,1%), nhưng Holdout khớp chồng lấn **thắng rõ cả 2 phương pháp** (60,6%
-vs 58,9%, macro-F1 tăng 0,576→0,600) — khác hẳn 5 tham số trên (luôn thua
-trên Holdout). Thống kê: 1211/1345 cặp term chồng nhau trong dictionary là
-CÙNG category — có thể lý giải vì sao chồng lấn hoạt động như 1 dạng khuếch
-đại tín hiệu thay vì chỉ gây nhiễu, dù về lý thuyết nghe giống "đếm trùng".
-**CHƯA đổi production** — Holdout 180 bài, sai số chuẩn accuracy ~±7 điểm
-%, tín hiệu đáng chú ý (nhất quán đúng hướng như phát hiện cũ trên 152 bài)
-nhưng chưa phải bằng chứng dứt khoát, cần thêm ground truth.
-
-**Chẩn đoán Neutral mập mờ (mentor điểm 7)**: tách `Neutral_balanced` (2
-điểm khác 0, bằng nhau) vs `Neutral_no_match` (cả 2 điểm = 0, không khớp
-từ nào). Trong số bài bị gán Neutral: **96% là Neutral_no_match**, chỉ 4%
-thực sự "2 tín hiệu cân bằng". `Neutral_no_match` đúng thật Neutral 72,5%
-— tức ~27,5% bài không khớp được từ nào thực ra là Positive/Negative bị bỏ
-sót. Đào sâu nguyên nhân (`diagnose_missing_terms.py`): phần lớn bài còn
-lại là **tin công bố sự kiện thuần túy** (trả cổ tức, lãnh đạo/cổ đông lớn
-đăng ký mua/bán cổ phiếu...) — sentiment suy ra từ KIẾN THỨC TÀI CHÍNH,
-không nằm ở từ ngữ trong bài → giới hạn cấu trúc thật của lexicon, không
-phải do thiếu từ. Ứng viên từ đào được (`cổ_đông`, `bán`, `mua`,
-`đăng_ký`...) đều là danh từ thực thể/động từ giao dịch trung tính — thêm
-vào có rủi ro lặp lại lỗi over-predict như `tăng`/`giảm`.
-
-**Từ vựng chỉ theo đúng hướng LM**: toàn bộ seed gốc dịch thẳng từ LM,
-bootstrap PMI chỉ mở rộng cụm 2-3 từ trong đúng 7 category đó — chưa thử
-nghiệm hướng khác (VD embedding-based SentProp, hoặc mở rộng unigram bằng
-thuật toán thay vì chỉ tay). Bootstrap PMI cũng đã bão hòa rõ rệt (số term
-duyệt được mỗi vòng: 625→513→127→32) — chạy thêm vòng 5 khó tìm được nhiều
-từ mới, không ưu tiên.
-
-## 7. Kiểm định ở cấp chỉ số ngày/tuần (News_Vnindex/) — chạy lại với lexicon đã sửa bug
-
-Sau khi dictionary được sửa (mục 6), chạy lại toàn bộ pipeline
-sentiment-index → merge VN-Index → hồi quy dự báo (`News_Vnindex/`) để xem
-cải tiến ở cấp bài báo có tạo ra tín hiệu dự báo thị trường không. Test trên
-**4 cách tính sentiment độc lập** (Cách 1 PMI, Cách 2 Intensity, PCA_PMI,
-PCA_Intensity) - chỉ coi 1 phát hiện là đáng tin nếu nhất quán ở **cả 4**.
-
-**Lợi suất (return) - không đổi kết luận cũ**: daily R²=1,41% (trước
-1,36%), F-test sentiment p=0,106 (trước 0,19) - vẫn không có ý nghĩa thống
-kê. Lag4 "có tín hiệu" ở PMI/Intensity nhưng mất ở PCA (daily); weekly thì
-ngược lại - PMI/Intensity gần ngưỡng 10% nhưng PCA không có gì. Kết luận
-giữ nguyên: **không có bằng chứng dự báo lợi suất vững qua cả 4 phương
-pháp**, giới hạn nằm ở khả năng dự báo vốn dĩ rất thấp của lợi suất
-VN-Index (thị trường gần hiệu quả), không phải do chất lượng lexicon.
-
-**Volume (khối lượng giao dịch) - phát hiện ban đầu hấp dẫn nhưng không
-trụ được qua kiểm định chặt hơn**: lấy cảm hứng từ target thứ 2 của Tetlock
-(2007) (pessimism dự báo được volume, dù dự báo return kém) - **chưa từng
-test trong project trước đây**.
-
-1. *Vòng 1 (chưa control xu hướng)*: sentiment lag gần nhất → volume ngày
-   kế tiếp dương ở **cả 4 phương pháp** (hệ số 0,009-0,012), 2/4 có ý nghĩa
-   (p<0,02). Test cả bản "volume cùng ngày" (dùng lag quá khứ) lẫn "volume
-   tương lai" (dùng sentiment hôm nay) - 2 khung cho kết quả gần như giống
-   hệt nhau, xác nhận không phải data leakage.
-2. *Vòng 2 (thêm year fixed effect)*: `log_vol_total` có tương quan RẤT
-   MẠNH với thời gian (corr=0,93 - thị trường VN tăng trưởng volume tự
-   nhiên qua 14 năm), `sentiment_index_z` cũng trôi nhẹ theo năm (corr=0,34)
-   - 5 lag (5 ngày) không đủ hấp thụ xu hướng nhiều năm. Sau khi thêm 14
-   year-dummy: tín hiệu **chỉ còn sống ở Cách 1 PMI (p=0,0096) và Cách 2
-   Intensity (p=0,0266)**, **mất hẳn ở PCA_PMI/PCA_Intensity** (p=0,30 và
-   0,26) - không đạt chuẩn nhất quán 4 phương pháp.
-3. *Vòng 3 (tách khối ngoại/khối nội)*: dữ liệu gốc
-   (`data_Histo/vnindex_eda_output.csv`) có sẵn `buy_vol_foreign`/
-   `sell_vol_foreign` nhưng chưa từng được đưa vào pipeline - đã bổ sung.
-   **Khối ngoại**: không có tín hiệu ở bất kỳ phương pháp nào (p=0,28-0,63,
-   R²=72%). **Khối nội**: lặp lại đúng mẫu hình vòng 2 (có ở PMI/Intensity,
-   p=0,0007 và 0,0023; mất ở PCA, p=0,19 và 0,17). Diễn giải hợp lý: corpus
-   tin tức (88% từ vietstock.vn, tiếng Việt, cấp doanh nghiệp) có thể ảnh
-   hưởng nhà đầu tư cá nhân trong nước nhiều hơn tổ chức nước ngoài - nhưng
-   **vẫn chưa đủ chuẩn robust** (chỉ 2/4 phương pháp), nên đây là quan sát
-   đáng ghi nhận chứ chưa phải kết luận chắc chắn.
-
-**Bug dữ liệu phát hiện dọc đường**: `build_vnindex_daily_abnormal_return.py`
-có 1 tên cột (`future_abnormal_ar1_ret_1d`) bị chèn ~2000 ký tự văn bản
-quảng cáo không rõ nguồn gốc vào giữa chuỗi (không phải lỗi cú pháp nên
-script vẫn chạy được, chỉ tạo ra tên cột sai) - đã sửa, không ảnh hưởng đến
-các kết luận trên (cột lỗi không được dùng trong hồi quy chính).
-
-**Kết luận tổng**: cải tiến lexicon (mục 6) không tạo ra tín hiệu dự báo
-lợi suất mới. Volume ban đầu trông hứa hẹn hơn (nhất quán ở cả 4 phương
-pháp) nhưng thu hẹp đáng kể sau khi kiểm soát đúng xu hướng thời gian -
-cuối cùng cũng không đạt chuẩn nhất quán 4 phương pháp đã áp dụng xuyên
-suốt project.
+   như VADER gốc
