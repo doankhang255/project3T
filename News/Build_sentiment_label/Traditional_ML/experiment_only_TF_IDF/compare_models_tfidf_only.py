@@ -19,6 +19,10 @@ M2.2  Repeated stratified 5-fold CV -> mean +/- std over ``--repeats`` runs,
 M2.3  McNemar's test between every model pair on the out-of-fold predictions
       -> is model A really better than model B, or is it the split?
 M2.4  Bootstrap 95% CI on macro-F1 and on every pairwise delta(macro-F1).
+M2.5  Nadeau & Bengio (2003) corrected-variance CI - parametric counterpart
+      to M2.4, correcting for the fold overlap across repeats instead of
+      resampling rows. Can only widen a CI, never narrow it; flags any pair
+      where that widening flips M2.4's "reliably different" verdict.
 """
 
 from __future__ import annotations
@@ -45,6 +49,10 @@ from News.Build_sentiment_label.Traditional_ML.Common.bootstrap import (
     two_sided_p,
 )
 from News.Build_sentiment_label.Traditional_ML.Common.mcnemar import mcnemar_test
+from News.Build_sentiment_label.Traditional_ML.Common.nadeau_bengio import (
+    nadeau_bengio_ci,
+    nadeau_bengio_paired_test,
+)
 from News.Build_sentiment_label.Traditional_ML.Common.model_factories import (
     MODEL_FACTORIES,
     SINGLE_RUN_REFERENCE,
@@ -143,9 +151,48 @@ def bootstrap_delta_pairwise(
     return pd.DataFrame(rows)
 
 
+def nadeau_bengio_pairwise(
+    model_names: list[str],
+    y: np.ndarray,
+    oof_by_model: dict[str, np.ndarray],
+) -> pd.DataFrame:
+    """Corrected resampled paired t-test (Nadeau & Bengio 2003) for every
+    model pair - the parametric counterpart to ``bootstrap_delta_pairwise``.
+    Iterates model pairs in the same order as ``bootstrap_delta_pairwise`` /
+    ``mcnemar_pairwise`` (nested loop over the same ``model_names`` list) so
+    rows line up positionally with ``boot_delta_df`` in ``render_report``.
+    """
+    rows = []
+    for first_index in range(len(model_names)):
+        for second_index in range(first_index + 1, len(model_names)):
+            model_a = model_names[first_index]
+            model_b = model_names[second_index]
+            result = nadeau_bengio_paired_test(
+                y, oof_by_model[model_a], oof_by_model[model_b]
+            )
+            rows.append(
+                {
+                    "model_a": model_a,
+                    "model_b": model_b,
+                    "delta_macro_f1": result["mean_delta"],
+                    "naive_ci_low": result["naive_ci"][0],
+                    "naive_ci_high": result["naive_ci"][1],
+                    "corrected_ci_low": result["corrected_ci"][0],
+                    "corrected_ci_high": result["corrected_ci"][1],
+                    "corrected_p": result["corrected_p"],
+                    "corrected_crosses_zero": result["corrected_crosses_zero"],
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _fmt_mean_std(mean_std: tuple[float, float]) -> str:
     mean, std = mean_std
     return f"{mean:.3f} +/- {std:.3f}"
+
+
+def _fmt_ci(low: float, high: float) -> str:
+    return f"[{low:+.3f}, {high:+.3f}]"
 
 
 def render_report(
@@ -158,6 +205,8 @@ def render_report(
     n_repeats: int,
     n_boot: int,
     label_counts: dict[str, int],
+    nb_ci_by_model: dict[str, dict],
+    nb_pairwise_df: pd.DataFrame,
 ) -> str:
     lines: list[str] = []
     add = lines.append
@@ -302,6 +351,46 @@ def render_report(
     add("  metric. CI straddling 0 -> gap not distinguishable from split noise.")
     add("")
 
+    add("M2.5  NADEAU-BENGIO CORRECTED VARIANCE  (parametric counterpart to M2.4)")
+    add("-" * 68)
+    add(f"  {'model':<20}{'mean':>8}{'naive 95% CI':>20}{'corrected 95% CI':>24}{'widen x':>10}")
+    for name in ranked:
+        result = nb_ci_by_model[name]
+        add(
+            f"  {name:<20}{result['mean']:>8.3f}"
+            f"{_fmt_ci(*result['naive_ci']):>20}"
+            f"{_fmt_ci(*result['corrected_ci']):>24}"
+            f"{result['widen_factor']:>10.2f}"
+        )
+    add("")
+    add(f"  {'pair':<40}{'delta':>9}  {'corrected 95% CI':<22}{'corrected p':>12}")
+    for row in nb_pairwise_df.itertuples(index=False):
+        pair = f"{row.model_a} vs {row.model_b}"
+        ci_text = _fmt_ci(row.corrected_ci_low, row.corrected_ci_high)
+        add(
+            f"  {pair:<40}{row.delta_macro_f1:>+9.3f}  {ci_text:<22}"
+            f"{row.corrected_p:>12.3f}"
+            f"{'   overlaps 0' if row.corrected_crosses_zero else '   EXCLUDES 0'}"
+        )
+    add("")
+    add("  Corrects the naive repeated-CV std for fold overlap across repeats")
+    add("  (Nadeau & Bengio 2003) - only widens CIs, never narrows them, and")
+    add("  never moves the point estimate. Flags below if this widening changes")
+    add("  the M2.4 bootstrap verdict for any pair.")
+    boot_key = boot_delta_df.set_index(["model_a", "model_b"])["crosses_zero"]
+    nb_key = nb_pairwise_df.set_index(["model_a", "model_b"])["corrected_crosses_zero"]
+    flips = [
+        pair
+        for pair in boot_key.index
+        if pair in nb_key.index and not boot_key[pair] and nb_key[pair]
+    ]
+    if flips:
+        pairs = ", ".join(f"{a} vs {b}" for a, b in flips)
+        add(f"  Correction FLIPS M2.4 (bootstrap: real gap -> Nadeau-Bengio: noise) for: {pairs}.")
+    else:
+        add("  No pair flips from 'real gap' (M2.4) to 'noise' under this correction.")
+    add("")
+
     add("READ")
     add("-" * 68)
     best = ranked[0]
@@ -439,6 +528,11 @@ def main() -> None:
         list(args.models), boot_sample_by_model, boot_point_by_model
     )
 
+    nb_ci_by_model = {
+        name: nadeau_bengio_ci(np.asarray(y), oof_by_model[name]) for name in args.models
+    }
+    nb_pairwise_df = nadeau_bengio_pairwise(list(args.models), np.asarray(y), oof_by_model)
+
     data_dir.mkdir(parents=True, exist_ok=True)
     per_repeat_all = pd.concat(per_repeat_by_model.values(), ignore_index=True)
     per_repeat_all.to_csv(
@@ -475,6 +569,25 @@ def main() -> None:
         data_dir / "bootstrap_delta.csv", index=False, encoding="utf-8-sig"
     )
 
+    nb_ci_rows = [
+        {
+            "model": name,
+            "mean_macro_f1": result["mean"],
+            "naive_ci_low": result["naive_ci"][0],
+            "naive_ci_high": result["naive_ci"][1],
+            "corrected_ci_low": result["corrected_ci"][0],
+            "corrected_ci_high": result["corrected_ci"][1],
+            "widen_factor": result["widen_factor"],
+        }
+        for name, result in nb_ci_by_model.items()
+    ]
+    pd.DataFrame(nb_ci_rows).to_csv(
+        data_dir / "nadeau_bengio_ci.csv", index=False, encoding="utf-8-sig"
+    )
+    nb_pairwise_df.to_csv(
+        data_dir / "nadeau_bengio_pairwise.csv", index=False, encoding="utf-8-sig"
+    )
+
     report = render_report(
         summary_by_model,
         per_repeat_by_model,
@@ -485,6 +598,8 @@ def main() -> None:
         args.repeats,
         args.n_boot,
         label_counts,
+        nb_ci_by_model,
+        nb_pairwise_df,
     )
     results_path.write_text(report + "\n", encoding="utf-8")
     print("\n" + report)
@@ -495,6 +610,8 @@ def main() -> None:
         "mcnemar_pairwise.csv",
         "bootstrap_macro_f1_ci.csv",
         "bootstrap_delta.csv",
+        "nadeau_bengio_ci.csv",
+        "nadeau_bengio_pairwise.csv",
     ):
         print(f"         {data_dir / csv_name}")
 

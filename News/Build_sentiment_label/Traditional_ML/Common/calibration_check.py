@@ -13,6 +13,26 @@ Compares, on the SAME leak-free 5-fold CV (``model/common.run_cross_validation``
   SVM  softmax   - MarginSoftmaxSVC: softmax(decision_function), no fitted
                    calibration (new production default)
 
+The four variants above all run on plain TF-IDF features. But the isotonic
+vs. raw decision for Random Forest is also the actual production default in
+``model/random_forest.py::build_estimator``, and production Random Forest
+runs with the +lexicon feature block hstacked on (see
+``experiment_Lexicon_features/run_model.py``) - random_forest being the only
+model among the 3 lexicon-eligible ones (logistic_regression, random_forest,
+svm) that showed a reliable, replicated improvement from adding lexicon
+features (see IMPROVEMENTS.md section A). The 4 variants above never
+exercise that feature space, so the calibration decision was previously
+validated only on TF-IDF-only features. Two more variants close that gap
+(same fix already applied to the leak check in ``sanity_checks.py``, mirrored
+here for calibration quality):
+
+  RF   raw_lexicon      - build_rf_raw on TF-IDF + lexicon feature block
+  RF   isotonic_lexicon - build_rf_isotonic on TF-IDF + lexicon feature block
+
+(SVM has no lexicon variant here: SVM+lexicon was never promoted to
+production, so its calibration quality on that unused path isn't a
+production concern.)
+
 Two measures per variant, both on the out-of-fold probabilities (never the
 resubstitution predictions):
 
@@ -53,6 +73,9 @@ from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     load_ground_truth_frame,
     run_cross_validation,
 )
+from News.Build_sentiment_label.Traditional_ML.Common.model.lexicon_features import (
+    build_lexicon_feature_matrix,
+)
 from News.Build_sentiment_label.Traditional_ML.Common.model.random_forest import (
     build_base_random_forest,
     build_estimator as build_rf_isotonic,
@@ -80,9 +103,16 @@ def build_svm_platt(random_state: int) -> CalibratedClassifierCV:
 VARIANTS = {
     "rf_raw": build_rf_raw,
     "rf_isotonic": build_rf_isotonic,
+    "rf_raw_lexicon": build_rf_raw,
+    "rf_isotonic_lexicon": build_rf_isotonic,
     "svm_platt": build_svm_platt,
     "svm_softmax": build_svm_softmax,
 }
+
+# Variant names that run on TF-IDF + lexicon feature block instead of plain
+# TF-IDF - same factories as their non-"_lexicon" counterparts, only the
+# extra_features passed to run_cross_validation differs (see main()).
+USES_LEXICON = {"rf_raw_lexicon", "rf_isotonic_lexicon"}
 
 
 def brier_score(y_true: np.ndarray, probabilities: np.ndarray, n_labels: int = 3) -> float:
@@ -149,12 +179,16 @@ def main() -> None:
     term_counts = build_document_term_counts(df)
     y = encode_labels(df["ground_truth_label"])
     stopwords = load_stopword_set()
+    lexicon_matrix = build_lexicon_feature_matrix(df["Tokenize_content"].tolist())
     label_counts = df["ground_truth_label"].value_counts().to_dict()
     print(f"Ground truth: {len(df)} rows {label_counts}")
 
     lines: list[str] = []
     add = lines.append
-    add("CALIBRATION CHECK - RF (raw vs isotonic) / SVM (Platt vs softmax)")
+    add(
+        "CALIBRATION CHECK - RF (raw vs isotonic, TF-IDF and +lexicon) / "
+        "SVM (Platt vs softmax)"
+    )
     add("=" * 68)
     add("")
     add(f"Ground truth: {len(df)} rows {label_counts}")
@@ -171,8 +205,9 @@ def main() -> None:
     summary_rows = []
     for name, factory in VARIANTS.items():
         print(f"\n[{name}] 5-fold CV ...", flush=True)
+        extra_features = lexicon_matrix if name in USES_LEXICON else None
         probabilities, predictions, _fold_of_row = run_cross_validation(
-            factory, term_counts, y, stopwords
+            factory, term_counts, y, stopwords, extra_features=extra_features
         )
         metrics = compute_metrics(y, predictions)
         macro_f1 = float(metrics.loc[metrics["metric_scope"].eq("overall"), "f1"].iloc[0])
@@ -198,6 +233,7 @@ def main() -> None:
     add("")
     for model_name, raw_name, cal_name in (
         ("random_forest", "rf_raw", "rf_isotonic"),
+        ("random_forest_lexicon", "rf_raw_lexicon", "rf_isotonic_lexicon"),
         ("svm", "svm_platt", "svm_softmax"),
     ):
         raw_row = summary_df.set_index("variant").loc[raw_name]

@@ -1,8 +1,8 @@
 """Shared model-factory registry, reused by every comparison/tuning script
 (experiment_only_TF_IDF/, experiment_Lexicon_features/, sanity_checks.py,
-run_nadeau_bengio.py, tune_hyperparameters.py) so the set of models being
-compared - and their exact ``build_estimator`` - is defined in exactly one
-place, not re-declared per script.
+tune_hyperparameters.py) so the set of models being compared - and their
+exact ``build_estimator`` - is defined in exactly one place, not
+re-declared per script.
 """
 
 from __future__ import annotations
@@ -50,9 +50,9 @@ def build_complement_nb(random_state: int) -> ComplementNB:
 # TF-IDF-only factories - none of these pass a lexicon extra_features matrix.
 # random_forest here is deliberately the plain (no-lexicon) variant: this
 # registry is what experiment_only_TF_IDF/ and the general-purpose diagnostics
-# (sanity_checks.py, run_nadeau_bengio.py, tune_hyperparameters.py) compare -
-# the production random_forest+lexicon combination lives in
-# experiment_Lexicon_features/ instead, not here.
+# (sanity_checks.py, tune_hyperparameters.py) compare - the production
+# random_forest+lexicon combination lives in experiment_Lexicon_features/
+# instead, not here.
 MODEL_FACTORIES = {
     "logistic_regression": build_logistic_regression,
     "multinomial_nb": build_multinomial_nb,

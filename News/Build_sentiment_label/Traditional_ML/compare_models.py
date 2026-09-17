@@ -16,6 +16,7 @@ from News.Build_sentiment_label.Traditional_ML.Common.model.common import DATA_D
 MODEL_METRICS_FILES = {
     "logistic_regression": DATA_DIR / "logistic_regression_metrics.csv",
     "naive_bayes": DATA_DIR / "naive_bayes_metrics.csv",
+    "complement_nb": DATA_DIR / "complement_nb_metrics.csv",
     "svm": DATA_DIR / "svm_metrics.csv",
     "random_forest": DATA_DIR / "random_forest_metrics.csv",
     "ensemble": DATA_DIR / "ensemble_metrics.csv",

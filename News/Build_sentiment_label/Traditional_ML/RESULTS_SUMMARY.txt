@@ -56,20 +56,35 @@ top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold va
   true_neutral      58       329      106
   true_positive     62        62      152
 
+--- Complement Naive Bayes (Rennie et al. 2003) ---
+  Class      Precision  Recall   F1
+  negative   0.614      0.692      0.651
+  neutral    0.737      0.653      0.692
+  positive   0.512      0.547      0.529
+  ----------------------------------------
+  Accuracy      : 0.636
+  Macro F1      : 0.624
+
+  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+                 pred_neg  pred_neu  pred_pos
+  true_negative    204        54       37
+  true_neutral      64       322      107
+  true_positive     64        61      151
+
 --- Random Forest (300 trees, isotonic-calibrated, +lexicon features) ---
   Class      Precision  Recall   F1
-  negative   0.661      0.627      0.643
-  neutral    0.709      0.763      0.735
-  positive   0.626      0.576      0.600
+  negative   0.664      0.631      0.647
+  neutral    0.708      0.757      0.731
+  positive   0.623      0.580      0.600
   ----------------------------------------
-  Accuracy      : 0.677
+  Accuracy      : 0.676
   Macro F1      : 0.660
 
   Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    185        75       35
-  true_neutral      57       376       60
-  true_positive     38        79      159
+  true_negative    186        76       33
+  true_neutral      56       373       64
+  true_positive     38        78      160
 
 --- SVM (LinearSVC, C=0.1 tuned, margin-softmax - not a calibrated probability) ---
   Class      Precision  Recall   F1
@@ -88,34 +103,36 @@ top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold va
 
 --- Ensemble (average probability of LR + NB + RF) ---
   Class      Precision  Recall   F1
-  negative   0.652      0.668      0.660
-  neutral    0.726      0.710      0.718
+  negative   0.654      0.668      0.661
+  neutral    0.727      0.712      0.719
   positive   0.554      0.562      0.558
   ----------------------------------------
-  Accuracy      : 0.660
-  Macro F1      : 0.645
+  Accuracy      : 0.661
+  Macro F1      : 0.646
 
   Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
                  pred_neg  pred_neu  pred_pos
   true_negative    197        66       32
-  true_neutral      50       350       93
+  true_neutral      49       351       93
   true_positive     55        66      155
 
 
 3. BẢNG XẾP HẠNG TỔNG HỢP (macro F1)
 ----------------------------------------------------------------
-  1. random_forest          F1 = 0.660   Accuracy = 0.677
-  2. ensemble               F1 = 0.645   Accuracy = 0.660
+  1. random_forest          F1 = 0.660   Accuracy = 0.676
+  2. ensemble               F1 = 0.646   Accuracy = 0.661
   3. logistic_regression    F1 = 0.637   Accuracy = 0.651
-  4. naive_bayes            F1 = 0.621   Accuracy = 0.634
-  5. svm                    F1 = 0.612   Accuracy = 0.631
+  4. complement_nb          F1 = 0.624   Accuracy = 0.636
+  5. naive_bayes            F1 = 0.621   Accuracy = 0.634
+  6. svm                    F1 = 0.612   Accuracy = 0.631
 
 
 4. NHẬN XÉT
 ----------------------------------------------------------------
 - logistic_regression: class yếu nhất = positive (F1 = 0.563, recall = 0.576).
 - naive_bayes: class yếu nhất = positive (F1 = 0.531, recall = 0.551).
-- random_forest: class yếu nhất = positive (F1 = 0.600, recall = 0.576).
+- complement_nb: class yếu nhất = positive (F1 = 0.529, recall = 0.547).
+- random_forest: class yếu nhất = positive (F1 = 0.600, recall = 0.580).
 - svm: class yếu nhất = positive (F1 = 0.527, recall = 0.514).
 - ensemble: class yếu nhất = positive (F1 = 0.558, recall = 0.562).
 - Class 'positive' ít dữ liệu nhất (276/1064) nên thường là class yếu nhất.

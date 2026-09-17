@@ -6,7 +6,7 @@ Steps, stopping on the first failure:
 
 1. Common/prepare_ground_truth.py            - join VNCoreNLP tokens onto the labeled rows
 2. Common/TF_IDF.py                          - whole-corpus TF-IDF artifact (descriptive only)
-3. experiment_only_TF_IDF/run_model.py       - LR/NB/SVM: leak-free 5-fold CV, TF-IDF only
+3. experiment_only_TF_IDF/run_model.py       - LR/NB/ComplementNB/SVM: leak-free 5-fold CV, TF-IDF only
 4. experiment_Lexicon_features/run_model.py  - RF (+lexicon) and the ensemble (RF member +lexicon)
 5. compare_models.py                         - merge per-model metrics + rank by macro F1
 6. RESULTS_SUMMARY.txt                       - regenerated from the fresh CSV outputs
@@ -42,6 +42,7 @@ PIPELINE_STEPS = [
 MODEL_LABELS = {
     "logistic_regression": "Logistic Regression (class_weight=balanced, C=0.1 tuned)",
     "naive_bayes": "Naive Bayes (MultinomialNB)",
+    "complement_nb": "Complement Naive Bayes (Rennie et al. 2003)",
     "random_forest": "Random Forest (300 trees, isotonic-calibrated, +lexicon features)",
     "svm": "SVM (LinearSVC, C=0.1 tuned, margin-softmax - not a calibrated probability)",
     "ensemble": "Ensemble (average probability of LR + NB + RF)",

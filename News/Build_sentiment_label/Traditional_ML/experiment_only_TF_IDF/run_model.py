@@ -1,4 +1,4 @@
-"""Production run: logistic_regression, naive_bayes, svm - TF-IDF only.
+"""Production run: logistic_regression, naive_bayes, complement_nb, svm - TF-IDF only.
 
     python News/Build_sentiment_label/Traditional_ML/experiment_only_TF_IDF/run_model.py
     python .../run_model.py --models svm naive_bayes   # subset
@@ -38,6 +38,7 @@ from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     run_cross_validation,
 )
 from News.Build_sentiment_label.Traditional_ML.Common.model import (
+    complement_nb,
     logistic_regression,
     naive_bayes,
     svm,
@@ -56,6 +57,11 @@ MODEL_SPECS = {
         naive_bayes.build_estimator,
         naive_bayes.build_top_features,
         "Multinomial Naive Bayes",
+    ),
+    "complement_nb": (
+        complement_nb.build_estimator,
+        complement_nb.build_top_features,
+        "Complement Naive Bayes (Rennie et al. 2003, promoted from M2.1 comparison)",
     ),
     "svm": (
         svm.build_estimator,

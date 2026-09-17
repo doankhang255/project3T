@@ -10,7 +10,11 @@ two checks here are deliberately independent of it:
    If the harness is honestly leak-free, macro-F1 on shuffled labels must
    collapse to chance level. If it stays close to the real score, something
    leaks (vocab fit on validation rows, a fold boundary bug, ...) that the
-   "looks correct on paper" checks would not catch.
+   "looks correct on paper" checks would not catch. Run twice: once on plain
+   TF-IDF (naive_bayes), and once on the +lexicon feature path
+   (random_forest with ``extra_features`` set to the lexicon matrix) - that
+   second path has a standardization step (train-fold mean/std) the plain
+   TF-IDF path does not, so it needs its own independent leak check.
 
 2. sklearn_reference_check - a second, completely independent implementation
    (sklearn's own TfidfVectorizer + LogisticRegression + StratifiedKFold,
@@ -53,6 +57,12 @@ from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
 from News.Build_sentiment_label.Traditional_ML.Common.model.naive_bayes import (
     build_estimator as build_naive_bayes,
 )
+from News.Build_sentiment_label.Traditional_ML.Common.model.lexicon_features import (
+    build_lexicon_feature_matrix,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.model.random_forest import (
+    build_estimator as build_random_forest,
+)
 
 DEFAULT_GROUND_TRUTH_CSV = (
     Path(__file__).resolve().parent / "tune_holdout" / "ground_truth_tune.csv"
@@ -72,16 +82,21 @@ def permutation_test(
     stopwords: set[str],
     n_shuffles: int = N_SHUFFLES,
     seed: int = 20260913,
+    extra_features: np.ndarray | None = None,
 ) -> dict:
     y = np.asarray(y, dtype=int)
-    real_predictions = run_single_cv(estimator_factory, term_counts, y, stopwords, fold_seed=0)
+    real_predictions = run_single_cv(
+        estimator_factory, term_counts, y, stopwords, fold_seed=0, extra_features=extra_features
+    )
     real_score = _macro_f1(y, real_predictions)
 
     rng = np.random.default_rng(seed)
     shuffled_scores = np.empty(n_shuffles, dtype=float)
     for i in range(n_shuffles):
         y_shuffled = rng.permutation(y)
-        predictions = run_single_cv(estimator_factory, term_counts, y_shuffled, stopwords, fold_seed=i)
+        predictions = run_single_cv(
+            estimator_factory, term_counts, y_shuffled, stopwords, fold_seed=i, extra_features=extra_features
+        )
         shuffled_scores[i] = _macro_f1(y_shuffled, predictions)
 
     # standard permutation-test p-value: how often does a shuffled run match
@@ -169,6 +184,32 @@ def main() -> None:
         print("  -> real score exceeds EVERY shuffled run: no sign of leakage.")
     else:
         print("  -> WARNING: a shuffled (label-free) run matched or beat the real score.")
+
+    print(f"\n=== 1b. PERMUTATION TEST (random_forest +lexicon, {args.n_shuffles} shuffles) ===")
+    lexicon_matrix = build_lexicon_feature_matrix(frame["Tokenize_content"].tolist())
+    perm_lex = permutation_test(
+        build_random_forest, term_counts, y, stopwords,
+        n_shuffles=args.n_shuffles, extra_features=lexicon_matrix,
+    )
+    print(f"  real macro-F1            : {perm_lex['real_score']:.4f}")
+    print(
+        f"  shuffled-label macro-F1  : {perm_lex['shuffled_mean']:.4f} +/- "
+        f"{perm_lex['shuffled_std']:.4f}  (max over {perm_lex['n_shuffles']} shuffles: "
+        f"{perm_lex['shuffled_max']:.4f})"
+    )
+    gap_in_std_lex = (
+        (perm_lex["real_score"] - perm_lex["shuffled_mean"]) / perm_lex["shuffled_std"]
+        if perm_lex["shuffled_std"] > 0
+        else float("inf")
+    )
+    print(f"  gap                      : {gap_in_std_lex:.1f} std above the shuffled-label mean")
+    print(f"  permutation p-value      : {perm_lex['p_value']:.4f}")
+    if perm_lex["real_score"] > perm_lex["shuffled_max"]:
+        print("  -> real score exceeds EVERY shuffled run: no sign of leakage in the")
+        print("     +lexicon feature path (train-fold z-score standardization included).")
+    else:
+        print("  -> WARNING: a shuffled (label-free) run matched or beat the real score")
+        print("     on the +lexicon path - investigate the extra_features standardization.")
 
     print("\n=== 2. INDEPENDENT sklearn REFERENCE (Pipeline: TfidfVectorizer + LogisticRegression) ===")
     ref = sklearn_reference_check(frame, y)

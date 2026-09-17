@@ -3,8 +3,9 @@ beat the TF-IDF-only baseline? (IMPROVEMENTS.md priority 1; Loughran &
 McDonald 2011, Tetlock 2007.)
 
 Self-contained: imports pure helpers from ``../Common`` (TF-IDF fit/transform,
-the leak-free repeated-CV harness, the bootstrap CI) and adds only the
-lexicon-feature block. Does not edit ``Common/model/*.py`` or
+the leak-free repeated-CV harness, the bootstrap CI, McNemar's test, and the
+Nadeau-Bengio corrected CI) and adds only the lexicon-feature block. Does not
+edit ``Common/model/*.py`` or
 ``Common/model/common.py``. The one change made to shared code
 (``Common/repeated_cv.py``) is an optional ``extra_features`` parameter,
 default ``None`` - every existing caller is unaffected (verified: reproduces
@@ -44,6 +45,10 @@ from News.Build_sentiment_label.Traditional_ML.Common.bootstrap import (
     ci,
     mean_macro_f1,
     two_sided_p,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.mcnemar import mcnemar_test
+from News.Build_sentiment_label.Traditional_ML.Common.nadeau_bengio import (
+    nadeau_bengio_paired_test,
 )
 from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import (
     N_REPEATS,
@@ -97,6 +102,49 @@ def _fmt(mean_std: tuple[float, float]) -> str:
     return f"{mean_std[0]:.3f} +/- {mean_std[1]:.3f}"
 
 
+def mcnemar_delta(
+    model_names: list[str],
+    y: np.ndarray,
+    oof: dict[str, dict[str, np.ndarray]],
+    n_repeats: int,
+) -> pd.DataFrame:
+    """McNemar's test per model, lexicon arm vs baseline arm, on the same
+    rows each repeat - the paired-agreement counterpart to the bootstrap/
+    Nadeau-Bengio delta(macro-F1) above. ``b`` = rows the +lexicon arm gets
+    right and the baseline arm gets wrong; ``c`` = the reverse, so b > c with
+    a small p-value means +lexicon is reliably better on this model.
+    """
+    rows = []
+    for name in model_names:
+        base_oof = oof[name]["baseline"]
+        lex_oof = oof[name]["lexicon"]
+        per_repeat = [
+            mcnemar_test(y, lex_oof[repeat], base_oof[repeat])
+            for repeat in range(n_repeats)
+        ]
+        b_counts = np.array([r["b"] for r in per_repeat])
+        c_counts = np.array([r["c"] for r in per_repeat])
+        p_values = np.array([r["p_value"] for r in per_repeat])
+        pooled = mcnemar_test(
+            np.tile(y, n_repeats), lex_oof.ravel(), base_oof.ravel()
+        )
+        rows.append(
+            {
+                "model": name,
+                "mean_b": float(b_counts.mean()),
+                "mean_c": float(c_counts.mean()),
+                "median_p": float(np.median(p_values)),
+                "sig_repeats": int(np.sum(p_values < 0.05)),
+                "n_repeats": n_repeats,
+                "pooled_b": int(pooled["b"]),
+                "pooled_c": int(pooled["c"]),
+                "pooled_p": float(pooled["p_value"]),
+                "pooled_method": pooled["method"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def render_report(
     ground_truth_csv: Path,
     n_rows: int,
@@ -105,6 +153,8 @@ def render_report(
     n_boot: int,
     summary: dict[str, dict[str, dict[str, tuple[float, float]]]],
     delta_rows: list[dict],
+    mcnemar_df: pd.DataFrame,
+    nb_delta_rows: list[dict],
 ) -> str:
     lines: list[str] = []
     add = lines.append
@@ -165,6 +215,37 @@ def render_report(
     add("  CI straddling 0 -> not distinguishable from split/resample noise.")
     add("")
 
+    add("McNEMAR  -  baseline vs +lexicon, paired per repeat (are the flips real?)")
+    add("-" * 72)
+    add(f"  {'model':<22}{'mean_b':>8}{'mean_c':>8}{'med_p':>8}{'sig/N':>8}{'pool_p':>9}")
+    for row in mcnemar_df.itertuples(index=False):
+        add(
+            f"  {row.model:<22}{row.mean_b:>8.1f}{row.mean_c:>8.1f}"
+            f"{row.median_p:>8.3f}{f'{row.sig_repeats}/{row.n_repeats}':>8}"
+            f"{row.pooled_p:>9.3f}"
+        )
+    add("")
+    add("  mean_b = rows +lexicon right & baseline wrong (averaged over repeats);")
+    add("  mean_c = the reverse. sig/N = repeats with p < 0.05 out of N; pool_p pools")
+    add("  all repeats (optimistic - repeats are not independent, see Nadeau-Bengio below).")
+    add("")
+
+    add("NADEAU-BENGIO CORRECTED  -  parametric counterpart to the bootstrap above")
+    add("-" * 72)
+    add(f"  {'model':<22}{'delta':>9}  {'corrected 95% CI':<24}{'corrected p':>12}  verdict")
+    for row in nb_delta_rows:
+        ci_text = f"[{row['corrected_ci_low']:+.3f}, {row['corrected_ci_high']:+.3f}]"
+        verdict = "EXCLUDES 0" if not row["corrected_crosses_zero"] else "overlaps 0"
+        add(
+            f"  {row['model']:<22}{row['delta_macro_f1']:>+9.3f}  {ci_text:<24}"
+            f"{row['corrected_p']:>12.3f}  {verdict}"
+        )
+    add("")
+    add("  Corrects for fold non-independence across CV repeats (Nadeau & Bengio")
+    add("  2003); the bootstrap above instead resamples rows. Two different ways")
+    add("  to ask the same question - point estimates match, only the CI differs.")
+    add("")
+
     add("READ")
     add("-" * 72)
     helped = [row["model"] for row in delta_rows if not row["crosses_zero"] and row["delta"] > 0]
@@ -176,6 +257,15 @@ def render_report(
     if not helped and not hurt:
         add("  No model shows a reliable change - lexicon features are not distinguishable")
         add("  from noise here. Do not promote into Common/model/*.py yet.")
+    nb_helped = {row["model"] for row in nb_delta_rows if not row["corrected_crosses_zero"] and row["delta_macro_f1"] > 0}
+    nb_hurt = {row["model"] for row in nb_delta_rows if not row["corrected_crosses_zero"] and row["delta_macro_f1"] < 0}
+    bootstrap_reliable = set(helped) | set(hurt)
+    nb_reliable = nb_helped | nb_hurt
+    flips = bootstrap_reliable - nb_reliable
+    if flips:
+        add(f"  Nadeau-Bengio correction flips to 'noise' for: {', '.join(sorted(flips))}.")
+    elif bootstrap_reliable:
+        add("  Nadeau-Bengio correction agrees with the bootstrap verdict above for every model.")
     add(
         "  This ran on the TUNE split only. If promoting, re-check once on the "
         "HOLDOUT split (../Common/tune_holdout.py) - exactly once, not iteratively."
@@ -263,6 +353,26 @@ def main() -> None:
             }
         )
 
+    mcnemar_df = mcnemar_delta(list(MODEL_FACTORIES), np.asarray(y), oof, args.repeats)
+
+    nb_delta_rows: list[dict] = []
+    for name in MODEL_FACTORIES:
+        result = nadeau_bengio_paired_test(
+            np.asarray(y), oof[name]["lexicon"], oof[name]["baseline"]
+        )
+        nb_delta_rows.append(
+            {
+                "model": name,
+                "delta_macro_f1": result["mean_delta"],
+                "naive_ci_low": result["naive_ci"][0],
+                "naive_ci_high": result["naive_ci"][1],
+                "corrected_ci_low": result["corrected_ci"][0],
+                "corrected_ci_high": result["corrected_ci"][1],
+                "corrected_p": result["corrected_p"],
+                "corrected_crosses_zero": result["corrected_crosses_zero"],
+            }
+        )
+
     data_dir.mkdir(parents=True, exist_ok=True)
     pd.concat(per_repeat_frames, ignore_index=True).to_csv(
         data_dir / "per_repeat.csv", index=False, encoding="utf-8-sig"
@@ -270,6 +380,10 @@ def main() -> None:
     pd.DataFrame(delta_rows).to_csv(
         data_dir / "bootstrap_delta.csv", index=False, encoding="utf-8-sig"
     )
+    pd.DataFrame(nb_delta_rows).to_csv(
+        data_dir / "nadeau_bengio_delta.csv", index=False, encoding="utf-8-sig"
+    )
+    mcnemar_df.to_csv(data_dir / "mcnemar_delta.csv", index=False, encoding="utf-8-sig")
 
     report = render_report(
         args.ground_truth_csv,
@@ -279,12 +393,16 @@ def main() -> None:
         args.n_boot,
         summary,
         delta_rows,
+        mcnemar_df,
+        nb_delta_rows,
     )
     results_path.write_text(report + "\n", encoding="utf-8")
     print("\n" + report)
     print(f"\nWritten: {results_path}")
     print(f"         {data_dir / 'per_repeat.csv'}")
     print(f"         {data_dir / 'bootstrap_delta.csv'}")
+    print(f"         {data_dir / 'mcnemar_delta.csv'}")
+    print(f"         {data_dir / 'nadeau_bengio_delta.csv'}")
 
 
 if __name__ == "__main__":
