@@ -37,7 +37,7 @@ format:
 | Toàn bộ 1.064 bài | 62,4% |
 | Chỉ tập Holdout (320 bài, khách quan nhất) | 65,3% |
 
-## 3. So sánh tổng hợp Phần 1 vs Phần 2 (xem mục 4)
+## 3. So sánh tổng hợp Phần 1 vs Phần 2
 
 | | Phần 1 (PMI) | Phần 2 (nội tại) |
 |---|---:|---:|
@@ -62,7 +62,7 @@ càng rõ hơn khi ground truth lớn hơn.
 **Xác nhận lại các chẩn đoán trước đó, trên dictionary/corpus build lại
 HOÀN TOÀN từ đầu (không phải đọc lại file cũ)**:
 
-## 5. VN-Index (`News_Vnindex/`)
+## 4. VN-Index 
 
 Test trên cùng **4 cách tính sentiment** (PMI, Intensity, PCA_PMI,
 PCA_Intensity) - chỉ coi 1 phát hiện là đáng tin nếu nhất quán ở cả 4, đúng
@@ -135,7 +135,7 @@ kiểm định khác trước khi coi đây là phát hiện chính thức.
 
 {{< pagebreak >}}
 
-## 6. Hạn chế đã biết & việc đang chờ
+## 5. Hạn chế đã biết & việc đang chờ
 
 1. 5 category còn lại (uncertainty/litigious/strong_modal/weak_modal/
    constraining) chưa được đưa vào luật gán nhãn 3 lớp ở cả 2 phần — có thể
