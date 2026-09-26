@@ -27,8 +27,13 @@ VNCORENLP_TOKENIZED_PATH = (
 )
 SOURCE_ROW_ID_COLUMN = "source_row_id"
 TOKENIZED_COLUMN = "Tokenize_content"
+# List-of-lists: outer = sentences in the article, inner = tokens in the
+# sentence - same column pretrain/domain_adaptive_pretrain.py packs into MLM
+# blocks with, reused here to chunk one article at a time for classification
+# (see chunk_sentences_into_windows below) instead of silently truncating it.
+SENTENCES_COLUMN = "Tokenize_content_sentences"
 
-# Same Tune(744)/Holdout(320) partition of ground_truth_combined.csv that
+# Same Tune(730)/Holdout(314) partition of ground_truth_combined.csv that
 # Traditional_ML's mentor-plan mục A work uses (built by its
 # improve/build_tune_holdout_split.py), joined by source_row_id. Reusing it
 # here means PhoBERT-based methods and the sklearn baselines are ever
@@ -110,7 +115,7 @@ def load_ground_truth(path: Path = GROUND_TRUTH_PATH) -> pd.DataFrame:
         raise ValueError("No valid labels found in ground truth file.")
 
     corpus = pd.read_parquet(
-        VNCORENLP_TOKENIZED_PATH, columns=["title", TOKENIZED_COLUMN]
+        VNCORENLP_TOKENIZED_PATH, columns=["title", TOKENIZED_COLUMN, SENTENCES_COLUMN]
     )
     row_ids = out[SOURCE_ROW_ID_COLUMN].to_numpy()
     if ((row_ids < 0) | (row_ids >= len(corpus))).any():
@@ -133,6 +138,11 @@ def load_ground_truth(path: Path = GROUND_TRUTH_PATH) -> pd.DataFrame:
         " ".join(str(token) for token in tokens if str(token).strip())
         for tokens in corpus_rows[TOKENIZED_COLUMN]
     ]
+    # Kept alongside the flat TEXT_COLUMN so training/scoring code can chunk a
+    # long article into <=MAX_LENGTH-token windows (chunk_sentences_into_windows)
+    # instead of truncating it - see pretrain/domain_adaptive_pretrain.py for
+    # the same column used to pack MLM blocks.
+    out[SENTENCES_COLUMN] = list(corpus_rows[SENTENCES_COLUMN])
     out = out.loc[out[TEXT_COLUMN].str.len().gt(0)].reset_index(drop=True)
     if out.empty:
         raise ValueError("No non-empty article text left after joining VNCoreNLP tokens.")
@@ -172,6 +182,112 @@ def load_ground_truth_tune_holdout() -> tuple[pd.DataFrame, pd.DataFrame]:
             "it on the Traditional_ML side first."
         )
     return tune_df, holdout_df
+
+
+def build_sentence_strings(sentences) -> list[str]:
+    """One article's ``Tokenize_content_sentences`` value -> list of
+    space-joined sentence strings (VNCoreNLP tokens), dropping empty
+    sentences. Same cleanup pretrain/domain_adaptive_pretrain.py's
+    ``load_corpus_sentences`` does per article."""
+    if sentences is None:
+        return []
+    cleaned = []
+    for sentence in sentences:
+        tokens = [str(token) for token in sentence if str(token).strip()]
+        if tokens:
+            cleaned.append(" ".join(tokens))
+    return cleaned
+
+
+def pack_sentences_by_length(
+    sentence_strings: list[str], sentence_lengths: list[int], max_length: int = MAX_LENGTH
+) -> list[str]:
+    """Greedily pack one article's sentences into <= max_length BPE-token
+    windows without splitting a sentence, given PRE-COMPUTED per-sentence BPE
+    lengths - the same packing rule pretrain/domain_adaptive_pretrain.py uses
+    for MLM blocks, applied to a single article's sentences instead of the
+    whole corpus. Takes lengths as an argument (rather than tokenizing
+    inside) so a caller processing many articles can BPE-tokenize every
+    sentence in the corpus once, in large batches, instead of once per
+    article - see chunk_sentences_into_windows for the single-article
+    convenience wrapper that does that tokenization call itself.
+    """
+    if not sentence_strings:
+        return []
+
+    content_len = max_length - 2  # room for the model's bos/eos special tokens
+    chunks: list[str] = []
+    buffer: list[str] = []
+    buffer_len = 0
+
+    def flush() -> None:
+        if buffer:
+            chunks.append(" ".join(buffer))
+
+    for sentence_text, sentence_len in zip(sentence_strings, sentence_lengths):
+        if sentence_len > content_len:
+            # Rare (~1 in 80k, per the pretrain script's own count): a single
+            # sentence alone exceeds a window. Hard-split by whitespace token
+            # - an under-estimate of the true BPE-token count since PhoBERT's
+            # BPE only ever splits a word into MORE pieces, so every piece
+            # still fits; truncation=True at the call site is still the
+            # final safety net regardless.
+            flush()
+            buffer, buffer_len = [], 0
+            words = sentence_text.split(" ")
+            for start in range(0, len(words), content_len):
+                chunks.append(" ".join(words[start : start + content_len]))
+            continue
+
+        if buffer_len + sentence_len > content_len:
+            flush()
+            buffer, buffer_len = [], 0
+        buffer.append(sentence_text)
+        buffer_len += sentence_len
+    flush()
+    return chunks
+
+
+def chunk_sentences_into_windows(
+    sentence_strings: list[str], tokenizer, max_length: int = MAX_LENGTH
+) -> list[str]:
+    """~1/3 of both the 126k corpus and the ground truth rows exceed
+    MAX_LENGTH BPE tokens (median ~150-165, but mean ~260-295 and max in the
+    thousands), so scoring or training on only
+    ``tokenizer(text, truncation=True, max_length=...)`` silently drops
+    everything past the first window for those articles. This BPE-tokenizes
+    one article's sentences and packs them into <= max_length windows (see
+    pack_sentences_by_length) so every window can be scored, then the caller
+    pools the per-chunk results back into one article-level result. For many
+    articles at once, prefer calling the tokenizer in bulk yourself and using
+    pack_sentences_by_length directly - see
+    inference/score_corpus_phobert.py::build_article_chunks.
+    """
+    if not sentence_strings:
+        return []
+    sentence_lengths = [
+        len(ids) for ids in tokenizer(sentence_strings, add_special_tokens=False)["input_ids"]
+    ]
+    return pack_sentences_by_length(sentence_strings, sentence_lengths, max_length)
+
+
+def pool_chunks_by_weight(
+    chunk_values: np.ndarray, chunk_doc_index: np.ndarray, chunk_weights: np.ndarray, n_docs: int
+) -> np.ndarray:
+    """Weighted mean of per-chunk vectors (probabilities or embeddings - any
+    fixed-width vector) back into one vector per document, weight = chunk
+    length in words (a longer chunk represents a bigger share of the
+    article). A document with zero chunks gets an all-NaN row - the caller
+    decides the fallback (e.g. a uniform label distribution for
+    probabilities, since there is no principled default for an embedding).
+    """
+    n_dims = chunk_values.shape[1]
+    weighted_sum = np.zeros((n_docs, n_dims), dtype=np.float64)
+    weight_sum = np.zeros(n_docs, dtype=np.float64)
+    np.add.at(weighted_sum, chunk_doc_index, chunk_values * chunk_weights[:, None])
+    np.add.at(weight_sum, chunk_doc_index, chunk_weights)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return weighted_sum / weight_sum[:, None]
 
 
 def encode_labels(labels: pd.Series) -> list[int]:

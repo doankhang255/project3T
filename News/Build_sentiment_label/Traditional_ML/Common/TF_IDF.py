@@ -7,10 +7,10 @@ Two entry points:
   vocabulary, document frequencies and IDF weights are learned from the
   training rows only and never see the held-out fold.
 
-* ``main`` — fits the same pipeline on the **whole** ground-truth set and
-  writes ``tfidf_matrix_csr.npz`` / ``tfidf_vocabulary.csv`` / ``…`` . Those
-  files are a descriptive artifact for inspection and for the global
-  top-feature tables; they are **not** the input the models evaluate on.
+* ``main`` — fits the vocabulary on the **whole** ground-truth set and
+  writes ``tfidf_vocabulary.csv``, a descriptive artifact (run_pipeline.py
+  reports its size / n-gram mix in RESULTS_SUMMARY.txt); it is **not** the
+  input the models evaluate on.
 """
 
 from __future__ import annotations
@@ -46,15 +46,8 @@ DATA_DIR = SCRIPT_DIR.parent / "data"
 
 INPUT_PARQUET_PATH = DATA_DIR / "ground_truth_labeled_tokenized.parquet"
 
-OUTPUT_CSR_NPZ_PATH = DATA_DIR / "tfidf_matrix_csr.npz"
-OUTPUT_DOCUMENT_INDEX_PATH = DATA_DIR / "tfidf_document_index.csv"
 OUTPUT_VOCAB_PATH = DATA_DIR / "tfidf_vocabulary.csv"
-OUTPUT_TERM_STATS_PATH = DATA_DIR / "tfidf_term_statistics.csv"
-OUTPUT_DOCUMENT_TERM_TF_PATH = DATA_DIR / "tfidf_document_term_tf.csv"
 
-ID_COLUMN = "id"
-TITLE_COLUMN = "title"
-LABEL_COLUMN = "sentiment"
 TOKENIZED_COLUMN = "Tokenize_content"
 TOKENIZED_SENTENCES_COLUMN = "Tokenize_content_sentences"
 
@@ -235,53 +228,6 @@ def transform_tfidf(
     return dense, tf_rows_df
 
 
-def build_document_index(df: pd.DataFrame) -> pd.DataFrame:
-    columns = [
-        column
-        for column in [ID_COLUMN, TITLE_COLUMN, LABEL_COLUMN]
-        if column in df.columns
-    ]
-    document_index = df[columns].copy()
-    document_index.insert(0, "document_id", np.arange(len(df), dtype=int))
-    document_index["document_ngram_count"] = df["_document_terms"].map(len)
-    return document_index
-
-
-def dense_to_csr_arrays(
-    dense: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, tuple[int, int]]:
-    data: list[float] = []
-    indices: list[int] = []
-    indptr = [0]
-    for row in dense:
-        nonzero_columns = np.flatnonzero(row)
-        indices.extend(int(column) for column in nonzero_columns)
-        data.extend(float(value) for value in row[nonzero_columns])
-        indptr.append(len(data))
-    return (
-        np.asarray(data, dtype=np.float64),
-        np.asarray(indices, dtype=np.int32),
-        np.asarray(indptr, dtype=np.int64),
-        (int(dense.shape[0]), int(dense.shape[1])),
-    )
-
-
-def save_csr_npz(
-    data: np.ndarray,
-    indices: np.ndarray,
-    indptr: np.ndarray,
-    shape: tuple[int, int],
-    path: Path = OUTPUT_CSR_NPZ_PATH,
-) -> None:
-    np.savez_compressed(
-        path,
-        data=data,
-        indices=indices,
-        indptr=indptr,
-        shape=np.asarray(shape, dtype=np.int64),
-    )
-
-
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -294,28 +240,9 @@ def main() -> None:
         total_documents=len(df),
         stopwords=stopwords,
     )
-    dense, document_term_tf_df = transform_tfidf(
-        term_counts_by_document,
-        vocabulary_df,
-        with_tf_rows=True,
-    )
-    data, indices, indptr, shape = dense_to_csr_arrays(dense)
-    document_index_df = build_document_index(df)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    save_csr_npz(data, indices, indptr, shape)
-    document_index_df.to_csv(
-        OUTPUT_DOCUMENT_INDEX_PATH,
-        index=False,
-        encoding="utf-8-sig",
-    )
     vocabulary_df.to_csv(OUTPUT_VOCAB_PATH, index=False, encoding="utf-8-sig")
-    vocabulary_df.to_csv(OUTPUT_TERM_STATS_PATH, index=False, encoding="utf-8-sig")
-    document_term_tf_df.to_csv(
-        OUTPUT_DOCUMENT_TERM_TF_PATH,
-        index=False,
-        encoding="utf-8-sig",
-    )
 
     min_df_by_ngram = scaled_min_df_by_ngram(
         total_documents=len(df),
@@ -323,7 +250,7 @@ def main() -> None:
         floor=ML_MIN_DF_FLOOR,
     )
 
-    print("NOTE: these files describe a whole-corpus fit; the models re-fit")
+    print("NOTE: this vocabulary describes a whole-corpus fit; the models re-fit")
     print("      TF-IDF inside each CV fold (see model/common.py).")
     print("TF-IDF formula:")
     print("w_i,j = ((1 + log(tf_i,j)) / (1 + log(a_j))) * log(N / df_i)")
@@ -332,14 +259,9 @@ def main() -> None:
     print("Max df_ratio:", ML_MAX_DF_RATIO)
     print("Remove stopwords:", REMOVE_STOPWORDS)
     print("Stopwords path:", DEFAULT_STOPWORDS_PATH)
-    print("Documents:", shape[0])
-    print("Terms:", shape[1])
-    print("Non-zero matrix values:", len(data))
-    print("Output CSR npz:", OUTPUT_CSR_NPZ_PATH)
-    print("Output document index:", OUTPUT_DOCUMENT_INDEX_PATH)
+    print("Documents:", len(df))
+    print("Terms:", len(vocabulary_df))
     print("Output vocabulary:", OUTPUT_VOCAB_PATH)
-    print("Output term statistics:", OUTPUT_TERM_STATS_PATH)
-    print("Output document-term tf:", OUTPUT_DOCUMENT_TERM_TF_PATH)
     print("\nTop terms by df:")
     print(
         vocabulary_df.sort_values(["df", "total_tf"], ascending=False)

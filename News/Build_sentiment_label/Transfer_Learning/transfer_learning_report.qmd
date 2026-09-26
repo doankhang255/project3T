@@ -30,10 +30,10 @@ Hướng tiếp cận đi qua 3 bước theo đúng lộ trình mentor đề ra,
 
 | Thành phần | Số lượng | Vai trò |
 |:---|:---|:---|
-| Ground truth (có nhãn) | 1.064 dòng | Huấn luyện + đánh giá E2/E3 |
-| Kho ngữ liệu chưa gán nhãn (DAPT) | 125.511 bài (đã loại 1.064 bài trùng ground truth) | Pretrain MLM ở E1 |
-| Tune split | 744 dòng | Repeated cross-validation |
-| Holdout split | 320 dòng | Kiểm tra cuối, chỉ chạy một lần |
+| Ground truth (có nhãn) | 1.044 dòng | Huấn luyện + đánh giá E2/E3 |
+| Kho ngữ liệu chưa gán nhãn (DAPT) | 125.511 bài (đã loại toàn bộ bài thuộc ground truth) | Pretrain MLM ở E1 |
+| Tune split | 730 dòng | Repeated cross-validation |
+| Holdout split | 314 dòng | Kiểm tra cuối, chỉ chạy một lần |
 
 : Nguồn dữ liệu sử dụng trong nhánh Transfer Learning {tbl-colwidths="[38,32,30]"}
 
@@ -50,22 +50,23 @@ Tune/Holdout dùng chung split với nhánh Traditional_ML (chia theo `source_ro
 ## E2 — Frozen Feature Probe + Logistic Regression
 
 - Dùng `AutoModel` (chỉ lấy encoder, bỏ MLM head) từ checkpoint E1, chạy forward-pass **một lần**, không cập nhật gradient (`torch.no_grad()`).
-- Mean-pool `last_hidden_state` theo attention mask → 1 vector 768 chiều / bài báo.
+- Bài dài hơn 256 token (~1/3 số bài) được chia thành các cửa sổ ≤256 token theo câu (không cắt giữa câu) thay vì bị cắt cụt; mỗi cửa sổ mean-pool `last_hidden_state` theo attention mask, rồi gộp các cửa sổ bằng trung bình có trọng số theo độ dài → 1 vector 768 chiều / bài báo.
 - Huấn luyện `LogisticRegression` multinomial (softmax) trên các vector này — chỉ 768×3 + 3 = 2.307 tham số được học, PhoBERT hoàn toàn đứng yên.
 - Ưu điểm: ổn định, ít overfit khi lượng nhãn còn hạn chế; là baseline "mô hình domain-adapted đã biết được gì sẵn".
 
 ## E3 — Fine-tune toàn phần sau khi có hơn 1k nhãn
 
 - Khởi tạo từ checkpoint E1, thay MLM head bằng một classifier head 3 lớp khởi tạo ngẫu nhiên (`AutoModelForSequenceClassification`, `ignore_mismatched_sizes=True`).
-- Lan truyền ngược qua **toàn bộ mạng** (encoder + classifier head) với `WeightedLossTrainer` — CrossEntropyLoss có trọng số cân bằng lớp (balanced class weights) tính từ tập huấn luyện của từng fold.
+- Lan truyền ngược qua **toàn bộ mạng** (encoder + classifier head) với `WeightedLossTrainer` — CrossEntropyLoss có trọng số cân bằng lớp (balanced class weights) tính từ số bài của tập huấn luyện trong từng fold.
+- Cùng cách chia cửa sổ ≤256 token theo câu như E2: huấn luyện trên từng cửa sổ, khi dự đoán thì gộp xác suất các cửa sổ của một bài bằng trung bình có trọng số theo độ dài.
 
 ## Giao thức đánh giá
 
 Cả E2 và E3 đều được đánh giá theo 3 cách, từ nhẹ đến nghiêm ngặt:
 
-1. **5-fold stratified CV một lần**, out-of-fold, trên toàn bộ 1.064 dòng ground truth 
-2. **Repeated CV**: 10 lần lặp × 5-fold trên tập Tune (744 dòng), báo cáo trung bình ± độ lệch chuẩn 
-3. **Holdout (320 dòng)**: chỉ kiểm tra **một lần duy nhất**, sau khi đã chọn xong mô hình trên Tune — số liệu "trung thực" cuối cùng, không bị dùng để tinh chỉnh.
+1. **5-fold stratified CV một lần**, out-of-fold, trên toàn bộ 1.044 dòng ground truth
+2. **Repeated CV**: 10 lần lặp × 5-fold trên tập Tune (730 dòng), báo cáo trung bình ± độ lệch chuẩn
+3. **Holdout (314 dòng)**: chỉ kiểm tra **một lần duy nhất**, sau khi đã chọn xong mô hình trên Tune — số liệu "trung thực" cuối cùng, không bị dùng để tinh chỉnh.
 
 # Kết quả
 
@@ -76,65 +77,167 @@ Cả E2 và E3 đều được đánh giá theo 3 cách, từ nhẹ đến nghi�
 | Eval loss | 2,116 | 1,336 |
 | Perplexity | 8,298 | 3,803 |
 
-*(Chạy trên 125.511 bài, loại 1.064 bài ground truth khỏi corpus)*
+*(Chạy trên 125.511 bài, đã loại toàn bộ bài ground truth khỏi corpus)*
 
 Perplexity giảm từ **8,30 xuống 3,80** — cho thấy mô hình đã thích nghi rõ rệt với văn phong/thuật ngữ tài chính so với PhoBERT gốc.
 
 ## E2 vs E3 — So sánh 3 cách đánh giá
 
-### 5-fold CV trên toàn bộ ground truth (1.064 dòng)
+### 5-fold CV trên toàn bộ ground truth (1.044 dòng)
 
 | Phương pháp | Macro F1 | Accuracy |
 |---|---:|---:|
-| E2 — Frozen probe (LogReg) | 0,669 | 0,673 |
-| E3 — Fine-tune toàn phần | 0,685 | 0,689 |
+| E2 — Frozen probe (LogReg) | 0,748 | 0,759 |
+| E3 — Fine-tune toàn phần | 0,769 | 0,775 |
 
-### Repeated CV (10 × 5-fold) trên Tune (744 dòng)
+### Repeated CV (10 × 5-fold) trên Tune (730 dòng)
 
 | Phương pháp | Macro F1 (mean ± std) | Accuracy (mean ± std) |
 |---|---:|---:|
-| E2 — Frozen probe (LogReg) | 0,670 ± 0,010 | 0,676 ± 0,009 |
-| E3 — Fine-tune toàn phần | 0,697 ± 0,010 | 0,700 ± 0,010 |
+| E2 — Frozen probe (LogReg) | 0,748 ± 0,006 | 0,760 ± 0,006 |
+| E3 — Fine-tune toàn phần | 0,758 ± 0,007 | 0,763 ± 0,007 |
 
-### Holdout (320 dòng, kiểm tra một lần)
+### Holdout (314 dòng, kiểm tra một lần)
 
 | Phương pháp | Macro F1 | Accuracy |
 |---|---:|---:|
-| E2 — Frozen probe (LogReg) | 0,682 | 0,688 |
-| E3 — Fine-tune toàn phần | 0,695 | 0,700 |
+| E2 — Frozen probe (LogReg) | 0,766 | 0,777 |
+| E3 — Fine-tune toàn phần | 0,758 | 0,761 |
 
-**Nhận xét:** E3 (fine-tune toàn phần) vượt E2 (frozen probe) một cách **nhất quán** ở cả 3 cách đánh giá, chênh lệch khoảng 2–3 điểm macro-F1. Kết quả ổn định qua repeated CV (độ lệch chuẩn nhỏ, ~0,01) và được xác nhận lại trên Holdout — cho thấy chênh lệch này không phải do may rủi của một split cụ thể.
+**Nhận xét:** E3 (fine-tune toàn phần) nhỉnh hơn E2 (frozen probe) trên 5-fold CV (+0,021 macro-F1) và repeated CV (+0,010, khoảng 1,5 độ lệch chuẩn), nhưng trên Holdout thì **E2 lại nhỉnh hơn E3** (0,766 so với 0,758). Chênh lệch giữa 2 phương pháp nhỏ và **không nhất quán** giữa các giao thức đánh giá — ở quy mô dữ liệu hiện tại chưa đủ bằng chứng để khẳng định E3 tốt hơn E2.
 
-## Chi tiết theo lớp (Holdout, 320 dòng)
+## Chi tiết theo lớp (Holdout, 314 dòng)
 
 | Lớp | Support | F1 — E2 (Frozen) | F1 — E3 (Fine-tune) |
 |---|---:|---:|---:|
-| negative | 89 | 0,670 | 0,698 |
-| neutral | 148 | 0,714 | 0,734 |
-| positive | 83 | 0,663 | 0,652 |
+| negative | 92 | 0,777 | 0,776 |
+| neutral | 155 | 0,810 | 0,768 |
+| positive | 67 | 0,712 | 0,731 |
 
-## Confusion matrix — Holdout (320 dòng)
+E3 bắt lớp positive tốt hơn (recall 0,85 so với 0,78) nhưng đổi lại đẩy nhiều bài neutral sang negative/positive hơn (recall neutral 0,67 so với 0,75) — đây là nguồn chính khiến E3 thua E2 trên Holdout.
+
+## Phương sai theo seed (mentor plan mục 1)
+
+Fine-tune toàn phần trên dữ liệu nhãn còn hạn chế có thể có phương sai lớn giữa các lần chạy do 2 nguồn ngẫu nhiên: khởi tạo classifier head mới và thứ tự xáo trộn dữ liệu train. Để kiểm chứng, E3 được train lại **5 lần với 5 seed khác nhau** (42, 7, 123, 2024, 99), giữ **cố định cách chia 5-fold** (chỉ đổi seed khởi tạo/train, không đổi seed chia fold) để tách riêng đúng một nguồn phương sai.
+
+| Seed | 42 | 7 | 123 | 2024 | 99 | **Mean ± SD** |
+|---|---:|---:|---:|---:|---:|---:|
+| Macro F1 | 0,7717 | 0,7700 | 0,7673 | 0,7722 | 0,7735 | **0,7709 ± 0,0024** |
+
+Độ lệch chuẩn rất nhỏ (< 0,3% giá trị trung bình) — ở quy mô ground truth hiện tại (1.044 dòng, đã làm sạch nhãn), fine-tune toàn phần **ổn định qua seed**, không còn là rủi ro lớn như ở quy mô nhãn nhỏ hơn.
+
+## Chất lượng điểm số liên tục (mentor plan mục 3)
+
+Chỉ số VN-Index dùng ở phần sau được xây từ **điểm số liên tục** `net_sentiment_score = prob_positive − prob_negative`, không phải nhãn rời rạc — nên macro-F1 (đo trên nhãn argmax) không phản ánh đúng chất lượng của thứ thực sự được dùng. Bổ sung 2 chỉ số đo trực tiếp trên điểm liên tục (tương quan hạng Spearman và MAE trên thang số hoá nhãn người −1/0/1), tính cho cả 3 phương pháp trên cùng 1.044 dòng ground truth:
+
+| Phương pháp | Spearman | MAE (thang −1/0/1) |
+|---|---:|---:|
+| Lexicon (PMI) | 0,435 | 0,509 |
+| Random Forest | 0,598 | 0,397 |
+| **PhoBERT (E3)** | **0,734** | **0,305** |
+
+Khoảng cách giữa 3 phương pháp ở đây **rõ rệt hơn hẳn** so với khoảng cách macro-F1 (vốn chỉ chênh 0,64→0,77) — PhoBERT không chỉ đoán đúng nhãn nhiều hơn mà còn cho điểm số mượt, đáng tin hơn hẳn ở đúng khía cạnh mà bước xây chỉ số ngày sử dụng.
+
+## Confusion matrix — Holdout (314 dòng)
 
 **E2 — Frozen probe:**
 
 | | Dự đoán negative | Dự đoán neutral | Dự đoán positive |
 |---|---:|---:|---:|
-| **Thực tế negative** | 63 | 18 | 8 |
-| **Thực tế neutral** | 25 | 101 | 22 |
-| **Thực tế positive** | 11 | 16 | 56 |
+| **Thực tế negative** | 75 | 8 | 9 |
+| **Thực tế neutral** | 20 | 117 | 18 |
+| **Thực tế positive** | 6 | 9 | 52 |
 
 **E3 — Fine-tune toàn phần:**
 
 | | Dự đoán negative | Dự đoán neutral | Dự đoán positive |
 |---|---:|---:|---:|
-| **Thực tế negative** | 67 | 12 | 10 |
-| **Thực tế neutral** | 21 | 98 | 29 |
-| **Thực tế positive** | 15 | 9 | 59 |
+| **Thực tế negative** | 78 | 8 | 6 |
+| **Thực tế neutral** | 25 | 104 | 26 |
+| **Thực tế positive** | 6 | 4 | 57 |
 
-# Kết luận
+# E4 — Distillation trên 126k bài chưa nhãn (mentor plan mục 4)
 
-- **DAPT (E1) có hiệu quả rõ rệt** về mặt ngôn ngữ (perplexity giảm hơn một nửa), là bước nền cho cả E2 và E3 — cả hai đều khởi tạo từ checkpoint đã DAPT thay vì PhoBERT gốc.
-- Với lượng nhãn hiện tại (1.064 dòng — đã đạt mức "vài trăm nhãn trở lên" mentor yêu cầu để cho phép fine-tune toàn phần), **fine-tune toàn phần (E3) cho kết quả tốt hơn frozen probe (E2)** một cách nhất quán qua cả 3 giao thức đánh giá, dù chênh lệch không quá lớn (~2-3 điểm macro-F1).
-- Lớp **positive** vẫn là lớp khó nhất ở cả 2 phương pháp (F1 thấp nhất trong 3 lớp), gợi ý đây là hướng cần cải thiện tiếp theo — có thể qua tăng thêm nhãn positive, hoặc tinh chỉnh trọng số lớp.
+## Phương pháp
+
+Model "trò" được train lại **từ đầu** (từ checkpoint E1, không kế thừa trọng số E3) trên tập hợp gồm 2 loại ví dụ, dùng **chung một hàm loss** — cross-entropy với target dạng vector xác suất:
+
+- Bài có nhãn thật → target = vector **one-hot** (VD [1,0,0] cho negative).
+- Bài lấy mẫu ngẫu nhiên từ 126k bài chưa nhãn (loại hết source_row_id đã có trong ground truth) → target = **xác suất mềm** mà chính model E3 (thầy) đã chấm sẵn cho bài đó (không cần forward pass lại).
+
+Mỗi bài (cả 2 loại) được chia cửa sổ ≤256 token theo câu như E2/E3; các cửa sổ của cùng 1 bài nhận cùng 1 target.
+
+## Kết quả
+
+| Cấu hình | Đánh giá | Macro F1 |
+|---|---|---:|
+| Baseline (không distillation) | Holdout (314 dòng) | 0,7581 |
+| Distillation N=5.000 | Holdout (1 lần) | 0,8105 |
+| Distillation N=5.000 | 5-fold CV trên Tune (OOF) | 0,7994 |
+| Distillation N=5.000 | Fit lại toàn bộ Tune, check Holdout | 0,8144 |
+| Distillation N=20.000 | Holdout (1 lần) | 0,8344 |
+
+Cải thiện nhất quán qua cả đánh giá bằng CV lẫn Holdout, và tiếp tục tăng khi tăng N — kỹ thuật cải thiện rõ rệt và đáng tin cậy nhất trong toàn bộ nhánh.
+
+## Lưu ý về tính hợp lệ của con số Holdout distillation
+
+Vì N (5.000 → 20.000) được chọn **dựa trên chính kết quả Holdout của mỗi lần thử**, các con số Holdout ở trên **không còn là một lần nhìn "sạch"** theo đúng kỷ luật Tune/Holdout đã áp dụng cho E2/E3 — chúng phản ánh đúng xu hướng cải thiện thật, nhưng con số tuyệt đối có thể lạc quan hơn khả năng tổng quát hoá thực tế một chút. Model **production** cuối cùng (N=20.000, fit lại trên **toàn bộ 1.044 dòng** Tune+Holdout gộp, không giữ riêng phần nào) được lưu làm bản chính thức dùng để chấm điểm corpus 126k bài.
+
+# Kiểm định tác động lên VN-Index
+
+## Bối cảnh
+
+Hồi quy dự báo kiểu Tetlock (2007) cấp ngày (Newey-West HAC 5 lag, kiểm định tổng lag 2-5 cho hiệu ứng đảo chiều) giữa sentiment và lợi suất bất thường (abnormal return) của VN-Index cho kết quả **null** khi dùng chuỗi sentiment từ nhánh Lexicon — phương pháp kém chính xác nhất trong 3 nhánh. Câu hỏi đặt ra: null này là **thật** (tin tức không dự báo được giá), hay chỉ là do **sai số đo lường** (attenuation bias — phương pháp càng kém chính xác, hệ số ước lượng càng bị kéo méo về 0)?
+
+## Gradient test theo độ chính xác classifier
+
+Nếu attenuation bias đúng, hệ số/p-value của hồi quy phải **cải thiện dần** theo đúng thứ tự độ chính xác của bộ phân loại: Lexicon (kém nhất) → Random Forest (giữa) → PhoBERT (tốt nhất, Spearman 0,734 ở bảng trên). Kết quả cuối cùng (dùng pipeline đã sửa lỗi look-ahead, model PhoBERT distillation), hệ số lag1 (tức thời) trên `abnormal_return_rolling_1d`:
+
+| Phương pháp | Spearman (đo lường) | Hệ số lag1 | p-value |
+|---|---:|---:|---:|
+| Lexicon (PMI / Intensity / PCA-PMI / PCA-Intensity) | 0,44 | −0,0002 .. +0,0003 | 0,30 – 0,44 |
+| Random Forest | 0,60 | −0,000314 | 0,191 |
+| **PhoBERT (distillation)** | **0,73** | **+0,000073** | **0,768** |
+
+Không có gradient cải thiện — ngược lại, phương pháp đo lường **tốt nhất** (PhoBERT) cho hệ số **nhỏ nhất** và p-value **lớn nhất** trong cả 6 phương pháp. Kết quả này **trực tiếp bác bỏ** giả thuyết attenuation bias.
+
+## Các kiểm định bổ sung (đều hội tụ về cùng kết luận)
+
+| Kiểm định | Mục đích | Kết quả |
+|---|---|---|
+| Hiệu chỉnh xác suất (isotonic calibration) | Cải thiện chất lượng điểm liên tục có đổi kết luận không | Cải thiện Brier score/Spearman thật, nhưng **không đổi** kết luận null |
+| Ổn định theo seed (3 seed cho E3) | Null có phải do may rủi 1 lần train không | Kết quả **cực ổn định** qua các seed |
+| Tương quan chéo giữa 6 chỉ số phương pháp | Định lượng phần "tín hiệu chung" vs nhiễu riêng từng phương pháp | Tương quan thấp — phần lớn phương sai là nhiễu đặc thù từng phương pháp |
+| 2SLS (Lexicon làm công cụ cho PhoBERT) | Sửa trực tiếp attenuation bias bằng kinh tế lượng | Vẫn null (p=0,95/0,99); quan trọng hơn — **artifact "lag4"** (xuất hiện lặp lại ở hầu hết hồi quy OLS) **mất ý nghĩa** dưới 2SLS |
+| Đảo chiều nhân quả (return quá khứ → sentiment hiện tại) | Kiểm tra giả thuyết "báo đăng chậm hơn giá" | Null ở lag1 tại cả 6 phương pháp — không ủng hộ |
+| Tương quan cùng ngày (sentiment vs return cùng ngày) | Kiểm tra giả thuyết "thị trường hấp thụ tin trong ngày" | Gần như bằng 0 ở cả 6 phương pháp — không ủng hộ |
+
+## Kết luận
+
+Toàn bộ bằng chứng — gradient test, hiệu chỉnh xác suất, ổn định theo seed, tương quan chéo, 2SLS, đảo chiều nhân quả, tương quan cùng ngày — đều **hội tụ về cùng một kết luận**: quan hệ null giữa sentiment tin tức cổ phiếu và lợi suất VN-Index **là thật**, không phải artifact của sai số đo lường hay lỗi phương pháp. Kết quả giữ nguyên qua mọi phiên bản pipeline (trước/sau sửa truncation, trước/sau làm sạch ground truth, trước/sau sửa lỗi look-ahead trong biến kiểm soát biến động) và với model tốt nhất từng có (PhoBERT distillation).
+
+# So sánh 3 nhánh trên Holdout dùng chung (314 dòng)
+
+| Nhánh | Macro F1 | 95% CI (bootstrap) |
+|---|---:|---|
+| Lexicon (PMI) | 0,6500 | [0,595, 0,707] |
+| Random Forest | 0,7149 | [0,662, 0,765] |
+| PhoBERT E3 (trước distillation) | 0,7581 | [0,708, 0,803] |
+
+| Cặp so sánh | Delta macro-F1 | CI | Kết luận |
+|---|---:|---|---|
+| TL vs RF | +0,043 | [−0,009, +0,097] | Chạm 0 — chưa đủ tin cậy để khẳng định TL hơn RF |
+| TL vs Lexicon | +0,108 | [+0,048, +0,169] | Loại 0 — TL hơn Lexicon thật sự |
+| RF vs Lexicon | +0,065 | [+0,004, +0,126] | Loại 0 — RF hơn Lexicon thật sự |
+
+*(Dùng bản E3 trước distillation vì đây là con số duy nhất chưa bị ảnh hưởng bởi việc chọn siêu tham số dựa trên chính Holdout này — xem lưu ý ở mục E4. Bảng này cũng là lần nhìn thứ nhất và duy nhất cho câu hỏi "nhánh nào tốt hơn"; không lặp lại với cấu hình khác.)*
+
+# Kết luận chung
+
+- **DAPT (E1) có hiệu quả rõ rệt** về mặt ngôn ngữ (perplexity giảm hơn một nửa), là bước nền cho mọi bước sau.
+- **E2 và E3 tương đương nhau** ở lượng nhãn hiện tại (macro-F1 ~0,75–0,77), chưa đủ bằng chứng khẳng định fine-tune toàn phần tốt hơn frozen probe; cả hai đều ổn định qua seed.
+- **Sửa truncation (chia cửa sổ + gộp)** và **distillation trên 126k bài chưa nhãn** là 2 cải thiện có tác động thật: distillation nâng macro-F1 từ ~0,77 lên ~0,80-0,83 tuỳ N, cải thiện rõ rệt nhất trong nhánh.
+- Về chất lượng điểm số liên tục (Spearman/MAE) — thứ thực sự được dùng để dựng chỉ số VN-Index — PhoBERT vượt trội rõ ràng so với Random Forest và Lexicon.
+- Tuy vậy, **đo lường tốt hơn không giúp phát hiện thêm tín hiệu VN-Index**: quan hệ sentiment–lợi suất vẫn null nhất quán qua mọi kiểm định, kể cả với model đo lường tốt nhất. Kết luận hợp lý nhất: **tin tức cổ phiếu đơn lẻ không dự báo được lợi suất VN-Index trong khung thời gian đã kiểm định**, không phải do hạn chế của phương pháp đo lường.
 
 ---

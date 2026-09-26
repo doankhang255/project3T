@@ -1,5 +1,5 @@
 """Experiment - do financial-lexicon category features + negation handling
-beat the TF-IDF-only baseline? (IMPROVEMENTS.md priority 1; Loughran &
+beat the TF-IDF-only baseline? (ML_SUMMARY.qmd section 6; Loughran &
 McDonald 2011, Tetlock 2007.)
 
 Self-contained: imports pure helpers from ``../Common`` (TF-IDF fit/transform,

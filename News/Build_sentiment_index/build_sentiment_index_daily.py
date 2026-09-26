@@ -1,24 +1,23 @@
-"""Gộp điểm sentiment cấp-bài thành chỉ số cấp-ngày trên toàn bộ corpus.
+"""Gộp điểm sentiment cấp-bài thành chỉ số cấp-ngày trên toàn bộ corpus -
+dùng chung cho MỌI phương pháp chấm điểm (mỗi nhánh chỉ tự chấm điểm 126k bài
+bằng model của nó, rồi đưa file điểm vào đây).
 
-Đọc THẲNG `article_scores.parquet`/`article_scores_intensity.parquet` (output
-gốc của score_articles.py/score_articles_intensity.py, KHÔNG cần bản
-`_labeled.parquet` của classify_and_evaluate.py) - việc kiểm tra tác động
-News lên lợi suất VN-Index chỉ cần `net_sentiment_score`, không cần
-`predicted_label` (nhãn 3 lớp chỉ phục vụ đối chiếu ground truth, không liên
-quan đến việc tính chỉ số ngày này) - bớt 1 bước phụ thuộc không cần thiết.
+Đọc THẲNG file điểm cấp-bài của từng phương pháp - chỉ cần
+`publication_date` + `net_sentiment_score` (nhãn 3 lớp chỉ phục vụ đối chiếu
+ground truth, không liên quan đến việc tính chỉ số ngày này).
 
 Nguồn:
-    - Cách 1 (PMI):       Scoring/data/article_scores.parquet
-    - Cách 2 (intensity):  Scoring_Intensity/data/article_scores_intensity.parquet
+    - Cách 1 (PMI):        Lexicon_based/Scoring/data/article_scores.parquet
+    - Cách 2 (intensity):  Lexicon_based/Scoring_Intensity/data/article_scores_intensity.parquet
+    - PhoBERT (E3):        Transfer_Learning/inference/data/article_scores_phobert.parquet
+    - Random Forest:       Traditional_ML/inference/data/article_scores_random_forest.parquet
 
-Xuất RIÊNG 2 file (không gộp chung) - đúng schema 1-phương-pháp mà
-News_Vnindex/Common/merge_vnindex_daily_with_sentiment.py đang cần
-(article_count, sentiment_index, sentiment_index_z), để dùng lại được script
-merge đó cho từng cách mà không phải sửa lại nó.
+Xuất RIÊNG 1 file/phương pháp - đúng schema (date, article_count,
+sentiment_index, sentiment_index_z) mà
+News_Vnindex/Common/merge_vnindex_daily_with_sentiment.py cần.
 
 Output:
-    data/market_sentiment_index_daily_pmi.parquet
-    data/market_sentiment_index_daily_intensity.parquet
+    data/market_sentiment_index_daily_{pmi,intensity,phobert,random_forest}.{parquet,csv}
 """
 
 from __future__ import annotations
@@ -29,10 +28,17 @@ from pathlib import Path
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LEXICON_BASED_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label" / "Lexicon_based"
+SENTIMENT_LABEL_DIR = PROJECT_ROOT / "News" / "Build_sentiment_label"
+LEXICON_BASED_DIR = SENTIMENT_LABEL_DIR / "Lexicon_based"
 INPUT_PATHS_BY_METHOD = {
     "pmi": LEXICON_BASED_DIR / "Scoring" / "data" / "article_scores.parquet",
     "intensity": LEXICON_BASED_DIR / "Scoring_Intensity" / "data" / "article_scores_intensity.parquet",
+    "phobert": SENTIMENT_LABEL_DIR / "Transfer_Learning" / "inference" / "data" / "article_scores_phobert.parquet",
+    "random_forest": SENTIMENT_LABEL_DIR
+    / "Traditional_ML"
+    / "inference"
+    / "data"
+    / "article_scores_random_forest.parquet",
 }
 OUTPUT_DIR = Path(__file__).resolve().parent / "data"
 

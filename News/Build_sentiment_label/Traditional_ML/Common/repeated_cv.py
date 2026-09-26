@@ -6,10 +6,12 @@ feature recipe, the metric functions) and does its own CV wiring so the one
 added knob - the number of repeats - is explicit. It does NOT edit or
 monkeypatch ``model/common.py``, ``TF_IDF.py`` or ``model/*.py``.
 
-Why: the single-run pipeline reports one macro-F1 per model. With 152 rows the
-stratified split alone moves that number by ~0.02, so a single value cannot
-tell two models apart. This runs the whole leak-free 5-fold CV ``n_repeats``
-times with a different split each time and reports mean +/- std.
+Why: a single 5-fold CV run moves by ~0.01-0.02 macro-F1 with the split
+alone, so one value cannot tell two models apart. This runs the whole
+leak-free 5-fold CV ``n_repeats`` times with a different split each time and
+reports mean +/- std. It is also THE production CV: ``production_cv.py``
+runs it once per model and persists the out-of-fold probabilities, which
+every comparison/calibration script then reuses instead of re-running CV.
 """
 
 from __future__ import annotations
@@ -65,7 +67,32 @@ def run_single_cv(
     max_features: int = MAX_FEATURES,
     extra_features: np.ndarray | None = None,
 ) -> np.ndarray:
-    """One leak-free 5-fold CV pass -> out-of-fold predicted label id per row.
+    """One leak-free 5-fold CV pass -> out-of-fold predicted label id per row
+    (argmax of ``run_single_cv_proba``)."""
+    return run_single_cv_proba(
+        estimator_factory,
+        term_counts,
+        y,
+        stopwords,
+        fold_seed,
+        n_splits=n_splits,
+        max_features=max_features,
+        extra_features=extra_features,
+    ).argmax(axis=1)
+
+
+def run_single_cv_proba(
+    estimator_factory,
+    term_counts,
+    y: np.ndarray,
+    stopwords: set[str],
+    fold_seed: int,
+    n_splits: int = N_SPLITS,
+    max_features: int = MAX_FEATURES,
+    extra_features: np.ndarray | None = None,
+) -> np.ndarray:
+    """One leak-free 5-fold CV pass -> out-of-fold class probabilities,
+    shape ``(n_rows, n_labels)``.
 
     TF-IDF vocabulary / idf / top-feature cut are fit on the training rows of
     each fold only, exactly like ``model/common.run_cross_validation``.
@@ -132,7 +159,59 @@ def run_single_cv(
             )
         probabilities[validation_indices] = model.predict_proba(x_val_selected)
 
-    return probabilities.argmax(axis=1)
+    return probabilities
+
+
+def run_repeated_cv_proba(
+    estimator_factory,
+    term_counts,
+    y: np.ndarray,
+    stopwords: set[str],
+    n_repeats: int = N_REPEATS,
+    n_splits: int = N_SPLITS,
+    extra_features: np.ndarray | None = None,
+) -> np.ndarray:
+    """``n_repeats`` independent CV passes (fold seed = repeat index) ->
+    out-of-fold probabilities, shape ``(n_repeats, n_rows, n_labels)``.
+    Repeat ``r`` uses the same split for every model, so these are paired
+    across models."""
+    y = np.asarray(y, dtype=int)
+    return np.stack(
+        [
+            run_single_cv_proba(
+                estimator_factory,
+                term_counts,
+                y,
+                stopwords,
+                fold_seed=repeat_id,
+                n_splits=n_splits,
+                extra_features=extra_features,
+            )
+            for repeat_id in range(n_repeats)
+        ]
+    )
+
+
+def per_repeat_metrics(y: np.ndarray, oof_predictions: np.ndarray) -> pd.DataFrame:
+    """One row per repeat, columns
+    ``repeat / macro_f1 / accuracy / f1_negative / f1_neutral / f1_positive``."""
+    y = np.asarray(y, dtype=int)
+    rows: list[dict] = []
+    for repeat_id, predictions in enumerate(oof_predictions):
+        metrics = compute_metrics(y, predictions)
+        overall = metrics.loc[metrics["metric_scope"].eq("overall")].iloc[0]
+        per_class = metrics.set_index("metric_scope")["f1"]
+        rows.append(
+            {
+                "repeat": repeat_id,
+                "macro_f1": float(overall["f1"]),
+                "accuracy": float(overall["accuracy"]),
+                "f1_negative": float(per_class["negative"]),
+                "f1_neutral": float(per_class["neutral"]),
+                "f1_positive": float(per_class["positive"]),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def run_repeated_cv(
@@ -150,42 +229,22 @@ def run_repeated_cv(
     ``None`` by default (unchanged behaviour for every existing caller).
 
     Returns
-      - per_repeat_df : one row per repeat, columns
-        ``repeat / macro_f1 / accuracy / f1_negative / f1_neutral / f1_positive``
+      - per_repeat_df : see ``per_repeat_metrics``
       - oof_predictions : shape ``(n_repeats, n_rows)``, out-of-fold label id of
         each row in each repeat. Repeat ``r`` uses the same split for every
         model, so these are paired across models for the McNemar test.
     """
-    y = np.asarray(y, dtype=int)
-    rows: list[dict] = []
-    oof_predictions = np.zeros((n_repeats, len(y)), dtype=int)
-
-    for repeat_id in range(n_repeats):
-        predictions = run_single_cv(
-            estimator_factory,
-            term_counts,
-            y,
-            stopwords,
-            fold_seed=repeat_id,
-            n_splits=n_splits,
-            extra_features=extra_features,
-        )
-        oof_predictions[repeat_id] = predictions
-        metrics = compute_metrics(y, predictions)
-        overall = metrics.loc[metrics["metric_scope"].eq("overall")].iloc[0]
-        per_class = metrics.set_index("metric_scope")["f1"]
-        rows.append(
-            {
-                "repeat": repeat_id,
-                "macro_f1": float(overall["f1"]),
-                "accuracy": float(overall["accuracy"]),
-                "f1_negative": float(per_class["negative"]),
-                "f1_neutral": float(per_class["neutral"]),
-                "f1_positive": float(per_class["positive"]),
-            }
-        )
-
-    return pd.DataFrame(rows), oof_predictions
+    probabilities = run_repeated_cv_proba(
+        estimator_factory,
+        term_counts,
+        y,
+        stopwords,
+        n_repeats=n_repeats,
+        n_splits=n_splits,
+        extra_features=extra_features,
+    )
+    oof_predictions = probabilities.argmax(axis=2)
+    return per_repeat_metrics(y, oof_predictions), oof_predictions
 
 
 def load_stopword_set(stopwords: set[str] | None = None) -> set[str]:

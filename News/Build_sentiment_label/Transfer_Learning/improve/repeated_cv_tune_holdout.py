@@ -10,7 +10,7 @@ headline number. That is exactly the pattern mentor feedback point 1-2 warned
 about for the Lexicon_based branch: one split, one number, no sense of how
 much it would move on a different split. Traditional_ML's
 ``improve/repeated_cv.py`` fixed this for the sklearn models (10 repeats of
-5-fold CV, mean +/- std) and also built a fixed Tune(744)/Holdout(320) split
+5-fold CV, mean +/- std) and also built a fixed Tune(730)/Holdout(314) split
 (``Traditional_ML/improve/tune_holdout/``) so a final, once-only check exists
 that was never touched while anything was being tuned.
 
@@ -49,7 +49,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from datasets import Dataset
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 from transformers import AutoTokenizer, DataCollatorWithPadding
@@ -61,8 +60,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from News.Build_sentiment_label.Transfer_Learning.model.common import (  # noqa: E402
     BASE_MODEL_PATH,
-    MAX_LENGTH,
-    TEXT_COLUMN,
+    SENTENCES_COLUMN,
     VALID_LABELS,
     compute_metrics_table,
     confusion_matrix,
@@ -74,10 +72,13 @@ from News.Build_sentiment_label.Transfer_Learning.model.frozen_feature_probe imp
 )
 from News.Build_sentiment_label.Transfer_Learning.model.finetune_phobert import (  # noqa: E402
     WeightedLossTrainer,
+    build_chunk_frame,
     build_classifier,
     build_hf_compute_metrics,
     compute_balanced_class_weights,
+    make_dataset,
     make_training_args,
+    predict_pooled_probabilities,
 )
 
 
@@ -169,7 +170,7 @@ def write_holdout_outputs(method: str, prediction_df: pd.DataFrame, y_holdout: n
     )
 
     overall = metrics_df.loc[metrics_df["metric_scope"].eq("overall")].iloc[0]
-    print(f"\n=== Holdout (320 rows, single check) - {method} ===")
+    print(f"\n=== Holdout ({len(y_holdout)} rows, single check) - {method} ===")
     print(metrics_df.to_string(index=False))
     print("\nConfusion matrix:")
     print(confusion_df.to_string(index=False))
@@ -188,9 +189,9 @@ def run_frozen(args: argparse.Namespace) -> None:
     y_holdout = np.asarray(encode_labels(holdout_df["ground_truth_label"]), dtype=int)
     print(f"Tune: {len(tune_df)} rows | Holdout: {len(holdout_df)} rows")
 
-    print("\nExtracting frozen embeddings (no cache - a few seconds each) ...")
-    tune_features = extract_frozen_features(tune_df[TEXT_COLUMN].astype(str).tolist())
-    holdout_features = extract_frozen_features(holdout_df[TEXT_COLUMN].astype(str).tolist())
+    print("\nExtracting frozen embeddings (chunk + pool, no cache - a few seconds each) ...")
+    tune_features = extract_frozen_features(tune_df[SENTENCES_COLUMN])
+    holdout_features = extract_frozen_features(holdout_df[SENTENCES_COLUMN])
 
     print(
         f"\n{args.repeats} repeats x {args.folds}-fold CV on Tune "
@@ -216,7 +217,7 @@ def run_frozen(args: argparse.Namespace) -> None:
     per_repeat_df.to_csv(DATA_DIR / "frozen_repeated_cv_per_repeat.csv", index=False, encoding="utf-8-sig")
     summary_df.to_csv(DATA_DIR / "frozen_repeated_cv_summary.csv", index=False, encoding="utf-8-sig")
 
-    print("\n=== Repeated CV summary (Tune, 744 rows) ===")
+    print(f"\n=== Repeated CV summary (Tune, {len(y_tune)} rows) ===")
     print(summary_df.to_string(index=False))
 
     print("\nFitting final LogisticRegression on all of Tune, checking Holdout once ...")
@@ -233,15 +234,6 @@ def run_frozen(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # finetune (E3): repeated CV + holdout, fine-tuning PhoBERT per fold
 # ---------------------------------------------------------------------------
-
-
-def make_dataset(frame: pd.DataFrame, tokenizer) -> Dataset:
-    def tokenize_batch(batch):
-        return tokenizer(batch[TEXT_COLUMN], truncation=True, max_length=MAX_LENGTH)
-
-    dataset = Dataset.from_pandas(frame[[TEXT_COLUMN, "label"]], preserve_index=False)
-    dataset = dataset.map(tokenize_batch, batched=True).remove_columns([TEXT_COLUMN])
-    return dataset.with_format("torch")
 
 
 def run_finetune(args: argparse.Namespace) -> None:
@@ -280,9 +272,13 @@ def run_finetune(args: argparse.Namespace) -> None:
             ):
                 train_frame = tune_df.iloc[train_idx].reset_index(drop=True)
                 val_frame = tune_df.iloc[val_idx].reset_index(drop=True)
+                # Class weights from DOCUMENT-level counts (not chunk counts),
+                # same reasoning as model/finetune_phobert.py::main.
                 class_weights = compute_balanced_class_weights(train_frame["label"].tolist())
-                train_dataset = make_dataset(train_frame, tokenizer)
-                val_dataset = make_dataset(val_frame, tokenizer)
+                train_chunk_frame = build_chunk_frame(train_frame, tokenizer)
+                val_chunk_frame = build_chunk_frame(val_frame, tokenizer)
+                train_dataset = make_dataset(train_chunk_frame, tokenizer)
+                val_dataset = make_dataset(val_chunk_frame, tokenizer)
 
                 model = build_classifier()
                 trainer = WeightedLossTrainer(
@@ -296,8 +292,9 @@ def run_finetune(args: argparse.Namespace) -> None:
                     class_weights=class_weights,
                 )
                 trainer.train()
-                pred = trainer.predict(val_dataset)
-                probabilities = torch.softmax(torch.tensor(pred.predictions), dim=-1).numpy()
+                probabilities = predict_pooled_probabilities(
+                    trainer, val_chunk_frame, val_dataset, len(val_frame)
+                )
                 oof_pred[val_idx] = probabilities.argmax(axis=1)
 
                 del trainer, model
@@ -321,14 +318,16 @@ def run_finetune(args: argparse.Namespace) -> None:
     summary_df.to_csv(DATA_DIR / "finetune_repeated_cv_summary.csv", index=False, encoding="utf-8-sig")
 
     print(f"\nRepeated CV wall time: {time.perf_counter() - overall_start:.1f}s")
-    print("\n=== Repeated CV summary (Tune, 744 rows) ===")
+    print(f"\n=== Repeated CV summary (Tune, {len(y_tune)} rows) ===")
     print(summary_df.to_string(index=False))
 
     print("\nFine-tuning final model on all of Tune, checking Holdout once ...")
     final_start = time.perf_counter()
     class_weights = compute_balanced_class_weights(tune_df["label"].tolist())
-    train_dataset = make_dataset(tune_df, tokenizer)
-    holdout_dataset = make_dataset(holdout_df, tokenizer)
+    train_chunk_frame = build_chunk_frame(tune_df, tokenizer)
+    holdout_chunk_frame = build_chunk_frame(holdout_df, tokenizer)
+    train_dataset = make_dataset(train_chunk_frame, tokenizer)
+    holdout_dataset = make_dataset(holdout_chunk_frame, tokenizer)
     model = build_classifier()
     with tempfile.TemporaryDirectory(prefix="phobert_rcv_final_") as scratch:
         trainer = WeightedLossTrainer(
@@ -340,8 +339,9 @@ def run_finetune(args: argparse.Namespace) -> None:
             class_weights=class_weights,
         )
         trainer.train()
-        pred = trainer.predict(holdout_dataset)
-    holdout_proba = torch.softmax(torch.tensor(pred.predictions), dim=-1).numpy()
+        holdout_proba = predict_pooled_probabilities(
+            trainer, holdout_chunk_frame, holdout_dataset, len(holdout_df)
+        )
     holdout_pred = holdout_proba.argmax(axis=1)
     print(f"Final fit + Holdout predict: {time.perf_counter() - final_start:.1f}s")
 

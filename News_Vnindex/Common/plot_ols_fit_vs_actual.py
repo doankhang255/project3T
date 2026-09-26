@@ -11,16 +11,15 @@ chính lợi suất thực.
 
 Kèm bảng số: RMSE, MAE, R² - đo mức "học được" bằng số thay vì chỉ nhìn hình.
 
-Chạy trên 1 tổ hợp đại diện (Cach1_PMI / abnormal_return_ar1_1d).
+Chạy trên 1 tổ hợp đại diện (method ĐẦU TIÊN của nhánh / abnormal_return_ar1_1d).
 
-Import lại add_regression_features từ file gốc (không viết lại).
+Import lại add_regression_features từ Common/vnindex_daily_predictive_regression.py.
 
-Output: data_News/ols_fit_vs_actual.png
+Output: data_News/ols_fit_vs_actual{output_suffix}.png
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -30,28 +29,26 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vnindex_daily_predictive_regression import (  # noqa: E402
-    MERGED_DATA_PATHS_BY_METHOD,
+from News_Vnindex.Common.vnindex_daily_predictive_regression import (
+    OUTPUT_DIR,
     add_regression_features,
 )
 
-REPRESENTATIVE_METHOD = "Cach1_PMI"
 REPRESENTATIVE_TARGET = "abnormal_return_ar1_1d"
 ZOOM_TRADING_DAYS = 252  # ~1 nam gan nhat, de con doc duoc hinh
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-OUTPUT_PATH = PROJECT_ROOT / "data_News" / "ols_fit_vs_actual.png"
 
 COLOR_ACTUAL = "#1d4ed8"
 COLOR_FITTED = "#ea580c"
 COLOR_RESIDUAL = "#64748b"
 
 
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def run_ols_fit_plot(paths_by_method: dict[str, Path], output_suffix: str = "") -> None:
+    """Method đại diện = method ĐẦU TIÊN của ``paths_by_method``.
+    Output: data_News/ols_fit_vs_actual{output_suffix}.png"""
+    representative_method = next(iter(paths_by_method))
+    output_path = OUTPUT_DIR / f"ols_fit_vs_actual{output_suffix}.png"
 
-    merged_df = pd.read_parquet(MERGED_DATA_PATHS_BY_METHOD[REPRESENTATIVE_METHOD])
+    merged_df = pd.read_parquet(paths_by_method[representative_method])
     featured_df, _sentiment_lag_columns, predictor_columns = add_regression_features(
         merged_df, REPRESENTATIVE_TARGET
     )
@@ -73,7 +70,7 @@ def main() -> None:
     mae = float(np.mean(np.abs(residuals)))
     mean_abs_actual = float(np.mean(np.abs(y)))
 
-    print(f"Method/target đại diện: {REPRESENTATIVE_METHOD} / {REPRESENTATIVE_TARGET}")
+    print(f"Method/target đại diện: {representative_method} / {REPRESENTATIVE_TARGET}")
     print(f"Số quan sát: {len(model_df)}")
     print(f"R-squared:              {r_squared:.5f}  ({r_squared*100:.3f}% biến thiên được giải thích)")
     print(f"RMSE (sai số):          {rmse*10000:.2f} basis point")
@@ -97,7 +94,7 @@ def main() -> None:
     ax_top.axhline(0, color="#334155", linewidth=0.8, linestyle="--")
     ax_top.set_ylabel("Abnormal return (basis point)", fontsize=9)
     ax_top.set_title(
-        f"Thực tế vs OLS dự báo - {REPRESENTATIVE_METHOD} / {REPRESENTATIVE_TARGET}\n"
+        f"Thực tế vs OLS dự báo - {representative_method} / {REPRESENTATIVE_TARGET}\n"
         f"({ZOOM_TRADING_DAYS} ngày giao dịch gần nhất - R²={r_squared:.4f}, "
         f"RMSE={rmse*10000:.1f}bp, MAE={mae*10000:.1f}bp)",
         fontsize=11,
@@ -113,12 +110,9 @@ def main() -> None:
     ax_bottom.tick_params(labelsize=8)
 
     fig.tight_layout()
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUTPUT_PATH, dpi=150)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150)
     plt.close(fig)
     print()
-    print("Đã lưu:", OUTPUT_PATH)
+    print("Đã lưu:", output_path)
 
-
-if __name__ == "__main__":
-    main()

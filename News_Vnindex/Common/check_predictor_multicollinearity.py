@@ -1,5 +1,5 @@
 """
-Dùng lại THẲNG `add_regression_features()` từ vnindex_daily_predictive_regression.py
+Dùng lại THẲNG `add_regression_features()` từ Common/vnindex_daily_predictive_regression.py
 (không viết lại danh sách predictor) - đảm bảo đúng y hệt 21 biến đang dùng
 thật trong hồi quy, không lệch nếu sau này predictor đổi.
 
@@ -10,18 +10,17 @@ thật trong hồi quy, không lệch nếu sau này predictor đổi.
       lại, VIF = 1/(1-R²) - bắt được cả cộng tuyến bậc cao. Quy ước: VIF>5
       đáng chú ý, VIF>10 nghiêm trọng (dấu hiệu biến dư thừa).
 
-Chạy trên 1 tổ hợp đại diện (Cach1_PMI, target=abnormal_return_ar1_1d) - bộ
+Chạy trên 1 tổ hợp đại diện (method ĐẦU TIÊN của nhánh, target=abnormal_return_ar1_1d) - bộ
 predictor sentiment/volume/dummy giống hệt ở mọi tổ hợp, chỉ khác target nên
 không cần chạy cả 4 tổ hợp.
 
 Output:
-    data_News/predictor_correlation_heatmap.png
-    data_News/predictor_vif.csv
+    data_News/predictor_correlation_heatmap{output_suffix}.png
+    data_News/predictor_vif{output_suffix}.csv
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -32,17 +31,12 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vnindex_daily_predictive_regression import (  # noqa: E402
-    MERGED_DATA_PATHS_BY_METHOD,
+from News_Vnindex.Common.vnindex_daily_predictive_regression import (
+    OUTPUT_DIR,
     add_regression_features,
 )
 
-REPRESENTATIVE_METHOD = "Cach1_PMI"
 REPRESENTATIVE_TARGET = "abnormal_return_ar1_1d"
-OUTPUT_DIR = Path(__file__).resolve().parents[3] / "data_News"
-HEATMAP_PATH = OUTPUT_DIR / "predictor_correlation_heatmap.png"
-VIF_CSV_PATH = OUTPUT_DIR / "predictor_vif.csv"
 
 
 def compute_vif(predictor_df: pd.DataFrame) -> pd.DataFrame:
@@ -71,16 +65,20 @@ def compute_vif(predictor_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("vif", ascending=False).reset_index(drop=True)
 
 
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def run_multicollinearity_check(paths_by_method: dict[str, Path], output_suffix: str = "") -> None:
+    """Method đại diện = method ĐẦU TIÊN của ``paths_by_method``. Output:
+    data_News/predictor_correlation_heatmap{output_suffix}.png
+    data_News/predictor_vif{output_suffix}.csv"""
+    representative_method = next(iter(paths_by_method))
+    heatmap_path = OUTPUT_DIR / f"predictor_correlation_heatmap{output_suffix}.png"
+    vif_csv_path = OUTPUT_DIR / f"predictor_vif{output_suffix}.csv"
 
-    merged_df = pd.read_parquet(MERGED_DATA_PATHS_BY_METHOD[REPRESENTATIVE_METHOD])
+    merged_df = pd.read_parquet(paths_by_method[representative_method])
     featured_df, _sentiment_lag_columns, predictor_columns = add_regression_features(
         merged_df, REPRESENTATIVE_TARGET
     )
     predictor_df = featured_df[predictor_columns].dropna()
-    print(f"Method/target đại diện: {REPRESENTATIVE_METHOD} / {REPRESENTATIVE_TARGET}")
+    print(f"Method/target đại diện: {representative_method} / {REPRESENTATIVE_TARGET}")
     print("Số predictor:", len(predictor_columns))
     print("Số dòng sau dropna:", len(predictor_df))
 
@@ -102,21 +100,21 @@ def main() -> None:
         ax=ax,
     )
     ax.set_title(
-        f"Tương quan giữa các predictor - {REPRESENTATIVE_METHOD} / {REPRESENTATIVE_TARGET}",
+        f"Tương quan giữa các predictor - {representative_method} / {REPRESENTATIVE_TARGET}",
         fontsize=12,
     )
     plt.xticks(rotation=90, fontsize=7)
     plt.yticks(rotation=0, fontsize=7)
     fig.tight_layout()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(HEATMAP_PATH, dpi=150)
+    fig.savefig(heatmap_path, dpi=150)
     plt.close(fig)
-    print("Đã lưu heatmap:", HEATMAP_PATH)
+    print("Đã lưu heatmap:", heatmap_path)
 
     # --- VIF ---
     vif_df = compute_vif(predictor_df)
-    vif_df.to_csv(VIF_CSV_PATH, index=False, encoding="utf-8-sig")
-    print("Đã lưu VIF:", VIF_CSV_PATH)
+    vif_df.to_csv(vif_csv_path, index=False, encoding="utf-8-sig")
+    print("Đã lưu VIF:", vif_csv_path)
     print()
     print("Top 10 predictor có VIF cao nhất (VIF>10 = cộng tuyến nghiêm trọng, VIF>5 = đáng chú ý):")
     print(vif_df.head(10).to_string(index=False))
@@ -129,6 +127,3 @@ def main() -> None:
     else:
         print("Không có predictor nào VIF > 10.")
 
-
-if __name__ == "__main__":
-    main()

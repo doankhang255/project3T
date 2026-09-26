@@ -12,6 +12,19 @@
 By default writes only into this folder (``RESULTS.txt`` + ``data/*.csv``).
 Does not touch the main pipeline or model/*.py.
 
+No duplicate CV: logistic_regression / multinomial_nb / complement_nb / svm
+are the production models, so their out-of-fold predictions are READ from
+the production run (``../Common/production_cv.py``, same 10 repeats x 5-fold
+splits) instead of being re-trained - these are exactly the numbers in
+RESULTS_SUMMARY.txt. Only random_forest is run here, because this folder's
+random_forest is TF-IDF-only while the production one uses the lexicon
+block. Its out-of-fold probabilities are saved as
+``../data/random_forest_tfidf_only_oof_probabilities.npz`` so
+``../Common/calibration_check.py`` reuses repeat 0 as its ``rf_isotonic``
+variant instead of re-training it. With ``--ground-truth-csv`` or a
+``--repeats`` different from the production run, every model is run fresh
+(and nothing is saved).
+
 M2.1  Multinomial vs Complement Naive Bayes. Rennie et al. (2003): Complement
       NB is built for class-imbalanced text; here ``positive`` is ~25% of rows.
 M2.2  Repeated stratified 5-fold CV -> mean +/- std over ``--repeats`` runs,
@@ -55,16 +68,20 @@ from News.Build_sentiment_label.Traditional_ML.Common.nadeau_bengio import (
 )
 from News.Build_sentiment_label.Traditional_ML.Common.model_factories import (
     MODEL_FACTORIES,
-    SINGLE_RUN_REFERENCE,
     summarize,
 )
 from News.Build_sentiment_label.Traditional_ML.Common.prepare_ground_truth import (
     load_frame_from_csv,
 )
+from News.Build_sentiment_label.Traditional_ML.Common.production_cv import (
+    load_production_oof,
+    save_production_oof,
+)
 from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import (
     N_REPEATS,
     load_stopword_set,
-    run_repeated_cv,
+    per_repeat_metrics,
+    run_repeated_cv_proba,
 )
 from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
     encode_labels,
@@ -73,6 +90,19 @@ from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 # default output location; --out-dir overrides both (see main())
+
+# this script's model name -> production run name whose saved OOF it reuses.
+# random_forest is absent on purpose: production RF uses the lexicon block.
+PRODUCTION_NAME = {
+    "logistic_regression": "logistic_regression",
+    "multinomial_nb": "naive_bayes",
+    "complement_nb": "complement_nb",
+    "svm": "svm",
+}
+
+# models run here (not production) whose OOF probabilities are saved for
+# reuse elsewhere - calibration_check.py's rf_isotonic reads repeat 0.
+SAVED_NAME = {"random_forest": "random_forest_tfidf_only"}
 
 
 def mcnemar_pairwise(
@@ -207,6 +237,7 @@ def render_report(
     label_counts: dict[str, int],
     nb_ci_by_model: dict[str, dict],
     nb_pairwise_df: pd.DataFrame,
+    reused_models: set[str],
 ) -> str:
     lines: list[str] = []
     add = lines.append
@@ -264,18 +295,16 @@ def render_report(
         low, high = boot_ci_by_model[name]
         add(f"    {name:<20} {boot_point_by_model[name]:.3f}  [{low:.3f}, {high:.3f}]")
     add("")
-    add("  RESULTS_SUMMARY.txt reports the production pipeline (random_forest")
-    add("  there uses the lexicon feature block; the random_forest here does not -")
-    add("  the two are not directly comparable).")
-    reference_to_repeat = {"naive_bayes": "multinomial_nb"}
-    for name, (macro_f1, _accuracy) in SINGLE_RUN_REFERENCE.items():
-        repeat_name = reference_to_repeat.get(name, name)
-        repeat_mean = summary_by_model.get(repeat_name, {}).get(
-            "macro_f1", (float("nan"), 0.0)
-        )[0]
+    if reused_models:
         add(
-            f"    {name:<20} single {macro_f1:.3f}   repeated mean {repeat_mean:.3f}"
+            "  Reused from the production run (same numbers as RESULTS_SUMMARY.txt): "
+            + ", ".join(sorted(reused_models))
+            + "."
         )
+    add(
+        "  random_forest here is TF-IDF-only; the production random_forest uses the"
+    )
+    add("  lexicon feature block - the two are not directly comparable.")
     add("")
 
     have_nb_pair = "multinomial_nb" in summary_by_model and "complement_nb" in summary_by_model
@@ -431,7 +460,7 @@ def render_report(
         add(f"  Bootstrap: macro-F1 gap CI excludes 0 only for: {pairs}.")
     add(
         f"  With {total} rows, check whether gaps still sit inside the +/- std "
-        "band before locking in a model choice (see ../IMPROVEMENTS.md)."
+        "band before locking in a model choice (see ../ML_SUMMARY.qmd section 5.2)."
     )
     return "\n".join(lines)
 
@@ -500,11 +529,29 @@ def main() -> None:
     summary_by_model: dict[str, dict[str, tuple[float, float]]] = {}
     oof_by_model: dict[str, np.ndarray] = {}
 
+    reused_models: set[str] = set()
+
     for name in args.models:
-        print(f"\n[{name}] {args.repeats} repeats x 5-fold CV ...", flush=True)
-        per_repeat, oof = run_repeated_cv(
-            MODEL_FACTORIES[name], term_counts, y, stopwords, n_repeats=args.repeats
-        )
+        oof = None
+        production_name = PRODUCTION_NAME.get(name)
+        if production_name is not None and args.ground_truth_csv is None:
+            saved = load_production_oof(production_name, frame["source_row_id"].to_numpy(), y)
+            if len(saved) == args.repeats:
+                oof = saved.argmax(axis=2)
+                reused_models.add(name)
+                print(f"\n[{name}] reusing production OOF ({production_name}, {len(saved)} repeats)")
+        if oof is None:
+            print(f"\n[{name}] {args.repeats} repeats x 5-fold CV ...", flush=True)
+            probabilities = run_repeated_cv_proba(
+                MODEL_FACTORIES[name], term_counts, y, stopwords, n_repeats=args.repeats
+            )
+            oof = probabilities.argmax(axis=2)
+            if name in SAVED_NAME and args.ground_truth_csv is None:
+                path = save_production_oof(
+                    SAVED_NAME[name], probabilities, frame["source_row_id"].to_numpy(), y
+                )
+                print(f"    saved OOF probabilities: {path}")
+        per_repeat = per_repeat_metrics(y, oof)
         per_repeat.insert(0, "model", name)
         per_repeat_by_model[name] = per_repeat
         summary_by_model[name] = summarize(per_repeat)
@@ -600,6 +647,7 @@ def main() -> None:
         label_counts,
         nb_ci_by_model,
         nb_pairwise_df,
+        reused_models,
     )
     results_path.write_text(report + "\n", encoding="utf-8")
     print("\n" + report)

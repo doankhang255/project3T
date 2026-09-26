@@ -5,22 +5,24 @@ File này được sinh tự động bởi run_pipeline.py - không sửa tay.
 
 1. DỮ LIỆU ĐẦU VÀO
 ----------------------------------------------------------------
-Tổng số dòng: 1064 bài báo đã được gán nhãn tay (ground truth)
+Tổng số dòng: 1044 bài báo đã được gán nhãn tay (ground truth)
 
 Phân bố nhãn:
-  negative : 295 bài  (27.7%)
-  neutral  : 493 bài  (46.3%)
-  positive : 276 bài  (25.9%)
+  negative : 296 bài  (28.4%)
+  neutral  : 512 bài  (49.0%)
+  positive : 236 bài  (22.6%)
 
 Tokenizer: VNCoreNLP - token lấy từ equity_news_tokenized_vncorenlp.parquet
 theo source_row_id (chung với nhánh Lexicon_based và Build_sentiment_index).
 
 Feature: TF-IDF trên n-gram tiếng Việt (1-3 gram), lọc stopword + min_df
 theo tỷ lệ + max_df_ratio = 0.85.
-Vocab (fit trên toàn bộ GT, dùng để mô tả): 1011 term (581 unigram, 297 bigram, 133 trigram).
+Vocab (fit trên toàn bộ GT, dùng để mô tả): 1001 term (583 unigram, 293 bigram, 125 trigram).
 
-Đánh giá bằng 5-fold stratified cross-validation. TF-IDF + bước chọn
-top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold validation).
+Đánh giá bằng 10 lần lặp x 5-fold stratified cross-validation
+(mỗi lần lặp chia fold khác nhau; số dưới đây = trung bình +/- độ lệch
+chuẩn qua các lần lặp). TF-IDF + bước chọn top-feature được fit RIÊNG
+trong từng train-fold (không rò rỉ fold validation).
 
 
 2. KẾT QUẢ TỪNG MODEL
@@ -28,120 +30,120 @@ top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold va
 
 --- Logistic Regression (class_weight=balanced, C=0.1 tuned) ---
   Class      Precision  Recall   F1
-  negative   0.667      0.617      0.641
-  neutral    0.701      0.714      0.708
-  positive   0.550      0.576      0.563
+  negative   0.719      0.691      0.705
+  neutral    0.771      0.778      0.775
+  positive   0.574      0.590      0.582
   ----------------------------------------
-  Accuracy      : 0.651
-  Macro F1      : 0.637
+  Accuracy      : 0.711 +/- 0.006
+  Macro F1      : 0.687 +/- 0.007
 
-  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+  Confusion matrix, trung bình qua các lần lặp (hàng = nhãn thật, cột = dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    182        69       44
-  true_neutral      55       352       86
-  true_positive     36        81      159
+  true_negative    204.6      55.8      35.6
+  true_neutral      45.8     398.5      67.7
+  true_positive     34.3      62.4     139.3
 
 --- Naive Bayes (MultinomialNB) ---
   Class      Precision  Recall   F1
-  negative   0.618      0.658      0.637
-  neutral    0.726      0.667      0.696
-  positive   0.512      0.551      0.531
+  negative   0.667      0.700      0.683
+  neutral    0.777      0.714      0.744
+  positive   0.487      0.542      0.513
   ----------------------------------------
-  Accuracy      : 0.634
-  Macro F1      : 0.621
+  Accuracy      : 0.671 +/- 0.003
+  Macro F1      : 0.647 +/- 0.004
 
-  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+  Confusion matrix, trung bình qua các lần lặp (hàng = nhãn thật, cột = dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    194        62       39
-  true_neutral      58       329      106
-  true_positive     62        62      152
+  true_negative    207.1      52.0      36.9
+  true_neutral      48.4     365.8      97.8
+  true_positive     55.0      53.0     128.0
 
 --- Complement Naive Bayes (Rennie et al. 2003) ---
   Class      Precision  Recall   F1
-  negative   0.614      0.692      0.651
-  neutral    0.737      0.653      0.692
-  positive   0.512      0.547      0.529
+  negative   0.637      0.731      0.680
+  neutral    0.775      0.710      0.741
+  positive   0.488      0.487      0.488
   ----------------------------------------
-  Accuracy      : 0.636
-  Macro F1      : 0.624
+  Accuracy      : 0.665 +/- 0.004
+  Macro F1      : 0.636 +/- 0.004
 
-  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+  Confusion matrix, trung bình qua các lần lặp (hàng = nhãn thật, cột = dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    204        54       37
-  true_neutral      64       322      107
-  true_positive     64        61      151
+  true_negative    216.3      50.0      29.7
+  true_neutral      58.0     363.3      90.7
+  true_positive     65.5      55.6     114.9
 
 --- Random Forest (300 trees, isotonic-calibrated, +lexicon features) ---
   Class      Precision  Recall   F1
-  negative   0.664      0.631      0.647
-  neutral    0.708      0.757      0.731
-  positive   0.623      0.580      0.600
+  negative   0.721      0.710      0.716
+  neutral    0.791      0.817      0.803
+  positive   0.623      0.589      0.605
   ----------------------------------------
-  Accuracy      : 0.676
-  Macro F1      : 0.660
+  Accuracy      : 0.735 +/- 0.006
+  Macro F1      : 0.708 +/- 0.008
 
-  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+  Confusion matrix, trung bình qua các lần lặp (hàng = nhãn thật, cột = dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    186        76       33
-  true_neutral      56       373       64
-  true_positive     38        78      160
+  true_negative    210.3      49.3      36.4
+  true_neutral      45.9     418.1      48.0
+  true_positive     35.6      61.3     139.1
 
 --- SVM (LinearSVC, C=0.1 tuned, margin-softmax - not a calibrated probability) ---
   Class      Precision  Recall   F1
-  negative   0.629      0.603      0.616
-  neutral    0.678      0.712      0.694
-  positive   0.540      0.514      0.527
+  negative   0.698      0.668      0.682
+  neutral    0.745      0.776      0.760
+  positive   0.558      0.536      0.547
   ----------------------------------------
-  Accuracy      : 0.631
-  Macro F1      : 0.612
+  Accuracy      : 0.691 +/- 0.007
+  Macro F1      : 0.663 +/- 0.008
 
-  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+  Confusion matrix, trung bình qua các lần lặp (hàng = nhãn thật, cột = dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    178        77       40
-  true_neutral      61       351       81
-  true_positive     44        90      142
+  true_negative    197.6      61.5      36.9
+  true_neutral      51.1     397.5      63.4
+  true_positive     34.5      75.0     126.5
 
 --- Ensemble (average probability of LR + NB + RF) ---
   Class      Precision  Recall   F1
-  negative   0.654      0.668      0.661
-  neutral    0.727      0.712      0.719
-  positive   0.554      0.562      0.558
+  negative   0.709      0.713      0.711
+  neutral    0.787      0.765      0.776
+  positive   0.534      0.563      0.548
   ----------------------------------------
-  Accuracy      : 0.661
-  Macro F1      : 0.646
+  Accuracy      : 0.705 +/- 0.005
+  Macro F1      : 0.678 +/- 0.006
 
-  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):
+  Confusion matrix, trung bình qua các lần lặp (hàng = nhãn thật, cột = dự đoán):
                  pred_neg  pred_neu  pred_pos
-  true_negative    197        66       32
-  true_neutral      49       351       93
-  true_positive     55        66      155
+  true_negative    210.9      50.6      34.5
+  true_neutral      38.7     391.9      81.4
+  true_positive     47.8      55.4     132.8
 
 
 3. BẢNG XẾP HẠNG TỔNG HỢP (macro F1)
 ----------------------------------------------------------------
-  1. random_forest          F1 = 0.660   Accuracy = 0.676
-  2. ensemble               F1 = 0.646   Accuracy = 0.661
-  3. logistic_regression    F1 = 0.637   Accuracy = 0.651
-  4. complement_nb          F1 = 0.624   Accuracy = 0.636
-  5. naive_bayes            F1 = 0.621   Accuracy = 0.634
-  6. svm                    F1 = 0.612   Accuracy = 0.631
+  1. random_forest          F1 = 0.708 +/- 0.008   Accuracy = 0.735
+  2. logistic_regression    F1 = 0.687 +/- 0.007   Accuracy = 0.711
+  3. ensemble               F1 = 0.678 +/- 0.006   Accuracy = 0.705
+  4. svm                    F1 = 0.663 +/- 0.008   Accuracy = 0.691
+  5. naive_bayes            F1 = 0.647 +/- 0.004   Accuracy = 0.671
+  6. complement_nb          F1 = 0.636 +/- 0.004   Accuracy = 0.665
 
 
 4. NHẬN XÉT
 ----------------------------------------------------------------
-- logistic_regression: class yếu nhất = positive (F1 = 0.563, recall = 0.576).
-- naive_bayes: class yếu nhất = positive (F1 = 0.531, recall = 0.551).
-- complement_nb: class yếu nhất = positive (F1 = 0.529, recall = 0.547).
-- random_forest: class yếu nhất = positive (F1 = 0.600, recall = 0.580).
-- svm: class yếu nhất = positive (F1 = 0.527, recall = 0.514).
-- ensemble: class yếu nhất = positive (F1 = 0.558, recall = 0.562).
-- Class 'positive' ít dữ liệu nhất (276/1064) nên thường là class yếu nhất.
+- logistic_regression: class yếu nhất = positive (F1 = 0.582, recall = 0.590).
+- naive_bayes: class yếu nhất = positive (F1 = 0.513, recall = 0.542).
+- complement_nb: class yếu nhất = positive (F1 = 0.488, recall = 0.487).
+- random_forest: class yếu nhất = positive (F1 = 0.605, recall = 0.589).
+- svm: class yếu nhất = positive (F1 = 0.547, recall = 0.536).
+- ensemble: class yếu nhất = positive (F1 = 0.548, recall = 0.563).
+- Class 'positive' ít dữ liệu nhất (236/1044) nên thường là class yếu nhất.
 
 
 5. HẠN CHẾ QUAN TRỌNG NHẤT: GROUND TRUTH VẪN CÒN NHỎ
 ----------------------------------------------------------------
-1064 dòng (tăng từ 152 dòng ban đầu) vẫn chưa lớn cho bài toán phân
-loại 3 lớp. Mỗi fold validation chỉ ~212 dòng, class 'positive' chỉ ~55 dòng/fold, nên các con số
+1044 dòng (tăng từ 152 dòng ban đầu) vẫn chưa lớn cho bài toán phân
+loại 3 lớp. Mỗi fold validation chỉ ~208 dòng, class 'positive' chỉ ~47 dòng/fold, nên các con số
 accuracy/F1 ở trên vẫn còn dao động theo cách chia fold.
 
 Đã xử lý qua các đợt refactor:
@@ -149,7 +151,7 @@ accuracy/F1 ở trên vẫn còn dao động theo cách chia fold.
   (3) giữ MAX_FEATURES nhưng gọi bên trong fold (train-only).
   (4) tokenizer = VNCoreNLP, đồng bộ với phần còn lại của project.
   (7) một đường CV chung, n_splits = min(5, số dòng của lớp nhỏ nhất).
-  Ground truth: 152 -> 1064 dòng (data_news/ground_truth_combined.csv).
+  Ground truth: 152 -> 1044 dòng (data_news/ground_truth_combined.csv).
   Random Forest: thêm isotonic calibration (CalibratedClassifierCV) -
   predict_proba dạng vote-fraction trước đây bị lệch calibration
   (đo bằng reliability diagram, xem Common/calibration_check.py).
@@ -162,13 +164,13 @@ accuracy/F1 ở trên vẫn còn dao động theo cách chia fold.
   Random Forest: thêm feature 7 nhóm lexicon tài chính + negation
   (model/lexicon_features.py) - đã test tune+holdout 3 lần (2 lần
   đầu không lặp lại được, lần 3 với GT lớn hơn + holdout mới thì
-  replicate: holdout Delta=+0.038 CI[+0.011,+0.066] p=0.004). Chỉ RF
-  dùng feature này (LR/SVM không có bằng chứng); xem IMPROVEMENTS.md
-  mục A và experiment_Lexicon_features/README.md.
+  replicate: holdout Delta=+0.049 CI[+0.017,+0.082] p=0.003). Chỉ RF
+  dùng feature này (LR/SVM không có bằng chứng); xem ML_SUMMARY.qmd
+  mục 6.2.
   Nested-CV tuning (Common/tune_hyperparameters.py): LogReg/SVM
-  đổi C=1.0 -> C=0.1, thắng ở toàn bộ outer fold khi tune, xác nhận
-  lại trên holdout (LogReg +0.027 CI loại 0 p=0.001, SVM +0.024 CI
-  loại 0 p=0.002). NB/RF không có cải thiện đáng tin, giữ default.
+  C=1.0 -> tuned: Delta=-0.008 CI[-0.019,+0.002] (LogReg), -0.003
+  CI[-0.014,+0.008] (SVM) - chạm 0; NB/RF cũng không có cải thiện
+  đáng tin. Code vẫn giữ C=0.1, xem ML_SUMMARY.qmd mục 5.3.
 
 Còn lại: cần gán nhãn thêm ground truth (hàng nghìn dòng, cân bằng hơn
 giữa 3 class) trước khi kết luận model nào tốt hơn và so sánh công bằng

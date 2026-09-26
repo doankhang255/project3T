@@ -23,115 +23,173 @@ format:
       - right=2cm
 ---
 
-## 1. Kết quả Scoring: trọng số PMI (`Scoring/`) 
+Ground truth: **1.044 bài** gán nhãn tay (`data_news/ground_truth_combined.csv`),
+chia cố định 730 tune / 314 holdout (stratified theo sentiment,
+`data/ground_truth_tune_holdout_split.csv`). Mục 4 (VN-Index) không phụ thuộc
+ground truth (chỉ dùng dictionary + corpus đầy đủ).
+
+## 1. Kết quả Scoring: trọng số PMI (`Scoring/`)
 
 | Tập đánh giá | Accuracy |
 |---|---:|
-| Toàn bộ 1.064 bài | 61,8% |
-| Chỉ tập Holdout (320 bài, khách quan nhất) | 65,3% |
+| Toàn bộ 1.044 bài | 63,7% (macro-F1 0,625) |
+| Chỉ tập Holdout (314 bài, khách quan nhất) | 66,2% (macro-F1 0,650) |
 
 ## 2. Kết quả Scoring Intensity: trọng số nội tại kiểu VADER (`Scoring_Intensity/`)
 
 | Tập đánh giá | Accuracy |
 |---|---:|
-| Toàn bộ 1.064 bài | 62,4% |
-| Chỉ tập Holdout (320 bài, khách quan nhất) | 65,3% |
+| Toàn bộ 1.044 bài | 64,7% (macro-F1 0,636) |
+| Chỉ tập Holdout (314 bài, khách quan nhất) | 67,2% (macro-F1 0,662) |
 
 ## 3. So sánh tổng hợp Phần 1 vs Phần 2
 
 | | Phần 1 (PMI) | Phần 2 (nội tại) |
 |---|---:|---:|
-| Accuracy trên 1.064 bài | 61,8% | 62,4% |
-| Accuracy trên Holdout (320 bài, khách quan nhất) | 65,3% | 65,3% |
+| Accuracy trên 1.044 bài | 63,7% | 64,7% |
+| Accuracy trên Holdout (314 bài, khách quan nhất) | 66,2% | 67,2% |
 
-2 cách cho kết quả gần như giống hệt nhau khi đánh giá khách quan trên
-Holdout (trùng đến 65,31% cả hai; macro-F1 0,6447 vs 0,6448 — xem mục 4) —
-cùng 1 mẫu hình "2 cách ngang nhau" đã thấy ở lần đo trước trên 599 bài, giờ
-càng rõ hơn khi ground truth lớn hơn.
+Cách 2 (Intensity) nhỉnh hơn Cách 1 (PMI) khoảng 1 điểm % ở cả 2 tập (Toàn
+bộ: 64,7% vs 63,7%; Holdout: 67,2% vs 66,2%). Chênh lệch còn nhỏ - đáng theo
+dõi thêm khi có ground truth mới.
 
-| Longest-match vs chồng lấn — Cách 1 | chồng lấn nhỉnh hơn (62,8% vs 60,3%) | 65,31% = 65,31% (macro-F1 0,6464 vs 0,6447) | Giữ longest-match |
-| Longest-match vs chồng lấn — Cách 2 | chồng lấn nhỉnh hơn (63,0% vs 61,2%) | 65,31% = 65,31% (macro-F1 0,6452 vs 0,6448) | Giữ longest-match |
+| Chẩn đoán | Tune | Holdout | Kết luận |
+|---|---|---|---|
+| Longest-match vs chồng lấn — Cách 1 | chồng lấn thắng rõ trên Tune (65,1% vs 62,6%) | Holdout: chồng lấn 69,4% vs longest 66,2% (macro-F1 0,6847 vs 0,6500) | **Nên đổi sang khớp chồng lấn** |
+| Longest-match vs chồng lấn — Cách 2 | chồng lấn thắng rõ trên Tune (65,1% vs 63,6%) | Holdout: chồng lấn 69,4% vs longest 67,2% (macro-F1 0,6825 vs 0,6615) | **Nên đổi sang khớp chồng lấn** |
 
-- **Khoảng cách longest-match vs khớp chồng lấn thu hẹp gần hết**: lần đo
-  152 bài cũ thấy chênh 2,6 điểm % (63,8% vs 61,2%). Lần này (1.064 bài, Holdout
-  320) accuracy 2 cách khớp **bằng nhau tuyệt đối** ở cả 2 phương pháp chấm
-  điểm (65,31%), chỉ còn lệch nhẹ ở macro-F1 (~0,001-0,002, không đáng kể).
-  Tín hiệu "chồng lấn tốt hơn" ở các lần đo trước nhiều khả năng là nhiễu
-  mẫu nhỏ - **giữ nguyên longest-match** (đơn giản hơn, không còn lý do đổi).
+- **Khớp chồng lấn (overlapping-match) thắng rõ longest-match ở cả Tune lẫn
+  Holdout, ở cả 2 cách tính trọng số** (chênh ~2-3 điểm % accuracy, ~0,02-0,03
+  macro-F1 trên Holdout) - **nên cân nhắc đổi sang khớp chồng lấn** trong bản
+  production (`score_articles.py` / `score_articles_intensity.py` hiện vẫn
+  đang dùng longest-match, CHƯA đổi).
 
-**Xác nhận lại các chẩn đoán trước đó, trên dictionary/corpus build lại
-HOÀN TOÀN từ đầu (không phải đọc lại file cũ)**:
+## 4. VN-Index
 
-## 4. VN-Index 
+Kiểm định sentiment có dự báo được lợi suất và khối lượng giao dịch VN-Index
+hay không: hồi quy kiểu Tetlock (2007) cấp ngày trên **abnormal return**
+(lợi suất trừ phần dự đoán được từ quá khứ - rolling mean 120 ngày và AR(1)
+252 ngày), 5 lag sentiment, sai số chuẩn Newey-West HAC 5 lag, kèm dummy
+thứ-trong-tuần, dummy gần Tết và volatility 20 ngày. Bản tuần dùng thêm kiểm
+định tổng hệ số lag 2-5 (hiệu ứng đảo chiều).
 
-Test trên cùng **4 cách tính sentiment** (PMI, Intensity, PCA_PMI,
-PCA_Intensity) - chỉ coi 1 phát hiện là đáng tin nếu nhất quán ở cả 4, đúng
-nguyên tắc đã áp dụng xuyên suốt.
+**4 chỉ số sentiment không cùng kiểm 1 giả thuyết**, nên được phân vai:
 
-**4 cách này KHÔNG PHẢI 4 lần thử ngẫu nhiên** - mà là tổ hợp có chủ đích
-của 2 lựa chọn độc lập: (a) cách gán trọng số cho từng từ trong dictionary
-(đã giải thích ở mục 1/2), và (b) cách gộp 7 category (negative/positive/
-uncertainty/litigious/strong_modal/weak_modal/constraining) lại thành 1 chỉ
-số sentiment duy nhất mỗi ngày/tuần:
-
-| Tên | Trọng số từ (theo mục 1/2) | Cách gộp thành 1 chỉ số |
+| Chỉ số | Đo cái gì | Vai trò |
 |---|---|---|
-| **PMI** (Cách 1) | Phần 1 — PMI: `score_centered`, đo mức đồng-xuất-hiện với seed trong corpus | Đơn giản: `positive_score − negative_score` mỗi bài, rồi lấy trung bình theo ngày/tuần |
-| **Intensity** (Cách 2) | Phần 2 — nội tại kiểu VADER: base_weight theo vòng bootstrap + marker cực đoan/nhẹ + hệ số nhấn mạnh | Đơn giản: `positive_score − negative_score` mỗi bài, rồi lấy trung bình theo ngày/tuần |
-| **PCA_PMI** | Giống PMI (Phần 1) | PCA (lấy component 1) trên **cả 7 category**, kiểu Tetlock (2007) - không chỉ dùng riêng positive/negative |
-| **PCA_Intensity** | Giống Intensity (Phần 2) | PCA (lấy component 1) trên cả 7 category, giống PCA_PMI nhưng đổi nguồn trọng số |
+| **PMI** (Cách 1), **Intensity** (Cách 2) | **Giọng điệu** tin: `positive_score − negative_score` mỗi bài, trung bình theo ngày/tuần. 2 chỉ số chỉ khác cách gán trọng số từ (mục 1/2) - 2 cách đo cùng 1 khái niệm | **Đặc tả chính** (mục 4.1) |
+| **PCA_PMI**, **PCA_Intensity** | Thành phần chính thứ nhất trên cả 7 category (negative/positive/uncertainty/litigious/strong_modal/weak_modal/constraining), kiểu Tetlock | **Robustness** (mục 4.2) - đo một khái niệm khác, xem giải thích ở 4.2 |
 
-Nói cách khác: **PMI vs Intensity** khác nhau ở cách GÁN TRỌNG SỐ TỪ (2 cột
-"Phần 1/2" đã trình bày ở mục 1-2); **{PMI,Intensity} vs {PCA_PMI,
-PCA_Intensity}** khác nhau ở cách GỘP THÀNH CHỈ SỐ (chỉ dùng hiệu
-positive−negative, hay dùng PCA để giữ thông tin từ cả 7 category thay vì 1
-cặp, giống Tetlock gốc dùng PCA trên 77 category GI của ông thay vì chỉ
-positive/negative). Vì là 2×2 tổ hợp độc lập (không phải 4 phương án cùng
-loại), 1 phát hiện chỉ được coi là vững nếu nó xuất hiện ở CẢ 4 ô - nếu chỉ
-đúng ở 1-2 ô thì nhiều khả năng là do đặc thù của riêng lựa chọn đó (VD chỉ
-đúng ở PMI/Intensity nhưng mất ở 2 bản PCA → tín hiệu phụ thuộc cách gộp
-category, không phải tín hiệu sentiment thật).
+Quy tắc: 1 phát hiện của đặc tả chính chỉ được tính khi **cả PMI lẫn
+Intensity** cùng đạt. Kết quả PCA được báo cáo riêng và **không** dùng để
+bác bỏ hay xác nhận kết quả của đặc tả chính.
 
-**Lợi suất (return) — kết luận không đổi, số liệu khớp gần như tuyệt đối
-với lần đo trước**:
+*Lưu ý minh bạch:* cách phân vai này được áp dụng theo góp ý của mentor, sau
+khi đã có kết quả của cả 4 chỉ số (trước đó quy tắc là "chỉ tin nếu nhất
+quán ở cả 4"). Lý do phân vai dựa trên **cấu trúc** của chỉ số PCA (loadings
+ở mục 4.2), không dựa trên việc chỉ số nào cho kết quả đẹp hơn.
 
-- **R² mô hình**: daily R²=1,404% (mô hình đầy đủ, có sentiment) so với
-  1,143% (không có sentiment) - sentiment chỉ thêm được ~0,26 điểm % R².
-- **F-test 5 lag sentiment**: F(5, 3332)=1,76, p=0,118 (so với 1,41%/0,106
-  lần trước - lệch nhỏ) → **vẫn không có ý nghĩa thống kê**, cùng kết luận
-  như lần đo trước.
-- **Lag4 daily**: vẫn "có tín hiệu" ở Cách 1 PMI (p=0,004) và Cách 2
-  Intensity (p=0,008), nhưng biến mất ở PCA_PMI/PCA_Intensity (p=0,57-0,65)
-  - đúng mẫu hình cũ, và đúng nguyên tắc "chỉ tin nếu nhất quán ở cả 4" (ở
-  đây KHÔNG nhất quán, nên không coi là phát hiện thật).
-- **Weekly (bản multi-lag, kiểm định tổng lag2-5)**: PMI/Intensity
-  p=0,078-0,108 (gần ngưỡng 10%, đúng như mô tả cũ), PCA_PMI/PCA_Intensity
-  p=0,75-0,99 (không có gì) - khớp gần như chính xác mẫu hình đã báo cáo.
-- **Kiểm định multicollinearity (VIF)**: không predictor nào VIF>10 (cao
-  nhất ~1,63, do dow dummy) → việc rút 5 lag volume xuống còn 1 lag vẫn
-  đúng đắn.
-- **Kiểm định định danh** (`verify_abnormal_return.py`): abnormal return +
-  expected return khớp với `daily_return`, sai lệch ~1e-18 (chỉ do làm
-  tròn float) → cách tính đúng.
+### 4.1. Đặc tả chính: giọng điệu tin (PMI và Intensity)
 
-**Volume — xác nhận lại chính xác cả 2 vòng kiểm định chính**:
+**Lợi suất (return):**
 
-1. *Vòng 1 (chưa control xu hướng)*:
-   sentiment lag1 → volume ngày kế tiếp dương ở cả 4 phương pháp (hệ số
-   0,0094-0,0121), có ý nghĩa (p<0,02) ở đúng **2/4 phương pháp**: Cách 1
-   PMI (p=0,0045) và Cách 2 Intensity (p=0,0165) - PCA_PMI/PCA_Intensity
-   không đạt (p=0,067-0,080). Khớp chính xác kết luận cũ.
-2. *Vòng 2 (year FE + tách khối ngoại/khối nội)*:
-   **Khối ngoại** vẫn không có tín hiệu ở bất kỳ phương pháp nào (p=0,28-0,63,
-   R²=71,9%, so với 72%/0,28-0,63 lần trước - gần như trùng khớp). **Khối
-   nội** lặp lại đúng mẫu hình: có ở PMI/Intensity (p=0,0006 và 0,0021, so
-   với 0,0007/0,0023 lần trước), mất ở PCA (p=0,195 và 0,170).
+| Kiểm định | PMI | Intensity | Kết luận |
+|---|---|---|---|
+| Lag4 daily (rolling / AR(1)) | p=0,004 / 0,005 (hệ số −6,0 bp) | p=0,008 / 0,010 (hệ số −5,6 bp) | Cả 2 đạt riêng lẻ, nhưng **cần thận trọng** (xem dưới) |
+| Lag 1, 2, 3, 5 daily | p=0,35-0,48 | p=0,34-0,58 | Không |
+| Tổng lag 2-5 daily | p=0,81-0,83 | p=0,95-0,97 | Không |
+| F-test đồng thời 5 lag (PMI / AR(1)) | F(5, 3332)=1,76, p=0,118 | - | Không |
+| Tổng lag 2-5 weekly (multi-lag) | p=0,086 / 0,108, hệ số âm | p=0,078 / 0,091, hệ số âm | Sát ngưỡng 10%, chưa đạt 5% |
 
-**Kết luận tổng (không đổi)**: cải tiến lexicon không tạo tín hiệu dự báo
-lợi suất mới; tín hiệu volume (khối nội, PMI/Intensity) vẫn sống sau khi
-kiểm soát year FE và tách khối ngoại/nội, nhưng vẫn chỉ 2/4 phương pháp đạt
-chuẩn nhất quán - chưa đủ để kết luận chắc chắn, cần thêm dữ liệu hoặc góc
-kiểm định khác trước khi coi đây là phát hiện chính thức.
+- **R² daily** (PMI / AR(1)): mô hình đầy đủ 1,404% so với 1,143% khi bỏ
+  sentiment - sentiment chỉ thêm ~0,26 điểm % R².
+- **Về lag4**: đây là 1 lag trong 5 lag, lại xét trên 2 target, nên 1 lag
+  lẻ có p<0,01 hoàn toàn có thể xuất hiện do kiểm định nhiều lần. Kiểm định
+  đồng thời cả 5 lag (F-test) không có ý nghĩa, các lag liền kề cũng không.
+  Vì vậy **không coi lag4 là bằng chứng sentiment dự báo lợi suất** - chỉ
+  ghi nhận là tín hiệu cần kiểm tra lại khi có thêm dữ liệu.
+
+**Khối lượng giao dịch (volume), sentiment lag1:**
+
+| Kiểm định | PMI | Intensity | Kết luận |
+|---|---|---|---|
+| Vòng 1 - volume tổng | hệ số +0,0112, p=0,0045 | +0,0094, p=0,0165 | **Đạt** (cả 2) |
+| Vòng 2 (year FE) - khối nội | +0,0143, p=0,0006 | +0,0129, p=0,0021 | **Đạt** (cả 2) |
+| Vòng 2 (year FE) - khối ngoại | p=0,63 | p=0,46 | Không (R²=71,9%) |
+
+Vòng 2 thêm year fixed effect vì volume tăng rất mạnh theo xu hướng nhiều
+năm (tương quan với thứ tự thời gian 0,93) - không kiểm soát xu hướng này
+thì hệ số sentiment có thể "có ý nghĩa" chỉ vì cả 2 chuỗi cùng trôi theo
+thời gian. Tín hiệu vẫn còn sau khi kiểm soát, và chỉ nằm ở **khối nội**.
+
+**Kiểm định kỹ thuật:**
+
+- **Cộng tuyến**: không predictor nào có VIF>10 (cao nhất 1,63, ở dummy
+  thứ-trong-tuần) → việc rút 5 lag volume xuống còn 1 lag là hợp lý.
+- **Abnormal return**: expected + abnormal khớp `daily_return`, sai lệch
+  tối đa ~7e-18 (chỉ do làm tròn số thực) → cách tính đúng.
+
+**Kết luận 4.1:** giọng điệu tin **không** dự báo được lợi suất VN-Index
+(kiểm định tổng hợp không có ý nghĩa; lag4 lẻ không đủ tin cậy; hiệu ứng đảo
+chiều theo tuần chỉ sát ngưỡng 10%). Giọng điệu tin **có** đi kèm khối lượng
+giao dịch ngày hôm sau: tin tích cực hơn đi kèm volume cao hơn (hệ số dương),
+nhất quán ở cả PMI và Intensity, vẫn còn sau khi kiểm soát year FE, và đến
+từ **khối nội** chứ không phải khối ngoại.
+
+### 4.2. Robustness: chỉ số PCA trên 7 category
+
+**Vì sao PCA đo một khái niệm khác:** PCA chọn trục giữ nhiều phương sai
+nhất của 7 category (daily: trục thứ nhất giải thích 26,5% phương sai với
+PCA_PMI, 25,6% với PCA_Intensity). Loadings của trục đó:
+
+| Category | PCA_PMI | PCA_Intensity |
+|---|--:|--:|
+| weak_modal | +0,56 | +0,56 |
+| strong_modal | +0,49 | +0,51 |
+| positive | +0,40 | +0,44 |
+| negative | +0,37 | +0,33 |
+| uncertainty | +0,30 | +0,29 |
+| constraining | +0,23 | +0,15 |
+| litigious | −0,01 | −0,13 |
+
+- **Positive và negative cùng dấu dương**: trục tăng khi bài có nhiều từ
+  tích cực và *cũng* tăng khi có nhiều từ tiêu cực. Nó đo **mật độ ngôn từ
+  đánh giá/tình thái** trong tin (chi phối bởi từ tình thái weak/strong
+  modal), không đo giọng điệu tốt hay xấu.
+- Tương quan theo ngày giữa chỉ số PCA và chỉ số giọng điệu tương ứng chỉ
+  **0,21** (PCA_PMI vs PMI) và **0,23** (PCA_Intensity vs Intensity) - gần
+  như 2 chuỗi khác nhau.
+- Khác Tetlock gốc: với 77 category GI, trục thứ nhất của Tetlock là
+  "pessimism"; với 7 category LM ở đây, trục thứ nhất ra "mật độ ngôn từ",
+  nên không thể coi là bản tương đương chỉ số của Tetlock.
+
+**Kết quả:**
+
+| Kiểm định | PCA_PMI | PCA_Intensity |
+|---|---|---|
+| Lag4 daily | p=0,57-0,61 | p=0,60-0,65 |
+| Tổng lag 2-5 daily | p=0,23-0,35 | p=0,19-0,29 |
+| Tổng lag 2-5 weekly | p=0,75-0,99 | p=0,79-0,99 |
+| Volume tổng (lag1) | +0,0114, p=0,080 | +0,0121, p=0,067 |
+| Khối nội / khối ngoại (year FE, lag1) | p=0,195 / 0,28 | p=0,170 / 0,36 |
+
+**Diễn giải:** mật độ ngôn từ đánh giá/tình thái không dự báo được lợi suất,
+và chỉ liên hệ yếu với volume tổng (p≈0,07-0,08, chưa đạt 5%). Vì PCA kiểm
+định một giả thuyết khác, việc PCA không có tín hiệu **không mâu thuẫn** với
+kết quả volume ở mục 4.1 - nó cho thấy tín hiệu volume gắn với **chiều** của
+giọng điệu tin (tích cực/tiêu cực), chứ không gắn với việc tin dùng nhiều từ
+ngữ đánh giá hay không.
+
+**Hạn chế riêng của chỉ số PCA:** loadings được fit 1 lần trên toàn bộ mẫu
+(Tetlock fit trên năm t−1 rồi áp dụng cho năm t) nên có look-ahead nhẹ; chưa
+khử seasonality thứ-trong-tuần của từng category trước khi PCA.
+
+**Kết luận tổng**: cải tiến lexicon không tạo tín hiệu dự báo lợi suất. Tín
+hiệu đáng kể duy nhất là giọng điệu tin → khối lượng giao dịch khối nội ngày
+hôm sau, nhất quán ở cả 2 cách đo của đặc tả chính và vẫn còn sau khi kiểm
+soát year FE. Đây là kết quả trên 1 thị trường với ~3.450 ngày giao dịch -
+cần thêm dữ liệu hoặc kiểm định ngoài mẫu trước khi coi là phát hiện chính
+thức.
 
 {{< pagebreak >}}
 

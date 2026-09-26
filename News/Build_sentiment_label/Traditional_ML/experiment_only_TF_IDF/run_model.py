@@ -3,14 +3,14 @@
     python News/Build_sentiment_label/Traditional_ML/experiment_only_TF_IDF/run_model.py
     python .../run_model.py --models svm naive_bayes   # subset
 
-Writes the CSVs run_pipeline.py / compare_models.py consume (one run of
-leak-free CV per model: metrics / predictions / confusion_matrix /
-top_features). Model definitions (build_estimator, build_top_features) live
-in ``../Common/model/*.py`` and stay untouched - this file is only the
-runnable step. To add a feature block or change how a model is scored here,
-edit ``run_one()`` below and wire it into the imported model, rather than
-editing ``Common/model/*.py`` (which is shared - the lexicon experiment and
-any future one also import from it).
+Writes the files run_pipeline.py / compare_models.py consume (one run of
+leak-free 10 x 5-fold repeated CV per model, see ``Common/production_cv.py``:
+oof_probabilities.npz / metrics / confusion_matrix). Model definitions
+(build_estimator) live in ``../Common/model/*.py`` and stay untouched - this
+file is only the runnable step. To add a feature block or change how a model
+is scored here, edit ``run_one()`` below and wire it into the imported model,
+rather than editing ``Common/model/*.py`` (which is shared - the lexicon
+experiment and any future one also import from it).
 """
 
 from __future__ import annotations
@@ -19,23 +19,18 @@ import argparse
 from pathlib import Path
 import sys
 
-import pandas as pd
-
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import build_document_term_counts
 from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
-    DATA_DIR,
-    VALID_LABELS,
-    build_full_fit_features,
-    build_prediction_output,
-    compute_metrics,
-    confusion_matrix,
     encode_labels,
     load_ground_truth_frame,
-    run_cross_validation,
+)
+from News.Build_sentiment_label.Traditional_ML.Common.production_cv import (
+    run_production_cv,
+    write_production_outputs,
 )
 from News.Build_sentiment_label.Traditional_ML.Common.model import (
     complement_nb,
@@ -44,70 +39,35 @@ from News.Build_sentiment_label.Traditional_ML.Common.model import (
     svm,
 )
 
-# name -> (build_estimator, build_top_features, display label). Add a new
-# TF-IDF-only model here (and to Common/model/) to have it run + reported
-# alongside these three - no other file needs to change.
+# name -> (build_estimator, display label). Add a new TF-IDF-only model here
+# (and to Common/model/) to have it run + reported alongside these - no other
+# file needs to change.
 MODEL_SPECS = {
     "logistic_regression": (
         logistic_regression.build_estimator,
-        logistic_regression.build_top_features,
         "Logistic Regression (scikit-learn)",
     ),
     "naive_bayes": (
         naive_bayes.build_estimator,
-        naive_bayes.build_top_features,
         "Multinomial Naive Bayes",
     ),
     "complement_nb": (
         complement_nb.build_estimator,
-        complement_nb.build_top_features,
         "Complement Naive Bayes (Rennie et al. 2003, promoted from M2.1 comparison)",
     ),
     "svm": (
         svm.build_estimator,
-        svm.build_top_features,
         "Linear SVM (LinearSVC, margin-softmax - NOT a calibrated probability)",
     ),
 }
 
 
-def run_one(name, build_estimator, build_top_features_fn, display_label, df, term_counts, y) -> None:
+def run_one(name, build_estimator, display_label, df, term_counts, y) -> None:
     print(f"\nModel: {display_label}")
     print("Documents:", len(df))
 
-    probabilities, predictions, fold_of_row = run_cross_validation(
-        build_estimator, term_counts, y
-    )
-    metrics_df = compute_metrics(y, predictions)
-    prediction_df = build_prediction_output(df, probabilities, predictions, fold_of_row)
-    confusion_df = pd.DataFrame(
-        confusion_matrix(y, predictions),
-        index=[f"true_{lbl}" for lbl in VALID_LABELS],
-        columns=[f"pred_{lbl}" for lbl in VALID_LABELS],
-    ).reset_index(names="true_label")
-
-    x_full, vocabulary_full = build_full_fit_features(term_counts)
-    top_features_df = build_top_features_fn(x_full, y, vocabulary_full)
-
-    metrics_path = DATA_DIR / f"{name}_metrics.csv"
-    predictions_path = DATA_DIR / f"{name}_predictions.csv"
-    confusion_path = DATA_DIR / f"{name}_confusion_matrix.csv"
-    top_features_path = DATA_DIR / f"{name}_top_features.csv"
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    metrics_df.to_csv(metrics_path, index=False, encoding="utf-8-sig")
-    prediction_df.to_csv(predictions_path, index=False, encoding="utf-8-sig")
-    confusion_df.to_csv(confusion_path, index=False, encoding="utf-8-sig")
-    top_features_df.to_csv(top_features_path, index=False, encoding="utf-8-sig")
-
-    print("Metrics:")
-    print(metrics_df.to_string(index=False))
-    print("Confusion matrix:")
-    print(confusion_df.to_string(index=False))
-    print("Output metrics:", metrics_path)
-    print("Output predictions:", predictions_path)
-    print("Output confusion matrix:", confusion_path)
-    print("Output top features:", top_features_path)
+    probabilities = run_production_cv(name, build_estimator, df, term_counts, y)
+    write_production_outputs(name, y, probabilities)
 
 
 def main() -> None:
@@ -132,8 +92,8 @@ def main() -> None:
     print(df["ground_truth_label"].value_counts().to_string())
 
     for name in args.models:
-        build_estimator, build_top_features_fn, display_label = MODEL_SPECS[name]
-        run_one(name, build_estimator, build_top_features_fn, display_label, df, term_counts, y)
+        build_estimator, display_label = MODEL_SPECS[name]
+        run_one(name, build_estimator, display_label, df, term_counts, y)
 
 
 if __name__ == "__main__":

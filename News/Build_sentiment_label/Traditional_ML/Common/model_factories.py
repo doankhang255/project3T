@@ -11,12 +11,14 @@ from pathlib import Path
 import sys
 
 import pandas as pd
-from sklearn.naive_bayes import ComplementNB
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from News.Build_sentiment_label.Traditional_ML.Common.model.complement_nb import (
+    build_estimator as build_complement_nb,
+)
 from News.Build_sentiment_label.Traditional_ML.Common.model.logistic_regression import (
     build_estimator as build_logistic_regression,
 )
@@ -31,20 +33,6 @@ from News.Build_sentiment_label.Traditional_ML.Common.model.svm import (
 )
 
 METRIC_COLUMNS = ["macro_f1", "accuracy", "f1_negative", "f1_neutral", "f1_positive"]
-
-# Single-split numbers from the committed RESULTS_SUMMARY.txt, shown for
-# reference only (one fold seed, MultinomialNB, pre-lexicon/pre-tuning).
-SINGLE_RUN_REFERENCE = {
-    "random_forest": (0.634, 0.658),
-    "naive_bayes": (0.605, 0.632),
-    "logistic_regression": (0.593, 0.632),
-    "svm": (0.562, 0.638),
-}
-
-
-def build_complement_nb(random_state: int) -> ComplementNB:
-    del random_state  # ComplementNB has no randomness; uniform factory signature
-    return ComplementNB()
 
 
 # TF-IDF-only factories - none of these pass a lexicon extra_features matrix.

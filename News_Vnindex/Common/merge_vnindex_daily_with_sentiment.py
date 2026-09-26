@@ -1,7 +1,15 @@
+"""Merge chỉ số sentiment cấp-ngày (schema: date, article_count,
+sentiment_index, sentiment_index_z - output của
+News/Build_sentiment_index/build_sentiment_index_*.py) với dữ liệu VN-Index
+cấp ngày. Logic dùng chung cho MỌI phương pháp sentiment: mỗi thư mục method
+(News_Vnindex/{Lexicon,Transfer_Learning,Traditional_ML}/daily/) chỉ có 1
+script mỏng khai báo {method: file chỉ số ngày} của riêng nó rồi gọi
+``run_merge`` ở đây.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import numpy as np
 import pandas as pd
@@ -9,22 +17,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VNINDEX_DAILY_PATH = PROJECT_ROOT / "data_Histo" / "vnindex_eda_output.csv"
-# 2 nguồn sentiment cấp-ngày (Cách 1 PMI / Cách 2 intensity) từ
-# News/Build_sentiment_index/build_sentiment_index_daily.py - chạy hàm merge
-# này riêng cho từng nguồn (xem main()), ra 2 file merged riêng để so sánh
-# khách quan 2 cách chấm điểm ở bước hồi quy (vnindex_daily_predictive_regression.py).
-SENTIMENT_DAILY_PATHS_BY_METHOD = {
-    "pmi": PROJECT_ROOT / "News" / "Build_sentiment_index" / "data" / "market_sentiment_index_daily_pmi.parquet",
-    "intensity": PROJECT_ROOT / "News" / "Build_sentiment_index" / "data" / "market_sentiment_index_daily_intensity.parquet",
-    # Chỉ số PCA kiểu Tetlock (build_sentiment_index_pca.py) - xem README/chat
-    # để biết PCA ở đây ra "chỉ số mật độ ngôn từ" chứ không sạch như bản gốc.
-    "pca_pmi": PROJECT_ROOT / "News" / "Build_sentiment_index" / "data" / "market_sentiment_index_daily_pca_pmi.parquet",
-    "pca_intensity": PROJECT_ROOT
-    / "News"
-    / "Build_sentiment_index"
-    / "data"
-    / "market_sentiment_index_daily_pca_intensity.parquet",
-}
+SENTIMENT_INDEX_DIR = PROJECT_ROOT / "News" / "Build_sentiment_index" / "data"
 OUTPUT_DIR = PROJECT_ROOT / "data_News"
 
 SYMBOL_COLUMN = "symbol"
@@ -260,14 +253,13 @@ def merge_vnindex_daily_with_sentiment(
     return merged_df.sort_values(DATE_COLUMN, kind="mergesort").reset_index(drop=True)
 
 
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-
+def run_merge(sentiment_daily_paths_by_method: dict[str, Path]) -> None:
+    """``{method_suffix: daily sentiment index parquet}`` -> ghi
+    data_News/vnindex_daily_sentiment_merged_{method_suffix}.{parquet,csv}."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     vnindex_daily_df = pd.read_csv(VNINDEX_DAILY_PATH, encoding="utf-8-sig")
 
-    for method_suffix, sentiment_daily_path in SENTIMENT_DAILY_PATHS_BY_METHOD.items():
+    for method_suffix, sentiment_daily_path in sentiment_daily_paths_by_method.items():
         sentiment_daily_df = pd.read_parquet(sentiment_daily_path)
         merged_df = merge_vnindex_daily_with_sentiment(vnindex_daily_df, sentiment_daily_df)
 
@@ -283,7 +275,3 @@ def main() -> None:
         print("Merged rows:", len(merged_df))
         print(merged_df.head(10).to_string(index=False))
         print()
-
-
-if __name__ == "__main__":
-    main()

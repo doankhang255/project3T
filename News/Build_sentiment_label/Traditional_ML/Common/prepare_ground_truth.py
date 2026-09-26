@@ -42,7 +42,6 @@ VNCORENLP_TOKENIZED_PATH = (
 )
 
 OUTPUT_PARQUET_PATH = DATA_DIR / "ground_truth_labeled_tokenized.parquet"
-OUTPUT_CSV_PATH = DATA_DIR / "ground_truth_labeled_tokenized.csv"
 
 SOURCE_ROW_ID_COLUMN = "source_row_id"
 TITLE_COLUMN = "title"
@@ -195,12 +194,10 @@ def main() -> None:
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     output_df.to_parquet(OUTPUT_PARQUET_PATH, index=False)
-    output_df.to_csv(OUTPUT_CSV_PATH, index=False, encoding="utf-8-sig")
 
     print("Ground truth csv :", GROUND_TRUTH_CSV_PATH)
     print("VNCoreNLP corpus :", VNCORENLP_TOKENIZED_PATH)
     print("Output parquet   :", OUTPUT_PARQUET_PATH)
-    print("Output csv       :", OUTPUT_CSV_PATH)
     print("Rows             :", len(output_df))
     print("Total tokens     :", int(output_df[TOTAL_TOKENIZER_COLUMN].sum()))
     print("Label counts:")

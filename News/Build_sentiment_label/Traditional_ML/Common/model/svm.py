@@ -1,38 +1,24 @@
-"""Linear SVM - build_estimator() + build_top_features() only.
+"""Linear SVM - build_estimator() only.
 
 Pure model-definition module, shared by whichever script actually runs the
-CV and writes output (``../../experiment_only_TF_IDF/svm.py`` for the
+CV and writes output (``../../experiment_only_TF_IDF/run_model.py`` for the
 production run - this model never uses the lexicon feature block). No
 ``main()`` here on purpose: this module is a library, not a runnable step.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-import sys
-
 import numpy as np
-import pandas as pd
 from sklearn.svm import LinearSVC
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[5]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
-    RANDOM_SEED,
-    VALID_LABELS,
-)
 
 
 MAX_ITER = 5000
 SVM_C = 0.1
-# Tuned via Common/tune_hyperparameters.py (nested 5-fold outer x 3-fold
-# inner CV, grid C in {0.1,0.3,1,3,10}) - C=0.1 (stronger L2) beat the
-# default C=1.0 across every outer fold, tune-set macro-F1 0.572 -> 0.617
-# (bootstrap CI [+0.022,+0.071], p=0.000), confirmed on a never-tuned-against
-# holdout: 0.539 -> 0.563 (CI [+0.009,+0.041], p=0.002).
+# Nested-CV tuning (Common/tune_hyperparameters.py, grid C in
+# {0.1,0.3,1,3,10}) on the 1044-row tune split shows NO reliable gain over the
+# default C=1.0: 0.666 -> 0.662, Delta=-0.003 CI[-0.014,+0.008] p=0.590.
+# C=0.1 is kept only until that decision is made - see ML_SUMMARY.qmd
+# section 5.3.
 
 # Used to calibrate via Platt scaling (CalibratedClassifierCV(cv=3), i.e. an
 # inner 3-fold split of an already ~120-row training fold to fit the sigmoid
@@ -87,32 +73,3 @@ def build_base_svm(random_state: int, C: float = SVM_C) -> LinearSVC:
 
 def build_estimator(random_state: int) -> MarginSoftmaxSVC:
     return MarginSoftmaxSVC(random_state=random_state)
-
-
-def build_top_features(
-    x: np.ndarray,
-    y: np.ndarray,
-    vocabulary: pd.DataFrame,
-    top_n: int = 40,
-) -> pd.DataFrame:
-    model = build_base_svm(RANDOM_SEED + 999)
-    model.fit(x, y)
-    assert list(model.classes_) == list(range(len(VALID_LABELS)))
-
-    rows = []
-    for label_id, label in enumerate(VALID_LABELS):
-        top_indices = np.argsort(model.coef_[label_id])[-top_n:][::-1]
-        for rank, feature_index in enumerate(top_indices, start=1):
-            vocab_row = vocabulary.iloc[int(feature_index)]
-            rows.append(
-                {
-                    "label": label,
-                    "rank": rank,
-                    "selected_feature_id": int(feature_index),
-                    "term_id": int(vocab_row["term_id"]),
-                    "term": vocab_row["term"],
-                    "ngram_n": int(vocab_row["ngram_n"]),
-                    "coefficient": float(model.coef_[label_id, feature_index]),
-                }
-            )
-    return pd.DataFrame(rows)

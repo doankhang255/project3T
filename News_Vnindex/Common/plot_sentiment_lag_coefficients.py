@@ -3,42 +3,37 @@
 (giống cách Tetlock trình bày Table II trong REF) - để nhìn trực quan tác
 động của sentiment lên lợi suất VN-Index, thay vì chỉ đọc bảng số.
 
-Small-multiples 2x2 (hàng = method Cách 1/Cách 2, cột = target rolling/AR1)
+Small-multiples (hàng = từng method của nhánh, cột = target rolling/AR1)
 - mỗi ô: trục x = lag (1-5 ngày), trục y = hệ số (đổi sang basis point,
 x10000, cùng đơn vị Tetlock dùng để báo cáo), thanh sai số = 1,96 x SE
 Newey-West (khoảng tin cậy 95%). Điểm có ý nghĩa (p<0,05, khoảng tin cậy
 không chứa 0) tô đậm/đổi màu khác điểm không có ý nghĩa.
 
 Import lại add_regression_features/fit_with_lag_sum_test từ file gốc
-(không viết lại logic hồi quy).
+(Common/vnindex_daily_predictive_regression.py).
 
-Output: data_News/sentiment_lag_coefficients.png
+Output: data_News/sentiment_lag_coefficients{output_suffix}.png
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vnindex_daily_predictive_regression import (  # noqa: E402
-    MERGED_DATA_PATHS_BY_METHOD,
+from News_Vnindex.Common.vnindex_daily_predictive_regression import (
     N_LAGS,
+    OUTPUT_DIR,
     SENTIMENT_COLUMN,
     TARGET_COLUMNS,
     add_regression_features,
     fit_with_lag_sum_test,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-OUTPUT_PATH = PROJECT_ROOT / "data_News" / "sentiment_lag_coefficients.png"
 
 # Màu trung tính (không ý nghĩa) vs màu nhấn (có ý nghĩa, p<0.05) - 1 cặp
 # diverging đơn giản, không dùng màu tùy tiện.
@@ -47,16 +42,17 @@ COLOR_SIGNIFICANT = "#dc2626"  # đỏ
 COLOR_ZERO_LINE = "#334155"
 
 
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def run_sentiment_lag_plot(paths_by_method: dict[str, Path], output_suffix: str = "") -> None:
+    """1 hàng / method trong ``paths_by_method``, 1 cột / target.
+    Output: data_News/sentiment_lag_coefficients{output_suffix}.png"""
+    output_path = OUTPUT_DIR / f"sentiment_lag_coefficients{output_suffix}.png"
 
-    method_names = list(MERGED_DATA_PATHS_BY_METHOD.keys())
+    method_names = list(paths_by_method.keys())
     n_rows, n_cols = len(method_names), len(TARGET_COLUMNS)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 4 * n_rows), sharey=True)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 4 * n_rows), sharey=True, squeeze=False)
 
     for row_index, method_name in enumerate(method_names):
-        merged_df = pd.read_parquet(MERGED_DATA_PATHS_BY_METHOD[method_name])
+        merged_df = pd.read_parquet(paths_by_method[method_name])
         for col_index, target_column in enumerate(TARGET_COLUMNS):
             featured_df, sentiment_lag_columns, predictor_columns = add_regression_features(
                 merged_df, target_column
@@ -120,11 +116,8 @@ def main() -> None:
     )
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUTPUT_PATH, dpi=150)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150)
     plt.close(fig)
-    print("Đã lưu:", OUTPUT_PATH)
+    print("Đã lưu:", output_path)
 
-
-if __name__ == "__main__":
-    main()

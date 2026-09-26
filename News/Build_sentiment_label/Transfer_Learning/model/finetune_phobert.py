@@ -65,12 +65,16 @@ from News.Build_sentiment_label.Transfer_Learning.model.common import (
     DATA_DIR,
     MAX_LENGTH,
     RANDOM_SEED,
+    SENTENCES_COLUMN,
     TEXT_COLUMN,
     VALID_LABELS,
+    build_sentence_strings,
+    chunk_sentences_into_windows,
     compute_metrics_table,
     confusion_matrix,
     encode_labels,
     load_ground_truth,
+    pool_chunks_by_weight,
 )
 
 
@@ -170,6 +174,64 @@ def build_classifier() -> AutoModelForSequenceClassification:
     )
 
 
+def build_chunk_frame(frame: pd.DataFrame, tokenizer) -> pd.DataFrame:
+    """One row per <=MAX_LENGTH-token chunk of every document in `frame`
+    (chunk_sentences_into_windows - never splitting a sentence), carrying the
+    PARENT document's label - a chunk is a weak-label augmentation, not an
+    independently labeled example, since ~1/3 of these rows are longer than
+    MAX_LENGTH and would otherwise be silently truncated to their first
+    window. `doc_position` (0-based row order in `frame`) and `chunk_weight`
+    (word count) let the caller pool per-chunk predictions back into one
+    prediction per document with pool_chunks_by_weight.
+    """
+    rows = []
+    for doc_position, (sentences, label) in enumerate(
+        zip(frame[SENTENCES_COLUMN], frame["label"])
+    ):
+        chunks = chunk_sentences_into_windows(build_sentence_strings(sentences), tokenizer, MAX_LENGTH)
+        for chunk in chunks:
+            rows.append(
+                {
+                    TEXT_COLUMN: chunk,
+                    "label": label,
+                    "doc_position": doc_position,
+                    "chunk_weight": max(len(chunk.split(" ")), 1),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def predict_pooled_probabilities(
+    trainer: Trainer, chunk_frame: pd.DataFrame, chunk_dataset: Dataset, n_docs: int
+) -> np.ndarray:
+    """Run the model on every chunk, then weighted-mean-pool chunk-level
+    probabilities back to one probability vector per document (matching the
+    pooling inference/score_corpus_phobert.py applies to the 126k corpus), so
+    CV metrics stay comparable to the pre-chunking protocol - one prediction
+    per document, not per chunk."""
+    chunk_logits = trainer.predict(chunk_dataset).predictions
+    chunk_probabilities = torch.softmax(torch.tensor(chunk_logits), dim=-1).numpy()
+    doc_probabilities = pool_chunks_by_weight(
+        chunk_probabilities.astype(np.float64),
+        chunk_frame["doc_position"].to_numpy(),
+        chunk_frame["chunk_weight"].to_numpy(dtype=np.float64),
+        n_docs,
+    )
+    empty_doc_mask = np.isnan(doc_probabilities).any(axis=1)
+    if empty_doc_mask.any():
+        doc_probabilities[empty_doc_mask] = 1.0 / len(VALID_LABELS)
+    return doc_probabilities
+
+
+def make_dataset(frame: pd.DataFrame, tokenizer) -> Dataset:
+    def tokenize_batch(batch):
+        return tokenizer(batch[TEXT_COLUMN], truncation=True, max_length=MAX_LENGTH)
+
+    dataset = Dataset.from_pandas(frame[[TEXT_COLUMN, "label"]], preserve_index=False)
+    dataset = dataset.map(tokenize_batch, batched=True).remove_columns([TEXT_COLUMN])
+    return dataset.with_format("torch")
+
+
 def make_training_args(
     output_dir: Path,
     args: argparse.Namespace,
@@ -242,17 +304,6 @@ def main() -> None:
         local_files_only=True,
     )
 
-    def tokenize_batch(batch):
-        return tokenizer(batch[TEXT_COLUMN], truncation=True, max_length=MAX_LENGTH)
-
-    def make_dataset(frame: pd.DataFrame) -> Dataset:
-        dataset = Dataset.from_pandas(
-            frame[[TEXT_COLUMN, "label"]], preserve_index=False
-        )
-        dataset = dataset.map(tokenize_batch, batched=True).remove_columns([TEXT_COLUMN])
-        dataset = dataset.with_format("torch")
-        return dataset
-
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
     # ------------------------------------------------------------------
@@ -276,9 +327,14 @@ def main() -> None:
             train_frame = ground_truth_df.iloc[train_idx].reset_index(drop=True)
             val_frame = ground_truth_df.iloc[val_idx].reset_index(drop=True)
 
+            # Class weights from DOCUMENT-level counts (not chunk counts) so a
+            # class whose articles happen to run longer doesn't get extra
+            # implicit weight just from producing more chunks.
             class_weights = compute_balanced_class_weights(train_frame["label"].tolist())
-            train_dataset = make_dataset(train_frame)
-            val_dataset = make_dataset(val_frame)
+            train_chunk_frame = build_chunk_frame(train_frame, tokenizer)
+            val_chunk_frame = build_chunk_frame(val_frame, tokenizer)
+            train_dataset = make_dataset(train_chunk_frame, tokenizer)
+            val_dataset = make_dataset(val_chunk_frame, tokenizer)
 
             model = build_classifier()
             trainer = WeightedLossTrainer(
@@ -293,10 +349,9 @@ def main() -> None:
             )
             trainer.train()
 
-            fold_pred = trainer.predict(val_dataset)
-            probabilities = torch.softmax(
-                torch.tensor(fold_pred.predictions), dim=-1
-            ).numpy()
+            probabilities = predict_pooled_probabilities(
+                trainer, val_chunk_frame, val_dataset, len(val_frame)
+            )
             oof_proba[val_idx] = probabilities
             oof_pred[val_idx] = probabilities.argmax(axis=1)
 
@@ -348,7 +403,8 @@ def main() -> None:
     # ------------------------------------------------------------------
     print(f"\nTraining final model on all {n_rows} rows ...")
     final_weights = compute_balanced_class_weights(ground_truth_df["label"].tolist())
-    final_dataset = make_dataset(ground_truth_df)
+    final_chunk_frame = build_chunk_frame(ground_truth_df, tokenizer)
+    final_dataset = make_dataset(final_chunk_frame, tokenizer)
     final_model = build_classifier()
 
     final_start = time.perf_counter()

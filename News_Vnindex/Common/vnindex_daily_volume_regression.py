@@ -12,40 +12,24 @@ N_LAGS=5, cùng Newey-West, cùng dow/near_tet dummy) - chỉ đổi:
     volume rất persistent) + 5 lag sentiment + dow dummy + near_tet +
     volatility_20d.
 
-Import lại is_near_tet/newey_west_covariance/fit_with_lag_sum_test từ
-vnindex_daily_predictive_regression.py (CÙNG thư mục daily/, không phải
-import chéo daily<->weekly) - tránh chép lại y nguyên 3 hàm tiện ích không
-đổi logic gì.
+Import lại is_near_tet/fit_with_lag_sum_test từ
+Common/vnindex_daily_predictive_regression.py - tránh chép lại hàm tiện ích.
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pandas as pd
 
-DAILY_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = DAILY_DIR.parents[2]
-
-sys.path.insert(0, str(DAILY_DIR))
-from vnindex_daily_predictive_regression import (  # noqa: E402
+from News_Vnindex.Common.vnindex_daily_predictive_regression import (
+    EXTRA_EXOG_COLUMNS,
+    N_LAGS,
+    OUTPUT_DIR,
+    SENTIMENT_COLUMN,
     fit_with_lag_sum_test,
     is_near_tet,
-    newey_west_covariance,  # noqa: F401  (dùng gián tiếp qua fit_with_lag_sum_test)
 )
-
-MERGED_DATA_PATHS_BY_METHOD = {
-    "Cach1_PMI": PROJECT_ROOT / "data_News" / "vnindex_daily_sentiment_abnormal_return_pmi.parquet",
-    "Cach2_Intensity": PROJECT_ROOT / "data_News" / "vnindex_daily_sentiment_abnormal_return_intensity.parquet",
-    "PCA_PMI": PROJECT_ROOT / "data_News" / "vnindex_daily_sentiment_abnormal_return_pca_pmi.parquet",
-    "PCA_Intensity": PROJECT_ROOT / "data_News" / "vnindex_daily_sentiment_abnormal_return_pca_intensity.parquet",
-}
-OUTPUT_DIR = PROJECT_ROOT / "data_News"
-
-N_LAGS = 5
-SENTIMENT_COLUMN = "sentiment_index_z"
-EXTRA_EXOG_COLUMNS = ["volatility_20d"]
 
 
 def add_volume_regression_features(
@@ -109,14 +93,15 @@ def add_volume_regression_features(
 TARGET_SPECS = [("log_vol_total", 1), ("future_log_vol_1d", 0)]
 
 
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def run_volume_regression(paths_by_method: dict[str, Path], output_suffix: str = "") -> None:
+    """Hồi quy cho mọi method trong ``paths_by_method``. Output:
+    data_News/vnindex_daily_volume_regression_coefficients{output_suffix}.csv
+    data_News/vnindex_daily_volume_regression_lag_sum_test{output_suffix}.csv"""
 
     coef_frames = []
     lag_sum_rows = []
     for target_column, min_lag in TARGET_SPECS:
-        for method_name, merged_data_path in MERGED_DATA_PATHS_BY_METHOD.items():
+        for method_name, merged_data_path in paths_by_method.items():
             merged_df = pd.read_parquet(merged_data_path)
             featured_df, sentiment_lag_columns, predictor_columns = add_volume_regression_features(
                 merged_df, target_column, min_lag
@@ -154,13 +139,10 @@ def main() -> None:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     pd.concat(coef_frames, ignore_index=True).to_csv(
-        OUTPUT_DIR / "vnindex_daily_volume_regression_coefficients.csv", index=False, encoding="utf-8-sig"
+        OUTPUT_DIR / f"vnindex_daily_volume_regression_coefficients{output_suffix}.csv", index=False, encoding="utf-8-sig"
     )
     lag_sum_df.to_csv(
-        OUTPUT_DIR / "vnindex_daily_volume_regression_lag_sum_test.csv", index=False, encoding="utf-8-sig"
+        OUTPUT_DIR / f"vnindex_daily_volume_regression_lag_sum_test{output_suffix}.csv", index=False, encoding="utf-8-sig"
     )
     print("\nĐã lưu 2 file vào:", OUTPUT_DIR)
 
-
-if __name__ == "__main__":
-    main()

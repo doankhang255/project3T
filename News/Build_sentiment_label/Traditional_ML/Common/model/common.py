@@ -122,6 +122,50 @@ def _load_stopwords(stopwords: set[str] | None) -> set[str]:
     return load_stopwords(DEFAULT_STOPWORDS_PATH) if REMOVE_STOPWORDS else set()
 
 
+def fit_transform_split(
+    train_counts: list[Counter[str]],
+    test_counts: list[Counter[str]],
+    stopwords: set[str] | None = None,
+    max_features: int = MAX_FEATURES,
+) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
+    """Fit TF-IDF vocabulary + top-feature selection on ``train_counts`` only,
+    transform ``test_counts`` with that same fit. The one leak-free
+    fit-on-train/transform-test step, shared by ``run_cross_validation``'s
+    per-fold body (test = the validation fold) and ``run_train_test_split``'s
+    single Tune->Holdout split (test = the holdout rows). Returns the FULL
+    (pre-selection) fitted vocabulary, matching what callers already printed
+    as ``vocab=`` before this was extracted.
+    """
+    stopwords = _load_stopwords(stopwords)
+    vocabulary_df = fit_tfidf_vocabulary(
+        train_counts,
+        total_documents=len(train_counts),
+        stopwords=stopwords,
+    )
+    x_train, _ = transform_tfidf(train_counts, vocabulary_df)
+    x_test, _ = transform_tfidf(test_counts, vocabulary_df)
+
+    x_train_selected, _, selected_indices = select_top_features(
+        x_train, vocabulary_df, max_features=max_features
+    )
+    x_test_selected = x_test[:, selected_indices]
+    return x_train_selected, x_test_selected, vocabulary_df
+
+
+def _standardize_extra_features(
+    extra_train: np.ndarray, extra_test: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """z-score using TRAIN-only mean/std (same discipline as the TF-IDF idf -
+    the test rows never influence the scaling). Shared by
+    ``run_cross_validation`` (test = the validation fold) and
+    ``run_train_test_split`` (test = the holdout rows).
+    """
+    mean = extra_train.mean(axis=0)
+    std = extra_train.std(axis=0)
+    std = np.where(std > 1e-8, std, 1.0)
+    return (extra_train - mean) / std, (extra_test - mean) / std
+
+
 def run_cross_validation(
     estimator_factory,
     term_counts_by_document: list[Counter[str]],
@@ -143,7 +187,6 @@ def run_cross_validation(
     byte-identical to the pre-``extra_features`` behaviour.
     """
     y = np.asarray(y, dtype=int)
-    stopwords = _load_stopwords(stopwords)
     resolved_splits = resolve_n_splits(y, n_splits)
 
     n_rows = len(y)
@@ -161,31 +204,16 @@ def run_cross_validation(
         train_counts = [term_counts_by_document[i] for i in train_indices]
         val_counts = [term_counts_by_document[i] for i in validation_indices]
 
-        vocabulary_df = fit_tfidf_vocabulary(
-            train_counts,
-            total_documents=len(train_indices),
-            stopwords=stopwords,
+        x_train_selected, x_val_selected, vocabulary_df = fit_transform_split(
+            train_counts, val_counts, stopwords=stopwords, max_features=max_features
         )
-        x_train, _ = transform_tfidf(train_counts, vocabulary_df)
-        x_val, _ = transform_tfidf(val_counts, vocabulary_df)
-
-        x_train_selected, _, selected_indices = select_top_features(
-            x_train, vocabulary_df, max_features=max_features
-        )
-        x_val_selected = x_val[:, selected_indices]
 
         if extra_features is not None:
-            train_extra = extra_features[train_indices]
-            val_extra = extra_features[validation_indices]
-            extra_mean = train_extra.mean(axis=0)
-            extra_std = train_extra.std(axis=0)
-            extra_std = np.where(extra_std > 1e-8, extra_std, 1.0)
-            x_train_selected = np.hstack(
-                [x_train_selected, (train_extra - extra_mean) / extra_std]
+            train_extra_scaled, val_extra_scaled = _standardize_extra_features(
+                extra_features[train_indices], extra_features[validation_indices]
             )
-            x_val_selected = np.hstack(
-                [x_val_selected, (val_extra - extra_mean) / extra_std]
-            )
+            x_train_selected = np.hstack([x_train_selected, train_extra_scaled])
+            x_val_selected = np.hstack([x_val_selected, val_extra_scaled])
 
         model = estimator_factory(RANDOM_SEED + fold_id)
         model.fit(x_train_selected, y[train_indices])
@@ -207,22 +235,48 @@ def run_cross_validation(
     return probabilities, predictions, fold_of_row
 
 
-def build_full_fit_features(
-    term_counts_by_document: list[Counter[str]],
+def run_train_test_split(
+    estimator_factory,
+    train_term_counts: list[Counter[str]],
+    train_y: np.ndarray,
+    test_term_counts: list[Counter[str]],
     stopwords: set[str] | None = None,
     max_features: int = MAX_FEATURES,
-) -> tuple[np.ndarray, pd.DataFrame]:
-    stopwords = _load_stopwords(stopwords)
-    vocabulary_df = fit_tfidf_vocabulary(
-        term_counts_by_document,
-        total_documents=len(term_counts_by_document),
-        stopwords=stopwords,
+    extra_features_train: np.ndarray | None = None,
+    extra_features_test: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit ONCE on ``train_term_counts``, predict ONCE on ``test_term_counts``
+    - the Tune->Holdout "look once" protocol, as opposed to
+    ``run_cross_validation``'s k-fold loop over a single dataset. Same
+    leak-free TF-IDF / top-feature / extra_features discipline
+    (``fit_transform_split``, ``_standardize_extra_features``) as every fold
+    of ``run_cross_validation``, just applied to one fixed split instead of
+    ``n_splits`` rotating ones.
+    """
+    train_y = np.asarray(train_y, dtype=int)
+    x_train_selected, x_test_selected, vocabulary_df = fit_transform_split(
+        train_term_counts, test_term_counts, stopwords=stopwords, max_features=max_features
     )
-    x, _ = transform_tfidf(term_counts_by_document, vocabulary_df)
-    x_selected, selected_vocabulary, _ = select_top_features(
-        x, vocabulary_df, max_features=max_features
+
+    if extra_features_train is not None:
+        train_extra_scaled, test_extra_scaled = _standardize_extra_features(
+            extra_features_train, extra_features_test
+        )
+        x_train_selected = np.hstack([x_train_selected, train_extra_scaled])
+        x_test_selected = np.hstack([x_test_selected, test_extra_scaled])
+
+    model = estimator_factory(RANDOM_SEED)
+    model.fit(x_train_selected, train_y)
+    if list(model.classes_) != list(range(len(VALID_LABELS))):
+        raise AssertionError(f"unexpected class order {list(model.classes_)}")
+
+    probabilities = model.predict_proba(x_test_selected)
+    predictions = probabilities.argmax(axis=1)
+    print(
+        f"Train={len(train_term_counts)}, test={len(test_term_counts)}, "
+        f"vocab={len(vocabulary_df)}, features={x_train_selected.shape[1]}"
     )
-    return x_selected, selected_vocabulary
+    return probabilities, predictions
 
 
 def confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:

@@ -26,7 +26,8 @@ phobert_finetuned_ground_truth
 venv/
 venv
 tfidf_matrix_csr.npz
-phobert_dapt_cache she next to a bunch, charm sheetsailors light.
+*_oof_probabilities.npz
+phobert_dapt_cache
 phobert_domain_adapted
 phobert_domain_adapted_with_gt_leak
 phobert_dapt_cache

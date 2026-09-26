@@ -61,12 +61,16 @@ from News.Build_sentiment_label.Transfer_Learning.model.common import (
     DATA_DIR,
     MAX_LENGTH,
     RANDOM_SEED,
+    SENTENCES_COLUMN,
     TEXT_COLUMN,
     VALID_LABELS,
+    build_sentence_strings,
+    chunk_sentences_into_windows,
     compute_metrics_table,
     confusion_matrix,
     encode_labels,
     load_ground_truth,
+    pool_chunks_by_weight,
 )
 
 
@@ -116,16 +120,25 @@ def text_fingerprint(texts: list[str]) -> str:
     return hasher.hexdigest()
 
 
+# Bumped when the extraction method itself changes (not just the input docs)
+# so a cache built by an older version of extract_frozen_features is never
+# silently reused - e.g. the switch from "truncate to MAX_LENGTH" to
+# "chunk + weighted-mean-pool" below produces different embeddings for the
+# ~1/3 of rows longer than MAX_LENGTH even though n_docs/content are unchanged.
+EXTRACTION_METHOD_VERSION = "chunk_weighted_mean_v1"
+
+
 def build_cache_meta(texts: list[str], hidden_size: int | None = None) -> dict:
     """The key that decides whether a cached embedding matrix is still valid:
     same number of docs, same base checkpoint, same truncation length, same
-    exact text. Any change -> recompute.
+    exact text, same extraction method. Any change -> recompute.
     """
     meta = {
         "n_docs": len(texts),
         "base_model_path": str(BASE_MODEL_PATH),
         "max_length": int(MAX_LENGTH),
         "content_sha1": text_fingerprint(texts),
+        "extraction_method": EXTRACTION_METHOD_VERSION,
     }
     if hidden_size is not None:
         meta["hidden_size"] = int(hidden_size)
@@ -146,7 +159,7 @@ def load_cached_features(expected_meta: dict, expected_ids: list) -> np.ndarray 
         meta = json.loads(raw_meta.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
-    for key in ("n_docs", "base_model_path", "max_length", "content_sha1"):
+    for key in ("n_docs", "base_model_path", "max_length", "content_sha1", "extraction_method"):
         if meta.get(key) != expected_meta[key]:
             return None
     frame = table.to_pandas()
@@ -172,9 +185,13 @@ def save_cached_features(features: np.ndarray, ids: list, meta: dict) -> None:
 
 
 @torch.no_grad()
-def extract_frozen_features(texts: list[str]) -> np.ndarray:
-    """One frozen forward pass per article, then mean-pool ``last_hidden_state``
-    over the non-padding tokens (attention mask) into a single 768-d vector.
+def extract_frozen_features(sentences_column: pd.Series) -> np.ndarray:
+    """One frozen forward pass per <=MAX_LENGTH-token CHUNK of each article
+    (chunk_sentences_into_windows - never splitting a sentence, instead of
+    truncating ~1/3 of the 1044 rows to their first MAX_LENGTH tokens), mean-
+    pool ``last_hidden_state`` over the non-padding tokens of each chunk into
+    a 768-d vector, then weighted-mean-pool an article's chunk vectors
+    (weight = chunk length in words) into one 768-d embedding per article.
 
     ``AutoModel`` on the E1 ``RobertaForMaskedLM`` checkpoint returns the bare
     RoBERTa encoder; the "some weights ... lm_head ... were not used" warning is
@@ -203,20 +220,40 @@ def extract_frozen_features(texts: list[str]) -> np.ndarray:
     )
     print("Hidden size   :", model.config.hidden_size)
 
+    n_docs = len(sentences_column)
+    flat_chunks: list[str] = []
+    doc_index: list[int] = []
+    chunk_weights: list[int] = []
+    n_docs_multi_chunk = 0
+    for doc_id, sentences in enumerate(sentences_column):
+        chunks = chunk_sentences_into_windows(
+            build_sentence_strings(sentences), tokenizer, MAX_LENGTH
+        )
+        if len(chunks) > 1:
+            n_docs_multi_chunk += 1
+        for chunk in chunks:
+            flat_chunks.append(chunk)
+            doc_index.append(doc_id)
+            chunk_weights.append(max(len(chunk.split(" ")), 1))
+    print(
+        f"  {len(flat_chunks)} cua so tu {n_docs} bai "
+        f"({n_docs_multi_chunk} bai can >1 cua so, tuc bi cat truoc day)"
+    )
+
     autocast_ctx = (
         torch.autocast(device_type="cuda", dtype=torch.bfloat16)
         if use_bf16
         else contextlib.nullcontext()
     )
 
-    chunks: list[np.ndarray] = []
-    for start in range(0, len(texts), EMBED_BATCH_SIZE):
-        batch_texts = texts[start : start + EMBED_BATCH_SIZE]
+    chunk_embedding_batches: list[np.ndarray] = []
+    for start in range(0, len(flat_chunks), EMBED_BATCH_SIZE):
+        batch_texts = flat_chunks[start : start + EMBED_BATCH_SIZE]
         encoded = tokenizer(
             batch_texts,
             truncation=True,
             max_length=MAX_LENGTH,
-            padding=True,  # dynamic: pad to the longest doc in THIS batch only
+            padding=True,  # dynamic: pad to the longest chunk in THIS batch only
             return_tensors="pt",
         )
         encoded = {key: value.to(device) for key, value in encoded.items()}
@@ -229,14 +266,25 @@ def extract_frozen_features(texts: list[str]) -> np.ndarray:
         summed = (last_hidden * mask).sum(dim=1)  # (batch, hidden)
         token_counts = mask.sum(dim=1).clamp(min=1.0)  # (batch, 1)
         mean_pooled = summed / token_counts
-        chunks.append(mean_pooled.cpu().numpy().astype(np.float32))
-        print(f"  embedded {min(start + EMBED_BATCH_SIZE, len(texts))}/{len(texts)} docs")
+        chunk_embedding_batches.append(mean_pooled.cpu().numpy().astype(np.float32))
+        print(f"  embedded {min(start + EMBED_BATCH_SIZE, len(flat_chunks))}/{len(flat_chunks)} cua so")
 
     if on_cuda:
         del model
         torch.cuda.empty_cache()
 
-    return np.vstack(chunks).astype(np.float32)
+    chunk_embeddings = np.vstack(chunk_embedding_batches).astype(np.float64)
+    doc_embeddings = pool_chunks_by_weight(
+        chunk_embeddings,
+        np.asarray(doc_index, dtype=np.int64),
+        np.asarray(chunk_weights, dtype=np.float64),
+        n_docs,
+    )
+    empty_doc_mask = np.isnan(doc_embeddings).any(axis=1)
+    if empty_doc_mask.any():
+        print(f"  {int(empty_doc_mask.sum())} bai khong co cua so nao -> gan vector 0")
+        doc_embeddings[empty_doc_mask] = 0.0
+    return doc_embeddings.astype(np.float32)
 
 
 def run_cross_validation(
@@ -317,7 +365,7 @@ def main() -> None:
     if features is None:
         print("\nRunning frozen PhoBERT forward pass ...")
         forward_started = time.perf_counter()
-        features = extract_frozen_features(texts)
+        features = extract_frozen_features(ground_truth_df[SENTENCES_COLUMN])
         print(
             f"Forward pass finished in {time.perf_counter() - forward_started:.1f}s "
             f"-> embeddings {features.shape}"

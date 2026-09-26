@@ -6,15 +6,15 @@ Steps, stopping on the first failure:
 
 1. Common/prepare_ground_truth.py            - join VNCoreNLP tokens onto the labeled rows
 2. Common/TF_IDF.py                          - whole-corpus TF-IDF artifact (descriptive only)
-3. experiment_only_TF_IDF/run_model.py       - LR/NB/ComplementNB/SVM: leak-free 5-fold CV, TF-IDF only
-4. experiment_Lexicon_features/run_model.py  - RF (+lexicon) and the ensemble (RF member +lexicon)
+3. experiment_only_TF_IDF/run_model.py       - LR/NB/ComplementNB/SVM: leak-free 10 x 5-fold CV, TF-IDF only
+4. experiment_Lexicon_features/run_model.py  - RF (+lexicon), then the ensemble (averages saved LR/NB/RF OOF)
 5. compare_models.py                         - merge per-model metrics + rank by macro F1
 6. RESULTS_SUMMARY.txt                       - regenerated from the fresh CSV outputs
 
 Model definitions (build_estimator) live in Common/model/*.py, shared by
 every runnable step above - only the "run CV + write CSV" step is split
 across the two experiment folders, by whether that model uses the lexicon
-feature block (see IMPROVEMENTS.md section A).
+feature block (see ML_SUMMARY.qmd section 6).
 """
 
 from __future__ import annotations
@@ -70,13 +70,13 @@ def _fmt(value: float, width: int = 10) -> str:
 def _confusion_block(model_name: str) -> list[str]:
     cm = pd.read_csv(DATA_DIR / f"{model_name}_confusion_matrix.csv")
     lines = [
-        "  Confusion matrix (hàng = nhãn thật, cột = nhãn dự đoán):",
+        "  Confusion matrix, trung bình qua các lần lặp (hàng = nhãn thật, cột = dự đoán):",
         "                 pred_neg  pred_neu  pred_pos",
     ]
     for _, row in cm.iterrows():
         lines.append(
-            f"  {str(row['true_label']):<14} {int(row['pred_negative']):>5}    "
-            f"{int(row['pred_neutral']):>6}   {int(row['pred_positive']):>6}"
+            f"  {str(row['true_label']):<14} {row['pred_negative']:>7.1f}  "
+            f"{row['pred_neutral']:>8.1f}  {row['pred_positive']:>8.1f}"
         )
     return lines
 
@@ -131,12 +131,17 @@ def write_results_summary() -> None:
         f"{int(ngram_counts.get(3, 0))} trigram)."
     )
     add("")
+    n_repeats = int(overall["n_repeats"].iloc[0])
     add(
-        "Đánh giá bằng 5-fold stratified cross-validation. TF-IDF + bước chọn"
+        f"Đánh giá bằng {n_repeats} lần lặp x 5-fold stratified cross-validation"
     )
     add(
-        "top-feature được fit RIÊNG trong từng train-fold (không rò rỉ fold validation)."
+        "(mỗi lần lặp chia fold khác nhau; số dưới đây = trung bình +/- độ lệch"
     )
+    add(
+        "chuẩn qua các lần lặp). TF-IDF + bước chọn top-feature được fit RIÊNG"
+    )
+    add("trong từng train-fold (không rò rỉ fold validation).")
     add("")
     add("")
     add("2. KẾT QUẢ TỪNG MODEL")
@@ -158,8 +163,10 @@ def write_results_summary() -> None:
                 f" {_fmt(row['recall'])} {_fmt(row['f1'])}"
             )
         add("  " + "-" * 40)
-        add(f"  Accuracy      : {overall_row['accuracy']:.3f}")
-        add(f"  Macro F1      : {overall_row['f1']:.3f}")
+        add(
+            f"  Accuracy      : {overall_row['accuracy']:.3f} +/- {overall_row['accuracy_std']:.3f}"
+        )
+        add(f"  Macro F1      : {overall_row['f1']:.3f} +/- {overall_row['f1_std']:.3f}")
         add("")
         lines.extend(_confusion_block(model_name))
 
@@ -169,7 +176,8 @@ def write_results_summary() -> None:
     add("-" * 64)
     for rank, row in enumerate(overall.itertuples(index=False), start=1):
         add(
-            f"  {rank}. {row.model:<22} F1 = {row.f1:.3f}   Accuracy = {row.accuracy:.3f}"
+            f"  {rank}. {row.model:<22} F1 = {row.f1:.3f} +/- {row.f1_std:.3f}   "
+            f"Accuracy = {row.accuracy:.3f}"
         )
 
     add("")
@@ -220,7 +228,7 @@ def write_results_summary() -> None:
         "  (7) một đường CV chung, n_splits = min(5, số dòng của lớp nhỏ nhất)."
     )
     add(
-        "  Ground truth: 152 -> 1064 dòng (data_news/ground_truth_combined.csv)."
+        "  Ground truth: 152 -> 1044 dòng (data_news/ground_truth_combined.csv)."
     )
     add(
         "  Random Forest: thêm isotonic calibration (CalibratedClassifierCV) -"
@@ -255,23 +263,23 @@ def write_results_summary() -> None:
         "  đầu không lặp lại được, lần 3 với GT lớn hơn + holdout mới thì"
     )
     add(
-        "  replicate: holdout Delta=+0.038 CI[+0.011,+0.066] p=0.004). Chỉ RF"
+        "  replicate: holdout Delta=+0.049 CI[+0.017,+0.082] p=0.003). Chỉ RF"
     )
     add(
-        "  dùng feature này (LR/SVM không có bằng chứng); xem IMPROVEMENTS.md"
+        "  dùng feature này (LR/SVM không có bằng chứng); xem ML_SUMMARY.qmd"
     )
-    add("  mục A và experiment_Lexicon_features/README.md.")
+    add("  mục 6.2.")
     add(
         "  Nested-CV tuning (Common/tune_hyperparameters.py): LogReg/SVM"
     )
     add(
-        "  đổi C=1.0 -> C=0.1, thắng ở toàn bộ outer fold khi tune, xác nhận"
+        "  C=1.0 -> tuned: Delta=-0.008 CI[-0.019,+0.002] (LogReg), -0.003"
     )
     add(
-        "  lại trên holdout (LogReg +0.027 CI loại 0 p=0.001, SVM +0.024 CI"
+        "  CI[-0.014,+0.008] (SVM) - chạm 0; NB/RF cũng không có cải thiện"
     )
     add(
-        "  loại 0 p=0.002). NB/RF không có cải thiện đáng tin, giữ default."
+        "  đáng tin. Code vẫn giữ C=0.1, xem ML_SUMMARY.qmd mục 5.3."
     )
     add("")
     add(

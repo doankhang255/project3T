@@ -1,4 +1,4 @@
-"""Nested-CV hyperparameter tuning (IMPROVEMENTS.md section D).
+"""Nested-CV hyperparameter tuning (ML_SUMMARY.qmd section 4).
 
     python News/Build_sentiment_label/Traditional_ML/Common/tune_hyperparameters.py
 
@@ -116,7 +116,7 @@ def build_random_forest(
     )
 
 
-# grid ranges per IMPROVEMENTS.md section D; kept modest (5-6 candidates) so
+# grid ranges per ML_SUMMARY.qmd section 4; kept modest (5-6 candidates) so
 # a nested search (outer x inner x grid model fits) finishes in minutes, not
 # hours - this is a first pass, not an exhaustive search.
 MODELS = {

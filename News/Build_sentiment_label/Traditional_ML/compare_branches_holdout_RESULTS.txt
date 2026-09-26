@@ -1,0 +1,43 @@
+SO SANH 3 NHANH TREN HOLDOUT DUNG CHUNG (314 bai, kiem tra 1 lan)
+========================================================================
+
+Ca 3 nhanh dung CHUNG dung 314 dong holdout (source_row_id khop tuyet doi), nguon tu Lexicon_based/data/ground_truth_tune_holdout_split.csv.
+Moi nhanh: fit/tune tren phan Tune, predict DUNG 1 LAN tren Holdout - cung 1 giao thuc cho ca 3, khac voi RESULTS_SUMMARY.txt (RF o do la 10 x 5-fold CV tren toan bo ground truth, KHONG phai so holdout).
+
+DIEM SO TREN HOLDOUT (n=314)
+------------------------------------------------------------------------
+Nhanh                                                    Macro F1    Accuracy
+Lexicon-Based (Cach 1 PMI, longest-match)                  0.6500      0.6624
+Traditional ML (Random Forest +lexicon, isotonic)          0.7149      0.7420
+Transfer Learning (PhoBERT E3, fine-tune toan phan)        0.7581      0.7611
+
+BOOTSTRAP 95% CI TREN MACRO-F1 (B=2000, resample 314 dong)
+------------------------------------------------------------------------
+Lexicon-Based (Cach 1 PMI, longest-match)            0.6500  [0.5947, 0.7067]
+Traditional ML (Random Forest +lexicon, isotonic)    0.7149  [0.6615, 0.7651]
+Transfer Learning (PhoBERT E3, fine-tune toan phan)  0.7581  [0.7078, 0.8028]
+
+SO SANH TUNG CAP - BOOTSTRAP (paired, tren delta macro-F1) + McNEMAR (tren accuracy)
+------------------------------------------------------------------------
+Transfer Learning (PhoBERT E3, fine-tune toan phan)  vs  Traditional ML (Random Forest +lexicon, isotonic)
+  Bootstrap: delta=+0.0432  CI=[-0.0094, +0.0973]  p=0.1030  (cham 0)
+  McNemar (chi-square (continuity corrected)): b=34 c=28  p=0.5254
+
+Transfer Learning (PhoBERT E3, fine-tune toan phan)  vs  Lexicon-Based (Cach 1 PMI, longest-match)
+  Bootstrap: delta=+0.1082  CI=[+0.0481, +0.1687]  p=0.0010  (loai 0)
+  McNemar (chi-square (continuity corrected)): b=61 c=30  p=0.0017
+
+Traditional ML (Random Forest +lexicon, isotonic)  vs  Lexicon-Based (Cach 1 PMI, longest-match)
+  Bootstrap: delta=+0.0650  CI=[+0.0039, +0.1261]  p=0.0430  (loai 0)
+  McNemar (chi-square (continuity corrected)): b=53 c=28  p=0.0077
+
+DOC KET QUA
+------------------------------------------------------------------------
+Xep hang single-point macro-F1: Transfer Learning (PhoBERT E3, fine-tune toan phan) (0.7581) > Traditional ML (Random Forest +lexicon, isotonic) (0.7149) > Lexicon-Based (Cach 1 PMI, longest-match) (0.6500)
+Cap co CI loai 0 (khac biet dang tin, khong phai nhieu chia mau): Transfer Learning (PhoBERT E3, fine-tune toan phan) vs Lexicon-Based (Cach 1 PMI, longest-match); Traditional ML (Random Forest +lexicon, isotonic) vs Lexicon-Based (Cach 1 PMI, longest-match)
+
+CANH BAO QUAN TRONG - HOLDOUT DA BI DUNG LAI (khong phai lan nhin dau tien)
+------------------------------------------------------------------------
+314 dong holdout nay DA duoc dung 1 lan truoc do trong chinh nhanh Traditional_ML (ML_SUMMARY.qmd muc 6.2) de quyet dinh random_forest co nen dung lexicon feature hay khong (ket qua: co, Delta=+0.049 CI[+0.017,+0.082] p=0.003). Lexicon_based va Transfer_Learning cung da tung dung dung 314 dong nay de bao cao so 'Holdout' rieng cua ho.
+So sanh 3 nhanh o day la MOT CAU HOI KHAC (nhanh nao tot hon, khong phai lexicon feature co giup RF khong), nen lan nhin dau tien CHO CAU HOI NAY van con hop le theo nguyen tac 'nhin 1 lan cho 1 cau hoi doc lap'. Nhung day KHONG con la mot holdout 'trinh nguyen' theo nghia tuyet doi - cau hinh Random Forest duoc chon (co dung lexicon feature) it nhieu da chiu anh huong tu lan nhin truoc do o chinh 314 dong nay. Khi trich dan ket qua nay o bao cao, PHAI ghi ro diem nay, khong duoc trinh bay nhu mot kiem dinh doc lap hoan toan.
+Ky luat tiep theo: KHONG chay lai script nay voi mot cau hinh Random Forest / Lexicon / PhoBERT khac de xem thu hang co doi khong - do se la lan nhin thu 2 cho DUNG cau hoi nay, vi pham chinh nguyen tac vua neu.

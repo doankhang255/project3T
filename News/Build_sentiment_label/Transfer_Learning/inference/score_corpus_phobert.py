@@ -1,15 +1,22 @@
 """Áp dụng model E3 (fine-tune toàn phần, `Model_Output/phobert_finetuned_ground_truth`)
-lên TOÀN BỘ corpus 126.576 bài báo (không chỉ 1.064 dòng ground truth), để có
+lên TOÀN BỘ corpus 126.576 bài báo (không chỉ 1.044 dòng ground truth), để có
 1 điểm sentiment cho mỗi bài - phục vụ dựng chỉ số sentiment thị trường cấp
 ngày và kiểm định tác động lên VN-Index, cùng lối đi mà Lexicon_based/Scoring
 /score_articles.py đã làm cho phương pháp lexicon (`net_sentiment_score`).
 
-Text đưa vào model giống hệt cách ``model/common.py::load_ground_truth`` build
-cột ``text`` khi huấn luyện/đánh giá: nối các token của cột phẳng
-``Tokenize_content`` bằng dấu cách (không dùng bản theo câu
-``Tokenize_content_sentences``), rồi tokenize/truncate max_length=256 - đúng
-những gì model đã thấy lúc train, không tự tạo thêm một cách xử lý văn bản
-khác.
+SỬA TRUNCATION (mentor plan, mục 3): ~37% số bài trong corpus vượt quá
+MAX_LENGTH=256 BPE token (trung vị ~165 token nhưng có bài dài tới hơn 8000
+token) - tokenize thẳng với truncation=True như bản cũ nghĩa là cắt bỏ hoàn
+toàn phần sau của gần 4/10 số bài trước khi model kịp đọc. Bản này chia mỗi
+bài thành nhiều "cửa sổ" <=256 token theo câu (không cắt giữa câu - dùng
+chung ``common.py::chunk_sentences_into_windows`` với logic đóng gói câu của
+pretrain/domain_adaptive_pretrain.py), chấm điểm TỪNG cửa sổ, rồi gộp lại
+thành 1 vector xác suất/bài bằng trung bình có trọng số theo độ dài cửa sổ
+(``pool_chunk_probabilities``) - bài càng dài càng được đọc đầy đủ thay vì bị
+cắt cụt.
+
+Model E3 KHÔNG cần train lại cho thay đổi này - nó vẫn nhận input <=256 token
+mỗi lần forward, chỉ là chạy nhiều lần hơn cho các bài dài rồi gộp kết quả.
 
 ``net_sentiment_score = prob_positive - prob_negative`` - đặt cùng tên cột và
 cùng công thức với Lexicon's ``score_articles.py`` để
@@ -46,8 +53,14 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from News.Build_sentiment_label.Transfer_Learning.model.common import (  # noqa: E402
     MAX_LENGTH,
+    SENTENCES_COLUMN,
     VALID_LABELS,
+    build_sentence_strings,
+    pack_sentences_by_length,
+    pool_chunks_by_weight,
 )
+
+SENTENCE_TOKENIZE_BATCH_SIZE = 4000
 
 
 TOKENIZED_CORPUS_PATH = (
@@ -66,7 +79,6 @@ OUTPUT_PATH = OUTPUT_DIR / "article_scores_phobert.parquet"
 OUTPUT_CSV_SAMPLE_PATH = OUTPUT_DIR / "article_scores_phobert_sample.csv"
 
 BATCH_SIZE = 64
-TOKENIZE_COLUMN = "Tokenize_content"
 METADATA_COLUMNS = ["link", "publication_date", "domain_norm", "title", "total_tokenizer"]
 
 
@@ -79,11 +91,62 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_texts(tokenize_column: pd.Series) -> list[str]:
-    return [
-        " ".join(str(token) for token in tokens if str(token).strip())
-        for tokens in tokenize_column
-    ]
+def build_article_chunks(
+    sentences_column: pd.Series, tokenizer
+) -> tuple[list[str], np.ndarray, np.ndarray]:
+    """Trả về (flat_chunks, chunk_doc_index, chunk_weights):
+    - flat_chunks: mọi cửa sổ <=256 token của mọi bài, gộp thành 1 list phẳng
+      để chấm điểm theo batch hiệu quả.
+    - chunk_doc_index: bài thứ mấy (0-based, theo thứ tự corpus_df) mỗi cửa sổ
+      thuộc về - dùng để gộp xác suất lại theo bài sau khi chấm điểm.
+    - chunk_weights: số từ (whitespace token) của mỗi cửa sổ - trọng số khi
+      gộp trung bình (cửa sổ dài hơn đại diện phần bài lớn hơn).
+
+    BPE-tokenize hóa TẤT CẢ câu của TOÀN BỘ corpus trong 1 lượt theo batch lớn
+    (giống cách pretrain/domain_adaptive_pretrain.py flatten câu trước khi
+    tokenize), rồi mới đóng gói lại theo từng bài - tránh gọi tokenizer
+    126k lần riêng lẻ (rất chậm với slow tokenizer).
+    """
+    per_doc_sentences = [build_sentence_strings(sentences) for sentences in sentences_column]
+
+    flat_sentences: list[str] = []
+    article_of_sentence: list[int] = []
+    for doc_id, sentences in enumerate(per_doc_sentences):
+        for sentence in sentences:
+            flat_sentences.append(sentence)
+            article_of_sentence.append(doc_id)
+
+    print(f"  BPE-tokenize {len(flat_sentences):,} cau (1 lan, theo batch) ...")
+    sentence_lengths: list[int] = []
+    for start in range(0, len(flat_sentences), SENTENCE_TOKENIZE_BATCH_SIZE):
+        batch = flat_sentences[start : start + SENTENCE_TOKENIZE_BATCH_SIZE]
+        encoded_ids = tokenizer(batch, add_special_tokens=False)["input_ids"]
+        sentence_lengths.extend(len(ids) for ids in encoded_ids)
+
+    lengths_per_doc: list[list[int]] = [[] for _ in per_doc_sentences]
+    for doc_id, length in zip(article_of_sentence, sentence_lengths):
+        lengths_per_doc[doc_id].append(length)
+
+    flat_chunks: list[str] = []
+    doc_index: list[int] = []
+    weights: list[int] = []
+    n_docs_multi_chunk = 0
+    for doc_id, (sentences, lengths) in enumerate(zip(per_doc_sentences, lengths_per_doc)):
+        chunks = pack_sentences_by_length(sentences, lengths, MAX_LENGTH)
+        if not chunks:
+            continue
+        if len(chunks) > 1:
+            n_docs_multi_chunk += 1
+        for chunk in chunks:
+            flat_chunks.append(chunk)
+            doc_index.append(doc_id)
+            weights.append(max(len(chunk.split(" ")), 1))
+
+    print(
+        f"  {len(flat_chunks):,} cua so tu {len(sentences_column):,} bai "
+        f"({n_docs_multi_chunk:,} bai can >1 cua so, tuc bi cat truoc day)"
+    )
+    return flat_chunks, np.asarray(doc_index, dtype=np.int64), np.asarray(weights, dtype=np.float64)
 
 
 @torch.no_grad()
@@ -151,17 +214,26 @@ def main() -> None:
     )
 
     print("Đọc corpus đã tokenize (có thể mất vài phút) ...")
-    corpus_df = pd.read_parquet(TOKENIZED_CORPUS_PATH, columns=METADATA_COLUMNS + [TOKENIZE_COLUMN])
+    corpus_df = pd.read_parquet(TOKENIZED_CORPUS_PATH, columns=METADATA_COLUMNS + [SENTENCES_COLUMN])
     if args.max_docs is not None:
         corpus_df = corpus_df.iloc[: args.max_docs].reset_index(drop=True)
     print(f"  {len(corpus_df):,} bài báo")
 
-    texts = build_texts(corpus_df[TOKENIZE_COLUMN])
+    print("Chia bài dài thành các cửa sổ <=256 token theo câu (sửa truncation) ...")
+    flat_chunks, chunk_doc_index, chunk_weights = build_article_chunks(
+        corpus_df[SENTENCES_COLUMN], tokenizer
+    )
 
     print(f"\nChạy forward-pass (batch_size={args.batch_size}) ...")
     forward_started = time.perf_counter()
-    probs = score_texts(texts, tokenizer, model, device, args.batch_size)
+    chunk_probs = score_texts(flat_chunks, tokenizer, model, device, args.batch_size)
     print(f"Xong trong {time.perf_counter() - forward_started:.1f}s")
+
+    probs = pool_chunks_by_weight(chunk_probs, chunk_doc_index, chunk_weights, len(corpus_df))
+    empty_doc_mask = np.isnan(probs).any(axis=1)
+    if empty_doc_mask.any():
+        print(f"  {int(empty_doc_mask.sum()):,} bai khong co cua so nao (rong) -> gan xac suat deu 1/3")
+        probs[empty_doc_mask] = 1.0 / len(VALID_LABELS)
 
     result_df = corpus_df[METADATA_COLUMNS].copy().reset_index(drop=True)
     for label_id, label in enumerate(VALID_LABELS):

@@ -14,12 +14,11 @@
    gần 0 ở lag 1) - nếu abnormal_return_ar1 vẫn còn tương quan cao gần
    bằng daily_return gốc thì việc "khử" không hiệu quả.
 
-Output: data_News/verify_abnormal_return.png
+Output: data_News/verify_abnormal_return{output_suffix}.png
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -29,9 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-INPUT_PATH = PROJECT_ROOT / "data_News" / "vnindex_daily_sentiment_abnormal_return_pmi.parquet"
-OUTPUT_PATH = PROJECT_ROOT / "data_News" / "verify_abnormal_return.png"
+from News_Vnindex.Common.vnindex_daily_abnormal_return import OUTPUT_DIR
 
 MAX_LAG = 10
 
@@ -50,12 +47,14 @@ def autocorrelation(series: pd.Series, max_lag: int) -> list[float]:
     return result
 
 
-def main() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def run_abnormal_return_verification(paths_by_method: dict[str, Path], output_suffix: str = "") -> None:
+    """Kiểm tra file abnormal return của method ĐẦU TIÊN trong ``paths_by_method``.
+    Output: data_News/verify_abnormal_return{output_suffix}.png"""
+    input_path = next(iter(paths_by_method.values()))
+    output_path = OUTPUT_DIR / f"verify_abnormal_return{output_suffix}.png"
 
     df = pd.read_parquet(
-        INPUT_PATH,
+        input_path,
         columns=["date", "daily_return", "expected_return_rolling", "abnormal_return_rolling_1d",
                  "expected_return_ar1", "abnormal_return_ar1_1d"],
     )
@@ -115,12 +114,9 @@ def main() -> None:
     ax_right.tick_params(labelsize=8)
 
     fig.tight_layout()
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUTPUT_PATH, dpi=150)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150)
     plt.close(fig)
     print()
-    print("Đã lưu:", OUTPUT_PATH)
+    print("Đã lưu:", output_path)
 
-
-if __name__ == "__main__":
-    main()

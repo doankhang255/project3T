@@ -1,9 +1,9 @@
-"""Before/after calibration check for RF and SVM (IMPROVEMENTS.md section D).
+"""Before/after calibration check for RF and SVM (ML_SUMMARY.qmd section 7.2).
 
     python News/Build_sentiment_label/Traditional_ML/Common/calibration_check.py
 
-Compares, on the SAME leak-free 5-fold CV (``model/common.run_cross_validation``
-- no separate CV wiring here):
+Compares, on the SAME leak-free 5-fold split - repeat 0 (fold seed 0) of the
+production 10 x 5-fold CV (``production_cv.py``):
 
   RF   raw       - RandomForestClassifier, no calibration (old production default)
   RF   isotonic  - CalibratedClassifierCV(rf, method="isotonic") (new production default)
@@ -20,7 +20,7 @@ runs with the +lexicon feature block hstacked on (see
 ``experiment_Lexicon_features/run_model.py``) - random_forest being the only
 model among the 3 lexicon-eligible ones (logistic_regression, random_forest,
 svm) that showed a reliable, replicated improvement from adding lexicon
-features (see IMPROVEMENTS.md section A). The 4 variants above never
+features (see ML_SUMMARY.qmd section 6.2). The 4 variants above never
 exercise that feature space, so the calibration decision was previously
 validated only on TF-IDF-only features. Two more variants close that gap
 (same fix already applied to the leak check in ``sanity_checks.py``, mirrored
@@ -32,6 +32,14 @@ here for calibration quality):
 (SVM has no lexicon variant here: SVM+lexicon was never promoted to
 production, so its calibration quality on that unused path isn't a
 production concern.)
+
+No duplicate CV: ``rf_isotonic`` is read from the saved run of
+``experiment_only_TF_IDF/compare_models_tfidf_only.py`` (repeat 0, run that
+first). ``rf_isotonic_lexicon`` and ``svm_softmax`` ARE the
+production random_forest and svm, so their probabilities are read from the
+saved production run (repeat 0) instead of being re-trained here - run
+``../run_pipeline.py`` first. The other 3 variants are not production
+models and are run here, on the same fold seed 0 split.
 
 Two measures per variant, both on the out-of-fold probabilities (never the
 resubstitution predictions):
@@ -65,13 +73,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from News.Build_sentiment_label.Traditional_ML.Common.TF_IDF import build_document_term_counts
-from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import load_stopword_set
+from News.Build_sentiment_label.Traditional_ML.Common.production_cv import load_production_oof
+from News.Build_sentiment_label.Traditional_ML.Common.repeated_cv import (
+    load_stopword_set,
+    run_single_cv_proba,
+)
 from News.Build_sentiment_label.Traditional_ML.Common.model.common import (
-    VALID_LABELS,
     compute_metrics,
     encode_labels,
     load_ground_truth_frame,
-    run_cross_validation,
 )
 from News.Build_sentiment_label.Traditional_ML.Common.model.lexicon_features import (
     build_lexicon_feature_matrix,
@@ -111,8 +121,18 @@ VARIANTS = {
 
 # Variant names that run on TF-IDF + lexicon feature block instead of plain
 # TF-IDF - same factories as their non-"_lexicon" counterparts, only the
-# extra_features passed to run_cross_validation differs (see main()).
+# extra_features passed to run_single_cv_proba differs (see main()).
 USES_LEXICON = {"rf_raw_lexicon", "rf_isotonic_lexicon"}
+
+# Variants that are exactly a production model -> read that model's saved
+# production OOF probabilities (repeat 0) instead of re-training it.
+PRODUCTION_VARIANTS = {
+    "rf_isotonic_lexicon": "random_forest",
+    "svm_softmax": "svm",
+    # not production, but saved by experiment_only_TF_IDF/compare_models_tfidf_only.py
+    "rf_isotonic": "random_forest_tfidf_only",
+}
+PRODUCTION_REPEAT = 0
 
 
 def brier_score(y_true: np.ndarray, probabilities: np.ndarray, n_labels: int = 3) -> float:
@@ -193,6 +213,11 @@ def main() -> None:
     add("")
     add(f"Ground truth: {len(df)} rows {label_counts}")
     add(
+        f"One 5-fold split (fold seed {PRODUCTION_REPEAT} = production repeat "
+        f"{PRODUCTION_REPEAT}); {', '.join(PRODUCTION_VARIANTS)} read from the "
+        "saved production run, not re-trained."
+    )
+    add(
         "Brier score: mean_i sum_c (p_ic - 1{y_i=c})^2 - lower is better, "
         "compare within a model (raw vs isotonic / platt vs softmax), not across."
     )
@@ -204,11 +229,19 @@ def main() -> None:
 
     summary_rows = []
     for name, factory in VARIANTS.items():
-        print(f"\n[{name}] 5-fold CV ...", flush=True)
-        extra_features = lexicon_matrix if name in USES_LEXICON else None
-        probabilities, predictions, _fold_of_row = run_cross_validation(
-            factory, term_counts, y, stopwords, extra_features=extra_features
-        )
+        if name in PRODUCTION_VARIANTS:
+            production_name = PRODUCTION_VARIANTS[name]
+            print(f"\n[{name}] reusing saved OOF ({production_name}, repeat {PRODUCTION_REPEAT})")
+            probabilities = load_production_oof(
+                production_name, df["source_row_id"].to_numpy(), y
+            )[PRODUCTION_REPEAT]
+        else:
+            print(f"\n[{name}] 5-fold CV (fold seed {PRODUCTION_REPEAT}) ...", flush=True)
+            extra_features = lexicon_matrix if name in USES_LEXICON else None
+            probabilities = run_single_cv_proba(
+                factory, term_counts, y, stopwords, PRODUCTION_REPEAT, extra_features=extra_features
+            )
+        predictions = probabilities.argmax(axis=1)
         metrics = compute_metrics(y, predictions)
         macro_f1 = float(metrics.loc[metrics["metric_scope"].eq("overall"), "f1"].iloc[0])
         brier = brier_score(y, probabilities)

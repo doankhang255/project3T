@@ -1,0 +1,60 @@
+EXPERIMENT - lexicon-category features + negation vs TF-IDF-only baseline
+========================================================================
+
+Ground truth: News\Build_sentiment_label\Traditional_ML\Common\tune_holdout\ground_truth_holdout.csv
+  314 rows (neg 92 / neu 155 / pos 67)
+Repeated stratified 5-fold CV, 10 repeats, 2000 bootstrap resamples. TF-IDF fit per fold (leak-free); lexicon features are fixed word lists (Seed_set_Prepare + Loughran & McDonald 2011 negation rule), not fit from data, so adding them leaks nothing.
+Feature columns added: negative_prop, positive_prop, uncertainty_prop, litigious_prop, strong_modal_prop, weak_modal_prop, constraining_prop, net_polarity, coverage
+NB family (Multinomial/Complement) skipped: net_polarity can be negative.
+
+MACRO-F1: baseline (TF-IDF only) vs +lexicon
+------------------------------------------------------------------------
+  model                           baseline          +lexicon     delta
+  logistic_regression      0.655 +/- 0.010   0.671 +/- 0.013    +0.015
+  random_forest            0.644 +/- 0.020   0.693 +/- 0.012    +0.049
+  svm                      0.621 +/- 0.022   0.641 +/- 0.017    +0.020
+
+PER-CLASS F1 (+lexicon arm)
+------------------------------------------------------------------------
+  model                        f1_negative        f1_neutral       f1_positive
+  logistic_regression      0.670 +/- 0.022   0.761 +/- 0.011   0.581 +/- 0.015
+  random_forest            0.706 +/- 0.017   0.785 +/- 0.010   0.588 +/- 0.019
+  svm                      0.650 +/- 0.022   0.749 +/- 0.008   0.525 +/- 0.033
+
+BOOTSTRAP  -  95% CI on delta(macro-F1) = lexicon - baseline, paired, per model
+------------------------------------------------------------------------
+  model                     delta  95% CI                     p  verdict
+  logistic_regression      +0.015  [-0.021, +0.054]       0.431  overlaps 0
+  random_forest            +0.049  [+0.017, +0.082]       0.003  EXCLUDES 0
+  svm                      +0.020  [-0.010, +0.051]       0.191  overlaps 0
+
+  delta > 0 and CI excludes 0 -> lexicon features reliably help this model.
+  CI straddling 0 -> not distinguishable from split/resample noise.
+
+McNEMAR  -  baseline vs +lexicon, paired per repeat (are the flips real?)
+------------------------------------------------------------------------
+  model                   mean_b  mean_c   med_p   sig/N   pool_p
+  logistic_regression       24.6    23.3   0.710    0/10    0.583
+  random_forest             26.1    15.5   0.082    3/10    0.000
+  svm                       21.3    17.2   0.410    0/10    0.041
+
+  mean_b = rows +lexicon right & baseline wrong (averaged over repeats);
+  mean_c = the reverse. sig/N = repeats with p < 0.05 out of N; pool_p pools
+  all repeats (optimistic - repeats are not independent, see Nadeau-Bengio below).
+
+NADEAU-BENGIO CORRECTED  -  parametric counterpart to the bootstrap above
+------------------------------------------------------------------------
+  model                     delta  corrected 95% CI         corrected p  verdict
+  logistic_regression      +0.017  [-0.046, +0.080]               0.589  overlaps 0
+  random_forest            +0.050  [+0.005, +0.095]               0.029  EXCLUDES 0
+  svm                      +0.020  [-0.038, +0.079]               0.482  overlaps 0
+
+  Corrects for fold non-independence across CV repeats (Nadeau & Bengio
+  2003); the bootstrap above instead resamples rows. Two different ways
+  to ask the same question - point estimates match, only the CI differs.
+
+READ
+------------------------------------------------------------------------
+  Reliably helped: random_forest.
+  Nadeau-Bengio correction agrees with the bootstrap verdict above for every model.
+  This ran on the TUNE split only. If promoting, re-check once on the HOLDOUT split (../Common/tune_holdout.py) - exactly once, not iteratively.
