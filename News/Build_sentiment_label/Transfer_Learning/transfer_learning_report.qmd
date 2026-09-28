@@ -132,9 +132,12 @@ Chỉ số VN-Index dùng ở phần sau được xây từ **điểm số liên
 
 | Phương pháp | Spearman | MAE (thang −1/0/1) |
 |---|---:|---:|
+| Mốc: đoán 0 cho mọi bài | — | 0,510 |
 | Lexicon (PMI) | 0,435 | 0,509 |
 | Random Forest | 0,598 | 0,397 |
 | **PhoBERT (E3)** | **0,734** | **0,305** |
+
+Mốc "đoán 0 cho mọi bài" có MAE bằng đúng tỷ lệ bài không trung lập (532/1.044). Điểm Lexicon rất nhỏ (|điểm| lớn nhất ≈ 0,06) nên MAE của Lexicon gần bằng mốc này và không phản ánh chất lượng; so sánh Lexicon với 2 phương pháp còn lại nên dựa vào Spearman (không phụ thuộc thang điểm). MAE chỉ có ý nghĩa với Random Forest và PhoBERT, vốn có điểm `prob_positive − prob_negative` nằm trên cùng thang [−1, 1].
 
 Khoảng cách giữa 3 phương pháp ở đây **rõ rệt hơn hẳn** so với khoảng cách macro-F1 (vốn chỉ chênh 0,64→0,77) — PhoBERT không chỉ đoán đúng nhãn nhiều hơn mà còn cho điểm số mượt, đáng tin hơn hẳn ở đúng khía cạnh mà bước xây chỉ số ngày sử dụng.
 
@@ -191,9 +194,11 @@ Một điểm số macro-F1 đơn lẻ không cho biết mức độ dao động
 |---|---:|---:|---|---|
 | E3 5-fold CV OOF (trước distillation) | 1.044 | 0,7688 | [0,7426, 0,7949] | — |
 | E3 Holdout (trước distillation) | 314 | 0,7581 | [0,7100, 0,8062] | [0,7078, 0,8028] |
-| Distillation Holdout (production) | 314 | 0,8279 | [0,7859, 0,8700] | — |
+| Distillation production (in-sample, xem lưu ý) | 314 | 0,8279 | [0,7859, 0,8700] | — |
 
 Ở dòng có cả 2 phương pháp, bootstrap và delta method cho ra CI **gần như trùng khít** — bằng chứng cho việc các khoảng tin cậy này đáng tin, không phải artifact của riêng 1 cách tính. Đáng chú ý: CI của E3 (trước distillation, [0,743, 0,795]) và CI của distillation ([0,786, 0,870]) **có giao nhau nhẹ** (0,786–0,795) — nghĩa là dù điểm số đơn lẻ chênh khá rõ (+0,059), vẫn còn 1 phần dao động chung, nên **chưa thể khẳng định chắc chắn tuyệt đối** distillation tốt hơn chỉ từ 2 CI này (dù xu hướng cải thiện đã được xác nhận nhất quán qua nhiều cấu hình N ở bảng trên).
+
+**Lưu ý về dòng distillation production:** model production được train trên toàn bộ 1.044 dòng, gồm cả 314 dòng Holdout, nên 0,8279 là điểm trên chính dữ liệu model đã học (in-sample), không phải số Holdout. Vì vậy phép so CI giữa E3 và distillation ở trên không dùng được để kết luận distillation tốt hơn. Số Holdout trung thực của distillation là 0,8344 (mục E4, model chỉ train trên Tune), hiện chưa có CI.
 
 # Kiểm định tác động lên VN-Index
 
@@ -265,6 +270,9 @@ Toàn bộ bằng chứng — gradient test, hiệu chỉnh xác suất, ổn đ
 | Lexicon (PMI) | 0,6500 | [0,595, 0,707] |
 | Random Forest | 0,7149 | [0,662, 0,765] |
 | PhoBERT E3 (trước distillation) | 0,7581 | [0,708, 0,803] |
+| PhoBERT distillation, N=20.000 (\*) | 0,8344 | — |
+
+(\*) Model train trên Tune (730 dòng) + 20.000 bài chưa nhãn, kiểm tra 1 lần trên Holdout (mục E4). N=20.000 được chọn sau khi đã xem kết quả Holdout của lần thử trước (N=5.000), nên con số này có thể lạc quan hơn thực tế. Lần chạy này chưa lưu dự đoán từng bài, nên chưa có CI bootstrap và chưa có so sánh cặp với các nhánh khác.
 
 | Cặp so sánh | Delta macro-F1 | CI | Kết luận |
 |---|---:|---|---|
@@ -272,7 +280,7 @@ Toàn bộ bằng chứng — gradient test, hiệu chỉnh xác suất, ổn đ
 | TL vs Lexicon | +0,108 | [+0,048, +0,169] | Loại 0 — TL hơn Lexicon thật sự |
 | RF vs Lexicon | +0,065 | [+0,004, +0,126] | Loại 0 — RF hơn Lexicon thật sự |
 
-*(Dùng bản E3 trước distillation vì đây là con số duy nhất chưa bị ảnh hưởng bởi việc chọn siêu tham số dựa trên chính Holdout này — xem lưu ý ở mục E4. Bảng này cũng là lần nhìn thứ nhất và duy nhất cho câu hỏi "nhánh nào tốt hơn"; không lặp lại với cấu hình khác.)*
+*(Các phép so sánh cặp dùng bản E3 trước distillation vì đây là con số duy nhất chưa bị ảnh hưởng bởi việc chọn siêu tham số dựa trên chính Holdout này — xem lưu ý ở mục E4. Bảng này cũng là lần nhìn thứ nhất và duy nhất cho câu hỏi "nhánh nào tốt hơn"; không lặp lại với cấu hình khác.)*
 
 # Kết luận chung
 
