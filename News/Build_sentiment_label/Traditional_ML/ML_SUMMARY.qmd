@@ -257,12 +257,32 @@ không có 1 giá trị tối ưu rõ ràng, chỉ là nhiễu chia fold.
 
 Vì không model nào "vượt qua được ngưỡng trên tập tune" (theo đúng kỷ luật
 của chính script: "Only run [holdout confirmation] for a candidate that
-already cleared the tune-set bar"), **không chạy lại bước xác nhận holdout**
-(`--holdout-csv`).
+already cleared the tune-set bar"), bước xác nhận holdout ban đầu không
+được chạy.
 
-**Khuyến nghị:** cân nhắc đưa `Common/model/logistic_regression.py` và
-`Common/model/svm.py` về lại C=1.0 (mặc định sklearn), vì không có bằng
-chứng ủng hộ C=0.1.
+**Cập nhật — đã chạy `--holdout-csv` (2026-09-27), kết quả MÂU THUẪN với
+nested-CV trên tune:** so default C=1.0 với C=0.1 bằng 10×5-fold CV chạy
+trực tiếp trên 314 dòng holdout (mẫu độc lập, chưa từng dùng để chọn C=0.1):
+
+| Model | Default (C=1.0) | Tuned (C=0.1) | Δ | 95% CI | p | Kết luận |
+|---|--:|--:|--:|---|--:|---|
+| Logistic Regression | 0.629 | 0.655 | +0.026 | [+0.007, +0.046] | 0.008 | loại 0 |
+| SVM | 0.604 | 0.621 | +0.017 | [+0.001, +0.034] | 0.044 | loại 0 |
+
+Trên tập holdout này, C=0.1 thắng có ý nghĩa cho cả 2 model — ngược hẳn kết
+luận "chạm 0" của nested-CV trên tune ở trên. Cần đọc kết quả này thận
+trọng: (1) đây là 2 mẫu khác nhau, không chồng lấn (nested-CV trên 730 dòng
+tune vs CV trực tiếp trên 314 dòng holdout, ~63 dòng/fold — nhiễu lấy mẫu
+lớn hơn); (2) về đúng kỷ luật của script, bước xác nhận holdout này lẽ ra
+chỉ nên chạy cho ứng viên đã "vượt ngưỡng" trên tune — cả 2 model đều
+không, nên đây là một phân tích khám phá ngoài quy trình đã định trước,
+không phải một xác nhận chính thức; kết quả có ý nghĩa ở đây cần được diễn
+giải nhẹ tay hơn.
+
+**Khuyến nghị:** bằng chứng hiện tại mâu thuẫn giữa 2 mẫu, chưa đủ để chốt
+theo hướng nào. Giữ nguyên C=0.1 trong code production là lựa chọn hợp lý
+tạm thời, nhưng quyết định này **vẫn chưa xong** — cần ground truth mới,
+độc lập với cả tune lẫn holdout hiện tại, để phân xử dứt điểm.
 
 # 6. Hướng B — +lexicon (Random Forest)
 

@@ -12,6 +12,13 @@ N_LAGS=5, cùng Newey-West, cùng dow/near_tet dummy) - chỉ đổi:
     volume rất persistent) + 5 lag sentiment + dow dummy + near_tet +
     volatility_20d.
 
+KIỂM SOÁT ATTENTION (mentor feedback, sau phát hiện volume khối nội): thêm
+`log_article_count` ở ĐÚNG các lag mà sentiment_index_z dùng - sentiment
+(hướng tin) và số lượng bài/ngày (attention/mức độ được chú ý) rất dễ lẫn
+nhau (ngày khủng hoảng vừa nhiều bài vừa sentiment xấu cùng lúc); nếu không
+kiểm soát, hệ số sentiment "có ý nghĩa" có thể chỉ phản ánh LƯỢNG tin chứ
+không phải HƯỚNG tin.
+
 Import lại is_near_tet/fit_with_lag_sum_test từ
 Common/vnindex_daily_predictive_regression.py - tránh chép lại hàm tiện ích.
 """
@@ -75,12 +82,14 @@ def add_volume_regression_features(
         suffix = f"lag{lag}" if lag > 0 else "lag0"
         sentiment_lag_column = f"{SENTIMENT_COLUMN}_{suffix}"
         target_lag_column = f"log_vol_total_{suffix}"
+        article_count_lag_column = f"log_article_count_{suffix}"
 
         out[sentiment_lag_column] = out[SENTIMENT_COLUMN].shift(offset)
         out[target_lag_column] = out["log_vol_total"].shift(offset)
+        out[article_count_lag_column] = out["log_article_count"].shift(offset)
 
         sentiment_lag_columns.append(sentiment_lag_column)
-        all_lag_columns += [sentiment_lag_column, target_lag_column]
+        all_lag_columns += [sentiment_lag_column, target_lag_column, article_count_lag_column]
 
     predictor_columns = all_lag_columns + dow_dummy_columns + ["near_tet"] + EXTRA_EXOG_COLUMNS
     return out, sentiment_lag_columns, predictor_columns

@@ -31,6 +31,9 @@ from News_Vnindex.Common.verify_abnormal_return import run_abnormal_return_verif
 from News_Vnindex.Common.vnindex_daily_foreign_volume_regression import (  # noqa: E402
     run_foreign_volume_regression,
 )
+from News_Vnindex.Common.vnindex_daily_sentiment_reverse_causality import (  # noqa: E402
+    run_reverse_causality,
+)
 from News_Vnindex.Common.vnindex_daily_volume_regression import run_volume_regression  # noqa: E402
 from vnindex_daily_predictive_regression import (  # noqa: E402  (cùng thư mục)
     MERGED_DATA_PATHS_BY_METHOD,
@@ -41,8 +44,9 @@ DIAGNOSTICS = [
     ("R² theo nhóm biến + F-test", run_r_squared_diagnosis),
     ("Cộng tuyến (VIF)", run_multicollinearity_check),
     ("Kiểm tra abnormal return", run_abnormal_return_verification),
-    ("Sentiment -> khối lượng giao dịch", run_volume_regression),
-    ("Khối ngoại vs khối nội (year FE)", run_foreign_volume_regression),
+    ("Sentiment -> khối lượng giao dịch (co kiem soat article_count)", run_volume_regression),
+    ("Khối ngoại vs khối nội (year FE, co kiem soat article_count)", run_foreign_volume_regression),
+    ("Kiem nhan qua nguoc: sentiment ~ return tre", run_reverse_causality),
     ("Thực tế vs OLS dự báo", run_ols_fit_plot),
     ("Hệ số sentiment theo lag", run_sentiment_lag_plot),
 ]

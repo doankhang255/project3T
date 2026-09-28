@@ -183,6 +183,18 @@ Cải thiện nhất quán qua cả đánh giá bằng CV lẫn Holdout, và ti�
 
 Vì N (5.000 → 20.000) được chọn **dựa trên chính kết quả Holdout của mỗi lần thử**, các con số Holdout ở trên **không còn là một lần nhìn "sạch"** theo đúng kỷ luật Tune/Holdout đã áp dụng cho E2/E3 — chúng phản ánh đúng xu hướng cải thiện thật, nhưng con số tuyệt đối có thể lạc quan hơn khả năng tổng quát hoá thực tế một chút. Model **production** cuối cùng (N=20.000, fit lại trên **toàn bộ 1.044 dòng** Tune+Holdout gộp, không giữ riêng phần nào) được lưu làm bản chính thức dùng để chấm điểm corpus 126k bài.
 
+## Khoảng tin cậy cho macro-F1
+
+Một điểm số macro-F1 đơn lẻ không cho biết mức độ dao động của chính nó theo mẫu. Bổ sung khoảng tin cậy (CI) 95% bằng **2 phương pháp độc lập** — bootstrap (đã dùng ở mục so sánh 3 nhánh) và **delta method** (Wald, xấp xỉ chuẩn qua khai triển Taylor bậc 1 trên các ô của confusion matrix, coi là tỷ lệ multinomial) — để đối chiếu chéo:
+
+| Cấu hình | n | Macro F1 | CI 95% (delta method) | CI 95% (bootstrap) |
+|---|---:|---:|---|---|
+| E3 5-fold CV OOF (trước distillation) | 1.044 | 0,7688 | [0,7426, 0,7949] | — |
+| E3 Holdout (trước distillation) | 314 | 0,7581 | [0,7100, 0,8062] | [0,7078, 0,8028] |
+| Distillation Holdout (production) | 314 | 0,8279 | [0,7859, 0,8700] | — |
+
+Ở dòng có cả 2 phương pháp, bootstrap và delta method cho ra CI **gần như trùng khít** — bằng chứng cho việc các khoảng tin cậy này đáng tin, không phải artifact của riêng 1 cách tính. Đáng chú ý: CI của E3 (trước distillation, [0,743, 0,795]) và CI của distillation ([0,786, 0,870]) **có giao nhau nhẹ** (0,786–0,795) — nghĩa là dù điểm số đơn lẻ chênh khá rõ (+0,059), vẫn còn 1 phần dao động chung, nên **chưa thể khẳng định chắc chắn tuyệt đối** distillation tốt hơn chỉ từ 2 CI này (dù xu hướng cải thiện đã được xác nhận nhất quán qua nhiều cấu hình N ở bảng trên).
+
 # Kiểm định tác động lên VN-Index
 
 ## Bối cảnh
@@ -191,15 +203,26 @@ Hồi quy dự báo kiểu Tetlock (2007) cấp ngày (Newey-West HAC 5 lag, ki�
 
 ## Gradient test theo độ chính xác classifier
 
-Nếu attenuation bias đúng, hệ số/p-value của hồi quy phải **cải thiện dần** theo đúng thứ tự độ chính xác của bộ phân loại: Lexicon (kém nhất) → Random Forest (giữa) → PhoBERT (tốt nhất, Spearman 0,734 ở bảng trên). Kết quả cuối cùng (dùng pipeline đã sửa lỗi look-ahead, model PhoBERT distillation), hệ số lag1 (tức thời) trên `abnormal_return_rolling_1d`:
+**Đặc tả chính** dùng **Lexicon PMI** làm đại diện cho nhánh Lexicon (đúng phương pháp "Cách 1" mà `LEXICON_SUMMARY.qmd` báo cáo là production, và cũng là phương pháp `compare_branches_holdout.py` dùng cho so sánh 3 nhánh ở trên) — **không** gộp chung với 2 biến thể PCA (lý do tách riêng, xem mục robustness bên dưới). Nếu attenuation bias đúng, hệ số/p-value của hồi quy phải **cải thiện dần** theo đúng thứ tự độ chính xác của bộ phân loại: Lexicon (kém nhất) → Random Forest (giữa) → PhoBERT (tốt nhất, Spearman 0,734 ở bảng trên). Kết quả cuối cùng (dùng pipeline đã sửa lỗi look-ahead, model PhoBERT distillation), hệ số lag1 (tức thời) trên `abnormal_return_rolling_1d`:
 
 | Phương pháp | Spearman (đo lường) | Hệ số lag1 | p-value |
 |---|---:|---:|---:|
-| Lexicon (PMI / Intensity / PCA-PMI / PCA-Intensity) | 0,44 | −0,0002 .. +0,0003 | 0,30 – 0,44 |
+| **Lexicon PMI (đặc tả chính)** | 0,44 | −0,000194 | 0,390 |
 | Random Forest | 0,60 | −0,000314 | 0,191 |
 | **PhoBERT (distillation)** | **0,73** | **+0,000073** | **0,768** |
 
-Không có gradient cải thiện — ngược lại, phương pháp đo lường **tốt nhất** (PhoBERT) cho hệ số **nhỏ nhất** và p-value **lớn nhất** trong cả 6 phương pháp. Kết quả này **trực tiếp bác bỏ** giả thuyết attenuation bias.
+Không có gradient cải thiện — ngược lại, phương pháp đo lường **tốt nhất** (PhoBERT) cho hệ số **nhỏ nhất** và p-value **lớn nhất**. Kết quả này **trực tiếp bác bỏ** giả thuyết attenuation bias. Lexicon Intensity (biến thể còn lại đo cùng 1 cấu trúc positive−negative, chỉ khác cách tính cường độ) cho kết quả gần như trùng khớp (hệ số −0,000200, p=0,370) — xác nhận thêm, không đổi kết luận.
+
+### Kiểm tra độ bền bằng PCA — không tính vào đặc tả chính
+
+Lexicon PCA-PMI và PCA-Intensity **không được đưa vào bảng gradient test ở trên**, vì PCA gộp **7 category từ điển** (bao gồm cả `uncertainty`, `litigious`, `modal` — không chỉ thuần positive/negative) vào chung 1 trục chính — đây là **một cấu trúc đo lường khác**, không phải bản "kiểm tra độ bền" của hiệu số `positive_score − negative_score` mà PMI/Intensity đo trực tiếp. Gộp chung 2 loại này vào 1 bảng dễ gây hiểu nhầm là "4 phép đo cùng 1 thứ". Vì vậy trình bày riêng, chỉ mang tính tham khảo độ bền:
+
+| Phương pháp (PCA, tham khảo) | Hệ số lag1 | p-value |
+|---|---:|---:|
+| Lexicon PCA-PMI | +0,000248 | 0,444 |
+| Lexicon PCA-Intensity | +0,000335 | 0,299 |
+
+Cả 2 cũng null, và không đổi kết luận chung — nhưng vì đo cấu trúc khác (trộn thêm uncertainty/litigious/modal), không nên dùng để lập luận "4/4 phương pháp Lexicon đồng thuận" như thể chúng độc lập kiểm tra cùng 1 giả thuyết.
 
 ## Các kiểm định bổ sung (đều hội tụ về cùng kết luận)
 
@@ -212,9 +235,28 @@ Không có gradient cải thiện — ngược lại, phương pháp đo lườn
 | Đảo chiều nhân quả (return quá khứ → sentiment hiện tại) | Kiểm tra giả thuyết "báo đăng chậm hơn giá" | Null ở lag1 tại cả 6 phương pháp — không ủng hộ |
 | Tương quan cùng ngày (sentiment vs return cùng ngày) | Kiểm tra giả thuyết "thị trường hấp thụ tin trong ngày" | Gần như bằng 0 ở cả 6 phương pháp — không ủng hộ |
 
+## Power và Minimum Detectable Effect (MDE)
+
+Một kết quả null (p > 0,05) tự nó **mơ hồ**: có thể là quan hệ thật sự không tồn tại, hoặc chỉ là mẫu/độ nhiễu chưa đủ để phát hiện ra một quan hệ có thật. Để phân biệt 2 khả năng này, cần báo cáo **hiệu ứng nhỏ nhất mà thiết kế hiện tại đủ sức phát hiện ra** (Minimum Detectable Effect), thay vì chỉ dừng ở p-value:
+
+$$\text{MDE} \approx (z_{1-\alpha/2} + z_{1-\beta}) \times SE \approx 2{,}8 \times SE \quad (\alpha=0{,}05 \text{ hai phía}, \text{power}=80\%)$$
+
+Độ lệch chuẩn của lợi suất bất thường một ngày (`abnormal_return_rolling_1d`) trong mẫu là 0,01188 (1,188%) — dùng làm mốc quy đổi MDE sang % biến động ngày điển hình:
+
+| Phương pháp | SE (lag1) | MDE (lag1) | MDE / độ lệch chuẩn ngày | SE (tổng lag2-5) | MDE (đảo chiều) | MDE / độ lệch chuẩn ngày |
+|---|---:|---:|---:|---:|---:|---:|
+| Lexicon PMI | 0,000226 | 0,000633 | 5,3% | 0,000396 | 0,001109 | 9,3% |
+| Lexicon Intensity | 0,000223 | 0,000624 | 5,3% | 0,000385 | 0,001078 | 9,1% |
+| Lexicon PCA-PMI | 0,000324 | 0,000907 | 7,6% | 0,000403 | 0,001128 | 9,5% |
+| Lexicon PCA-Intensity | 0,000323 | 0,000904 | 7,6% | 0,000408 | 0,001142 | 9,6% |
+| Random Forest | 0,000240 | 0,000672 | 5,7% | 0,000345 | 0,000966 | 8,1% |
+| **PhoBERT (distillation)** | 0,000249 | **0,000697** | **5,9%** | 0,000344 | **0,000963** | **8,1%** |
+
+**Đọc kết quả**: MDE ở mọi phương pháp chỉ chiếm **5–10% độ lệch chuẩn lợi suất một ngày** — rất nhỏ so với quy mô biến động thị trường. Có thể phát biểu thành kết quả cụ thể thay vì chỉ "không có ý nghĩa thống kê": *với ~3.400 ngày quan sát và mức power 80%, thiết kế đủ sức phát hiện một cú sốc sentiment 1 độ lệch chuẩn làm lợi suất bất thường ngày sau thay đổi hơn ~6–8% một ngày biến động điển hình; vì không phát hiện được, có thể loại trừ khả năng tồn tại hiệu ứng lớn hơn mức này.* Đây là bằng chứng định lượng, có nội dung, củng cố thêm cho việc null là thật chứ không phải do thiếu power.
+
 ## Kết luận
 
-Toàn bộ bằng chứng — gradient test, hiệu chỉnh xác suất, ổn định theo seed, tương quan chéo, 2SLS, đảo chiều nhân quả, tương quan cùng ngày — đều **hội tụ về cùng một kết luận**: quan hệ null giữa sentiment tin tức cổ phiếu và lợi suất VN-Index **là thật**, không phải artifact của sai số đo lường hay lỗi phương pháp. Kết quả giữ nguyên qua mọi phiên bản pipeline (trước/sau sửa truncation, trước/sau làm sạch ground truth, trước/sau sửa lỗi look-ahead trong biến kiểm soát biến động) và với model tốt nhất từng có (PhoBERT distillation).
+Toàn bộ bằng chứng — gradient test, hiệu chỉnh xác suất, ổn định theo seed, tương quan chéo, 2SLS, đảo chiều nhân quả, tương quan cùng ngày, và phân tích power/MDE — đều **hội tụ về cùng một kết luận**: quan hệ null giữa sentiment tin tức cổ phiếu và lợi suất VN-Index **là thật**, không phải artifact của sai số đo lường, lỗi phương pháp, hay thiếu power thống kê. Kết quả giữ nguyên qua mọi phiên bản pipeline (trước/sau sửa truncation, trước/sau làm sạch ground truth, trước/sau sửa lỗi look-ahead trong biến kiểm soát biến động) và với model tốt nhất từng có (PhoBERT distillation).
 
 # So sánh 3 nhánh trên Holdout dùng chung (314 dòng)
 

@@ -19,6 +19,10 @@ Intensity, MẤT HẲN ở PCA - không đạt chuẩn nhất quán 4 phương p
 
 Target: log_foreign_vol_total và log_domestic_vol_total (cùng ngày) - so
 sánh xem sentiment dự báo khối nào rõ hơn.
+
+KIỂM SOÁT ATTENTION (mentor feedback): thêm `log_article_count` ở đúng các
+lag mà sentiment_index_z dùng - xem docstring vnindex_daily_volume_regression.py
+để biết lý do (sentiment/hướng tin dễ lẫn với attention/lượng tin).
 """
 
 from __future__ import annotations
@@ -60,12 +64,14 @@ def add_features(df: pd.DataFrame, target_column: str) -> tuple[pd.DataFrame, li
     for lag in range(1, N_LAGS + 1):
         sentiment_lag_column = f"{SENTIMENT_COLUMN}_lag{lag}"
         target_lag_column = f"{target_column}_lag{lag}"
+        article_count_lag_column = f"log_article_count_lag{lag}"
 
         out[sentiment_lag_column] = out[SENTIMENT_COLUMN].shift(lag)
         out[target_lag_column] = out[target_column].shift(lag)
+        out[article_count_lag_column] = out["log_article_count"].shift(lag)
 
         sentiment_lag_columns.append(sentiment_lag_column)
-        all_lag_columns += [sentiment_lag_column, target_lag_column]
+        all_lag_columns += [sentiment_lag_column, target_lag_column, article_count_lag_column]
 
     predictor_columns = (
         all_lag_columns + dow_dummy_columns + ["near_tet"] + EXTRA_EXOG_COLUMNS + year_columns
