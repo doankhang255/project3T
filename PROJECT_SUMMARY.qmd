@@ -12,7 +12,6 @@ format:
     toc: true
     number-sections: true
     colorlinks: true
-    keep-tex: true
     include-in-header:
       text: |
         \makeatletter
@@ -20,14 +19,9 @@ format:
         \renewcommand{\midrule}{\hline}
         \renewcommand{\bottomrule}{\hline}
         \makeatother
+    filters:
+      - add_table_hlines.lua
 ---
-
-<!--
-Render PDF này bằng script "render_project_summary.py" ở thư mục gốc
-(không chỉ "quarto render"), vì cần bước hậu xử lý chèn \hline giữa các
-dòng bảng - xem docstring trong script đó để biết lý do (redefinie \\
-trong longtable trực tiếp làm hỏng cơ chế nội bộ của gói longtable).
--->
 
 
 \newpage
@@ -70,23 +64,23 @@ Cả 3 nhánh dùng **chung đúng 1 bộ Tune/Holdout** — điều kiện tiê
 ### Luồng làm việc
 
 1. **Xây từ điển hạt giống (seed dictionary)**: 7 category kiểu Loughran & McDonald (2011) cho văn bản tài chính — `negative`, `positive`, `uncertainty`, `litigious`, `strong_modal`, `weak_modal`, `constraining` — dịch/khởi tạo thủ công cho tiếng Việt (`Seed_set_Prepare/final_seed/`).
-2. **Mở rộng từ điển bằng "bootstrap" bán giám sát, 4 vòng lặp** (*lưu ý: đây là nghĩa "tự mở rộng có người duyệt lặp lại", khác hẳn "bootstrap" thống kê — resampling để tính CI — dùng ở phần Traditional ML/Transfer Learning phía sau*). Mỗi vòng (`build_sentiment_dictionary_pmi_bootstrap.py`) lặp lại đúng 1 chu trình:
+2. **Mở rộng từ điển bằng "bootstrap" bán giám sát, 4 vòng lặp**.
    a. Tính **PMI** giữa mọi candidate n-gram (2-3 từ, xuất hiện ≥20 tài liệu, quét trên 126.576 bài chưa nhãn) với **seed hiện tại** của từng category. Đơn vị đồng xuất hiện là **câu** (không phải toàn bài) — 2 từ được tính "đi cùng nhau" nếu nằm chung 1 câu, cửa sổ hẹp hơn giúp PMI phản ánh đúng quan hệ ngữ nghĩa thay vì chỉ "cùng chủ đề bài viết". Công thức có làm trơn Laplace (add-$\alpha$, $\alpha=1$) để không bao giờ ra `NaN` khi 1 cặp chưa từng gặp nhau:
       $$\text{PMI}(t,s) = \log_2 \frac{(\text{co\_df}_{t,s}+\alpha)\cdot N}{(\text{df}_t+\alpha)\cdot(\text{df}_s+\alpha)}$$
       Mỗi seed viết tay trước tiên được **ánh xạ về đúng dạng thực tế** xuất hiện trong corpus đã tokenize (1 seed có thể ứng với nhiều biến thể tách từ), loại các seed quá hiếm (`df<20`) hoặc quá phổ biến (df/N vượt ngưỡng, ít giá trị phân biệt) khỏi bước tính PMI. Điểm PMI thô sau đó được chuẩn hoá kiểu two-way (trừ trung bình theo hàng/theo cột/toàn cục, giống phần dư ANOVA 2 chiều) để bớt thiên lệch do n-gram tần suất cao chung chung được mọi category cùng chấm điểm cao.
    b. Lấy **top 3 percentile** điểm PMI mỗi category (ứng viên xuất hiện đủ nhiều, `candidate_unit_st≥50`), xuất ra `review_round{N}.csv` — **người review duyệt tay từng term** (cột `approve`), không tự động đưa thẳng vào từ điển chỉ vì điểm PMI cao.
    c. Term được duyệt nhập vào seed của vòng kế tiếp (`seed_round{N}/`), đồng thời ghi log gốc gác đầy đủ vào `seed_provenance.csv` (term nào, vòng nào, điểm gì lúc duyệt, ngày nào) — truy vết lại được toàn bộ lịch sử mở rộng của từng term.
-   d. Lặp lại bước (a) với seed đã mở rộng; tổng cộng 4 vòng (round 1→4), một số category được bỏ qua ở vòng sau khi ứng viên mới đã bão hoà (`--skip`).
+   d. Lặp lại bước (a) với seed đã mở rộng; tổng cộng 4 vòng (round 1→4), một số category được bỏ qua ở vòng sau khi ứng viên mới đã bão hoà.
    - **Cách 1 (PMI)**: dùng đúng cơ chế bootstrap trên cho cả 7 category.
    - **Cách 2 (Intensity)**: hệ số cường độ nội tại kiểu VADER, tự thiết kế trên cùng tập seed đã mở rộng (không chạy lại vòng bootstrap PMI riêng; không phải do chuyên gia chấm độc lập từng từ như VADER gốc).
    - Cả 2 gộp thành `weighted_dictionary.csv` (1.767 term): `final_seed` (seed gán tay ban đầu) = trọng số 1,0; term thêm qua bootstrap = `score_centered` tại đúng vòng nó được duyệt.
-3. **Tính điểm từng bài** (`score_articles.py`): với mỗi category, quét khớp n-gram trong từ điển lên văn bản đã tokenize, mỗi lần khớp được gán dấu:
+3. **Tính điểm từng bài**: với mỗi category, quét khớp n-gram trong từ điển lên văn bản đã tokenize, mỗi lần khớp được gán dấu:
 
    $$S_{cat} = \frac{\sum_i \text{weight}(w_i)\cdot \text{sign}(w_i)}{N_{total}}$$
 
    - `sign(w_i) = -1` nếu quét ngược tối đa 4 token trước điểm khớp (cùng câu) gặp từ phủ định (`negation_cue_words.txt`) **trước khi** gặp từ nối tương phản như "nhưng/tuy nhiên" (từ nối là điểm dừng cứng, chặn phủ định lan sang mệnh đề sau); ngược lại `+1`.
    - `N_total` = tổng số token của bài, để bài dài/ngắn không lệch điểm vì độ dài.
-4. **Quyết định nhãn 3 lớp**: `net_sentiment_score = positive_score − negative_score`, so với một **ngưỡng trung lập (neutral margin)** được hiệu chỉnh thực nghiệm trên tập Tune (`tune_neutral_margin.py`), không chọn tùy ý.
+4. **Quyết định nhãn 3 lớp**: `net_sentiment_score = positive_score − negative_score`, so với một **ngưỡng trung lập (neutral margin)** được hiệu chỉnh thực nghiệm trên tập Tune, không chọn tùy ý.
 5. **Cách khớp n-gram**: hiện dùng longest-match (ưu tiên cụm dài nhất khi có chồng lấn); `NEGATION_WINDOW=4` cũng là giá trị mặc định.
 
 | | Holdout (314 bài) |
@@ -100,9 +94,9 @@ Không cần huấn luyện, nhanh, dễ diễn giải — nhưng độ chính x
 
 - **Bootstrap mở rộng từ điển có người duyệt + log truy vết**: mỗi term mới không được đưa thẳng vào từ điển chỉ vì điểm PMI cao — phải qua bước người review duyệt tay (`review_round{N}.csv`), và mọi term được duyệt đều ghi lại vòng/điểm/ngày vào `seed_provenance.csv` — nếu một term hoá ra sai (VD nhiễu do PMI cao ngẫu nhiên), có thể truy ngược đúng vòng nó được thêm vào để sửa, không phải dò lại toàn bộ 1.767 term.
 - **Chặn artifact PMI giả do quan hệ "chứa nhau"**: nếu 1 seed (VD "giảm") nằm lọt bên trong 1 candidate n-gram (VD "giảm lỗ"), 2 chuỗi này gần như luôn xuất hiện cùng câu chỉ vì chúng thực chất là cùng 1 chỗ trong văn bản, không phải vì có quan hệ ngữ nghĩa — dễ đẩy PMI lên cao giả tạo. Code loại riêng từng cặp (candidate, seed) bị lồng nhau kiểu này khỏi phép tính, thay vì loại bỏ nhầm cả candidate hoặc cả seed.
-- **Hiệu chỉnh tham số bằng dữ liệu, không chọn tùy ý**: cửa sổ phủ định và ngưỡng trung lập đều được quét qua nhiều giá trị trên tập Tune (`tune_negation_window.py`, `tune_neutral_margin.py`) rồi mới chốt, thay vì gán số cố định theo cảm tính.
-- **So sánh chiến lược khớp** (`compare_longest_vs_overlapping_match.py`): phát hiện khớp chồng lấn (overlapping-match) thắng rõ longest-match ở cả Tune lẫn Holdout, cả 2 cách tính trọng số (chênh ~2-3 điểm % accuracy) — cho thấy cách khớp hiện tại trong production **chưa tối ưu**; đây là một khoảng cách triển khai đã đo được nhưng chưa sửa (xem "Việc còn mở").
-- **Truy nguyên lỗi khớp từ bằng dữ liệu thật, không suy đoán** (`diagnose_missing_terms.py`, vừa chạy lại 2026-09-27 trên từ điển + ground truth 1.044 dòng hiện tại — script này trước đó chưa từng được chạy, số "~44%"/"35-45%" trong docstring cũ là ước lượng cũ trên ground truth nhỏ hơn, **không dùng nữa**):
+- **Hiệu chỉnh tham số bằng dữ liệu, không chọn tùy ý**: cửa sổ phủ định và ngưỡng trung lập đều được quét qua nhiều giá trị trên tập Tune rồi mới chốt, thay vì gán số cố định theo cảm tính.
+- **So sánh chiến lược khớp** (`compare_longest_vs_overlapping_match.py`): phát hiện khớp chồng lấn (overlapping-match) thắng rõ longest-match ở cả Tune lẫn Holdout, cả 2 cách tính trọng số (chênh ~2-3 điểm % accuracy)
+- **Truy nguyên lỗi khớp từ bằng dữ liệu thật**
   - **(a) N-gram "chết"**: 141/1.733 term (8,1%) không match được lần nào trên toàn bộ 126.576 bài. Gần như toàn bộ là cụm 3-6 từ mà VNCoreNLP **đã tự gộp 2 âm tiết cuối thành 1 token có gạch dưới**, khiến cụm từ điển (viết rời từng âm tiết) không còn khớp được với chuỗi token thật — ví dụ cụ thể, kiểm chứng trực tiếp trên corpus:
     - Từ điển có `"vượt kế hoạch"` (3 token rời: vượt / kế / hoạch) — nhưng câu thật luôn tokenize thành `"... vượt so với kế_hoạch năm"`: `"kế_hoạch"` đã là **1 token duy nhất** (xuất hiện 14.490 lần chỉ trong 30.000 bài đầu) → cụm 3-token của từ điển không bao giờ khớp được với thực tế chỉ có 2 token.
     - Tương tự `"tái cấu trúc"` (từ điển: 3 token) vs câu thật `"... đã thực_hiện tái cấu_trúc tại đơn_vị ..."` (`cấu_trúc` gộp thành 1 token, 1.367 lần/30.000 bài).
