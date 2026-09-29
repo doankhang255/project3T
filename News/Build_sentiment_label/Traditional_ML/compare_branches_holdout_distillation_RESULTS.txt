@@ -1,0 +1,41 @@
+SO SANH 3 NHANH TREN HOLDOUT DUNG CHUNG - BAN DISTILLATION (314 bai, kiem tra 1 lan)
+========================================================================
+
+Ca 3 nhanh dung CHUNG dung 314 dong holdout. Transfer_Learning o day la ban DISTILLATION (N=20000 unlabeled, pilot: train tren Tune 730 dong + unlabeled, check Holdout dung 1 lan) - KHAC voi compare_branches_holdout.py (dung ban E3 thuan-supervised).
+
+DIEM SO TREN HOLDOUT (n=314)
+------------------------------------------------------------------------
+Nhanh                                                         Macro F1    Accuracy
+Lexicon-Based (Cach 1 PMI, longest-match)                       0.6500      0.6624
+Traditional ML (Random Forest +lexicon, isotonic)               0.7149      0.7420
+Transfer Learning (PhoBERT distillation, N=20000, pilot)        0.8220      0.8248
+
+BOOTSTRAP 95% CI TREN MACRO-F1 (B=2000, resample 314 dong)
+------------------------------------------------------------------------
+Lexicon-Based (Cach 1 PMI, longest-match)                 0.6500  [0.5947, 0.7067]
+Traditional ML (Random Forest +lexicon, isotonic)         0.7149  [0.6615, 0.7651]
+Transfer Learning (PhoBERT distillation, N=20000, pilot)  0.8220  [0.7790, 0.8648]
+
+SO SANH TUNG CAP - BOOTSTRAP (paired, tren delta macro-F1) + McNEMAR (tren accuracy)
+------------------------------------------------------------------------
+Transfer Learning (PhoBERT distillation, N=20000, pilot)  vs  Traditional ML (Random Forest +lexicon, isotonic)
+  Bootstrap: delta=+0.1071  CI=[+0.0539, +0.1608]  p=0.0000  (loai 0)
+  McNemar (chi-square (continuity corrected)): b=47 c=21  p=0.0024
+
+Transfer Learning (PhoBERT distillation, N=20000, pilot)  vs  Lexicon-Based (Cach 1 PMI, longest-match)
+  Bootstrap: delta=+0.1721  CI=[+0.1115, +0.2319]  p=0.0000  (loai 0)
+  McNemar (chi-square (continuity corrected)): b=71 c=20  p=0.0000
+
+Traditional ML (Random Forest +lexicon, isotonic)  vs  Lexicon-Based (Cach 1 PMI, longest-match)
+  Bootstrap: delta=+0.0650  CI=[+0.0039, +0.1261]  p=0.0430  (loai 0)
+  McNemar (chi-square (continuity corrected)): b=53 c=28  p=0.0077
+
+DOC KET QUA
+------------------------------------------------------------------------
+Xep hang single-point macro-F1: Transfer Learning (PhoBERT distillation, N=20000, pilot) (0.8220) > Traditional ML (Random Forest +lexicon, isotonic) (0.7149) > Lexicon-Based (Cach 1 PMI, longest-match) (0.6500)
+Cap co CI loai 0 (khac biet dang tin, khong phai nhieu chia mau): Transfer Learning (PhoBERT distillation, N=20000, pilot) vs Traditional ML (Random Forest +lexicon, isotonic); Transfer Learning (PhoBERT distillation, N=20000, pilot) vs Lexicon-Based (Cach 1 PMI, longest-match); Traditional ML (Random Forest +lexicon, isotonic) vs Lexicon-Based (Cach 1 PMI, longest-match)
+
+CANH BAO QUAN TRONG - HOLDOUT DA BI DUNG LAI NHIEU LAN, VA N=20000 DA CHON SAU KHI XEM HOLDOUT
+------------------------------------------------------------------------
+314 dong holdout nay da duoc dung nhieu lan truoc do (lexicon-feature promotion trong Traditional_ML, so Holdout rieng cua tung nhanh, phep so sanh E3-vs-RF-vs-Lexicon trong compare_branches_holdout.py). Quan trong hon: N=20000 (thay vi N=5000 da thu truoc) duoc chon SAU KHI da xem ket qua Holdout cua N=5000 - nen ban than con so macro-F1 cua distillation o day co the lac quan hon kha nang tong quat hoa thuc te, khong chi la van de 'holdout da dung lai' nhu 2 nhanh kia.
+Vi vay CI/p-value o day nen doc la 'so sanh trung thuc giua cac con so DA DINH CHAY nay voi nhau', khong phai la mot phep kiem dinh doc lap hoan toan cho cau hoi 'distillation N=20000 co thuc su tot hon RF/Lexicon khong'.

@@ -1,9 +1,9 @@
-"""Bước 2/3 VN-Index - Lexicon (PMI / Intensity / PCA_PMI / PCA_Intensity): abnormal return cấp ngày
+"""Bước 2/3 VN-Index - Lexicon (PMI / Intensity): abnormal return cấp ngày
 (rolling mean 120 ngày + AR(1) rolling 252 ngày). Logic ở
 News_Vnindex/Common/vnindex_daily_abnormal_return.py; file này chỉ khai báo
 input của method này.
 
-Output: data_News/vnindex_daily_sentiment_abnormal_return_{pmi, intensity, pca_pmi, pca_intensity}.{parquet,csv}
+Output: data_News/vnindex_daily_sentiment_abnormal_return_{pmi, intensity}.{parquet,csv}
 """
 
 from __future__ import annotations
@@ -23,8 +23,6 @@ from News_Vnindex.Common.vnindex_daily_abnormal_return import (  # noqa: E402
 INPUT_PATHS_BY_METHOD = {
     "pmi": OUTPUT_DIR / "vnindex_daily_sentiment_merged_pmi.parquet",
     "intensity": OUTPUT_DIR / "vnindex_daily_sentiment_merged_intensity.parquet",
-    "pca_pmi": OUTPUT_DIR / "vnindex_daily_sentiment_merged_pca_pmi.parquet",
-    "pca_intensity": OUTPUT_DIR / "vnindex_daily_sentiment_merged_pca_intensity.parquet",
 }
 
 

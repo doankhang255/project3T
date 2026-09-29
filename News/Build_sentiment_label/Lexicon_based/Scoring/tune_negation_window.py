@@ -3,14 +3,14 @@ bài cũ) bằng đúng quy trình TUNE/HOLDOUT - tránh lặp lại lỗi in-sa
 nêu ở điểm 2.
 
 Quy trình:
-    1. Đọc split cố định từ data/ground_truth_tune_holdout_split.csv (419
-       bài Tune / 180 bài Holdout, stratified theo sentiment, random_state=42
+    1. Đọc split cố định từ data/ground_truth_tune_holdout_split.csv (730
+       bài Tune / 314 bài Holdout, split 1.044-dòng dùng chung toàn dự án
        - xem build_tune_holdout_split.py).
-    2. Với mỗi window ứng viên, CHỈ chấm điểm 419 bài Tune (dùng lại
+    2. Với mỗi window ứng viên, CHỈ chấm điểm 730 bài Tune (dùng lại
        score_corpus() từ score_articles.py, KHÔNG đổi logic chấm điểm) rồi đo
        accuracy/macro-F1 trên Tune.
     3. Chọn window tốt nhất trên Tune.
-    4. Chấm lại 180 bài Holdout ĐÚNG 1 LẦN với window đã chọn - đây là con số
+    4. Chấm lại 314 bài Holdout ĐÚNG 1 LẦN với window đã chọn - đây là con số
        khách quan để báo cáo/dùng chính thức. KHÔNG quay lại đổi window sau
        khi đã xem kết quả Holdout.
 

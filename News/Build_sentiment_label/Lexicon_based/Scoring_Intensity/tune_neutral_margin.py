@@ -10,7 +10,7 @@ Quy tắc:
     diff < -margin     -> Negative
 
     1. Đọc split cố định từ Lexicon_based/data/ground_truth_tune_holdout_split.csv
-       (419 bài Tune / 180 bài Holdout).
+       (730 bài Tune / 314 bài Holdout, split 1.044-dòng dùng chung toàn dự án).
     2. Quét 1 dải margin CHỈ trên Tune, chọn margin cho accuracy cao nhất.
     3. Chấm lại Holdout ĐÚNG 1 LẦN với margin đã chọn, so với margin=0 (Cách
        3 gốc, không đệm) cũng đo trên Holdout.

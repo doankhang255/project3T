@@ -73,12 +73,12 @@ Cả 3 nhánh dùng **chung đúng 1 bộ Tune/Holdout** — điều kiện tiê
    d. Lặp lại bước (a) với seed đã mở rộng; tổng cộng 4 vòng (round 1→4), một số category được bỏ qua ở vòng sau khi ứng viên mới đã bão hoà.
    - **Cách 1 (PMI)**: dùng đúng cơ chế bootstrap trên cho cả 7 category.
    - **Cách 2 (Intensity)**: hệ số cường độ nội tại kiểu VADER, tự thiết kế trên cùng tập seed đã mở rộng (không chạy lại vòng bootstrap PMI riêng; không phải do chuyên gia chấm độc lập từng từ như VADER gốc).
-   - Cả 2 gộp thành `weighted_dictionary.csv` (1.767 term): `final_seed` (seed gán tay ban đầu) = trọng số 1,0; term thêm qua bootstrap = `score_centered` tại đúng vòng nó được duyệt.
+   - Cả 2 gộp thành `weighted_dictionary.csv` (1.733 term — negative 358, litigious 587, uncertainty 358, positive 166, constraining 176, weak_modal 48, strong_modal 40): `final_seed` (seed gán tay ban đầu, 436 term = 25,2%) = trọng số 1,0; 1.297 term còn lại (74,8%) thêm qua bootstrap 4 vòng = `score_centered` tại đúng vòng nó được duyệt (625 → 513 → 127 → 32 term duyệt mỗi vòng — phễu tăng trưởng rất dốc, cho thấy bão hoà rõ). Người review đã xem tay tổng cộng 19.482 ứng viên qua 4 vòng, chỉ duyệt 1.297 (6,7%), tỷ lệ duyệt giảm dần 11,1%→9,4%→3,3%→0,7% — bằng chứng định lượng cho quyết định dừng ở vòng 4.
 3. **Tính điểm từng bài**: với mỗi category, quét khớp n-gram trong từ điển lên văn bản đã tokenize, mỗi lần khớp được gán dấu:
 
    $$S_{cat} = \frac{\sum_i \text{weight}(w_i)\cdot \text{sign}(w_i)}{N_{total}}$$
 
-   - `sign(w_i) = -1` nếu quét ngược tối đa 4 token trước điểm khớp (cùng câu) gặp từ phủ định (`negation_cue_words.txt`) **trước khi** gặp từ nối tương phản như "nhưng/tuy nhiên" (từ nối là điểm dừng cứng, chặn phủ định lan sang mệnh đề sau); ngược lại `+1`.
+   - `sign(w_i) = -1` nếu quét ngược tối đa 4 token trước điểm khớp (cùng câu) gặp từ phủ định, **trước khi** gặp từ nối tương phản như "nhưng/tuy nhiên" (từ nối là điểm dừng cứng, chặn phủ định lan sang mệnh đề sau); ngược lại `+1`.
    - `N_total` = tổng số token của bài, để bài dài/ngắn không lệch điểm vì độ dài.
 4. **Quyết định nhãn 3 lớp**: `net_sentiment_score = positive_score − negative_score`, so với một **ngưỡng trung lập (neutral margin)** được hiệu chỉnh thực nghiệm trên tập Tune, không chọn tùy ý.
 5. **Cách khớp n-gram**: hiện dùng longest-match (ưu tiên cụm dài nhất khi có chồng lấn); `NEGATION_WINDOW=4` cũng là giá trị mặc định.
@@ -92,9 +92,12 @@ Không cần huấn luyện, nhanh, dễ diễn giải — nhưng độ chính x
 
 ### Kiểm định độ chính xác của việc triển khai
 
-- **Bootstrap mở rộng từ điển có người duyệt + log truy vết**: mỗi term mới không được đưa thẳng vào từ điển chỉ vì điểm PMI cao — phải qua bước người review duyệt tay (`review_round{N}.csv`), và mọi term được duyệt đều ghi lại vòng/điểm/ngày vào `seed_provenance.csv` — nếu một term hoá ra sai (VD nhiễu do PMI cao ngẫu nhiên), có thể truy ngược đúng vòng nó được thêm vào để sửa, không phải dò lại toàn bộ 1.767 term.
+- **Bootstrap mở rộng từ điển có người duyệt + log truy vết**: mỗi term mới không được đưa thẳng vào từ điển chỉ vì điểm PMI cao — phải qua bước người review duyệt tay (`review_round{N}.csv`), và mọi term được duyệt đều ghi lại vòng/điểm/ngày vào `seed_provenance.csv` — nếu một term hoá ra sai (VD nhiễu do PMI cao ngẫu nhiên), có thể truy ngược đúng vòng nó được thêm vào để sửa, không phải dò lại toàn bộ 1.733 term.
 - **Chặn artifact PMI giả do quan hệ "chứa nhau"**: nếu 1 seed (VD "giảm") nằm lọt bên trong 1 candidate n-gram (VD "giảm lỗ"), 2 chuỗi này gần như luôn xuất hiện cùng câu chỉ vì chúng thực chất là cùng 1 chỗ trong văn bản, không phải vì có quan hệ ngữ nghĩa — dễ đẩy PMI lên cao giả tạo. Code loại riêng từng cặp (candidate, seed) bị lồng nhau kiểu này khỏi phép tính, thay vì loại bỏ nhầm cả candidate hoặc cả seed.
-- **Hiệu chỉnh tham số bằng dữ liệu, không chọn tùy ý**: cửa sổ phủ định và ngưỡng trung lập đều được quét qua nhiều giá trị trên tập Tune rồi mới chốt, thay vì gán số cố định theo cảm tính.
+- **Hiệu chỉnh tham số bằng dữ liệu, không chọn tùy ý — có số liệu grid search, không phải "đã thử nhiều giá trị" chung chung**:
+  - *Ngưỡng trung lập (neutral margin)*: quét **60 giá trị** từ 0 đến 0,0588 trên tập Tune (730 bài). PMI: margin tối ưu ≈**0,000997** — gần như bằng 0, chỉ hơn margin=0 đúng 0,41 điểm % accuracy (63,01% vs 62,60%); accuracy **giảm dốc đứng** khi margin tăng, rơi xuống ~48-49% ở margin lớn nhất. Nói cách khác: vùng đệm trung lập gần như vô dụng — so sánh trực tiếp `positive_score` vs `negative_score` (margin=0) đã gần tối ưu, không phải một lựa chọn tuỳ tiện.
+  - *Cửa sổ phủ định*: quét **8 giá trị** `[1,2,3,4,5,6,8,10]` token. PMI: window=3 tốt nhất nhưng chỉ nhỉnh hơn window=1/2/4/5 đúng 0,14 điểm %; Intensity: window=10 tốt nhất. Toàn dải 8 giá trị chênh nhau <1,5 điểm % — cửa sổ phủ định gần như không ảnh hưởng accuracy; `NEGATION_WINDOW=4` là lựa chọn an toàn ở giữa dải, không phải điểm tối ưu duy nhất.
+  - *Hệ số công thức Cách 2 (Intensity, kiểu VADER)*: quét **125 tổ hợp** (5 base_weight × 5 marker_delta × 5 intensifier_scale). Ở đúng cấu hình production (`marker_delta=0`), thay đổi `intensifier_scale` từ 0 đến 2,0 cho ra **chính xác cùng một accuracy** (0,6123 không đổi) — cơ chế nhân hệ số cho từ nhấn mạnh ("rất", "cực kỳ"...) không làm thay đổi được một dự đoán nào trên tập Tune. Đây là kết quả null có giá trị: 1 trong 2 cơ chế tự thiết kế cho Cách 2 không có tác dụng đo được, khác với mô tả định tính trước đây ("hệ số tự chọn, chưa hiệu chỉnh") vốn chưa có bằng chứng số.
 - **So sánh chiến lược khớp** (`compare_longest_vs_overlapping_match.py`): phát hiện khớp chồng lấn (overlapping-match) thắng rõ longest-match ở cả Tune lẫn Holdout, cả 2 cách tính trọng số (chênh ~2-3 điểm % accuracy)
 - **Truy nguyên lỗi khớp từ bằng dữ liệu thật**
   - **(a) N-gram "chết"**: 141/1.733 term (8,1%) không match được lần nào trên toàn bộ 126.576 bài. Gần như toàn bộ là cụm 3-6 từ mà VNCoreNLP **đã tự gộp 2 âm tiết cuối thành 1 token có gạch dưới**, khiến cụm từ điển (viết rời từng âm tiết) không còn khớp được với chuỗi token thật — ví dụ cụ thể, kiểm chứng trực tiếp trên corpus:
@@ -102,6 +105,8 @@ Không cần huấn luyện, nhanh, dễ diễn giải — nhưng độ chính x
     - Tương tự `"tái cấu trúc"` (từ điển: 3 token) vs câu thật `"... đã thực_hiện tái cấu_trúc tại đơn_vị ..."` (`cấu_trúc` gộp thành 1 token, 1.367 lần/30.000 bài).
     - Và `"vượt kỳ vọng"` vs `kỳ_vọng` (gộp 1 token, 2.313 lần/30.000 bài) — cùng một lỗi hệ thống, không phải case đơn lẻ.
   - **(b) Từ thiếu**: chỉ **85/1.044 bài (8,1%)** ground truth bị chấm "Neutral_no_match" nhưng nhãn thật Positive (44 bài) hoặc Negative (41 bài) — thấp hơn nhiều so với số cũ. Từ xuất hiện nhiều nhất trong nhóm này lại là từ vựng báo cáo tài chính chung chung (`tỷ đồng`, `tăng`, `doanh_thu`, `lợi_nhuận`, `cổ_tức` cho Positive; `giảm`, `hđqt`, `chứng_khoán` cho Negative) — **chưa thể thêm thẳng vào từ điển**: bản thân "tăng"/"giảm" không mang cực tính cố định (tăng *chi phí* là tin xấu, tăng *lợi nhuận* là tin tốt) nên thêm nhầm sẽ gây false positive ở nơi khác; đây là giới hạn thật của cách tiếp cận "túi từ" (bag-of-terms), không phải chỉ do từ điển thiếu từ.
+- **Giới hạn quan trọng của accuracy lớp Neutral — phần lớn không đến từ nhận diện đúng giọng điệu trung lập**: tách 431 bài ground truth được dự đoán Neutral thành 2 nhóm — `Neutral_no_match` (hoàn toàn không khớp từ nào, `positive_score=negative_score=0`) chiếm **408/431 (94,7%)**, accuracy trong nhóm này 79,2% (nhờ đa số bài Neutral thật đúng là không có tín hiệu); `Neutral_balanced` (có khớp nhưng dương=âm, tie thật) chỉ **23/431 (5,3%)**, accuracy rơi xuống gần mức ngẫu nhiên: 43,5% (PMI) / 39,1% (Intensity). Nói cách khác: accuracy lớp Neutral nhìn có vẻ ổn (66-67% tổng) chủ yếu vì "không khớp gì thì mặc định đoán Neutral, và phần lớn bài Neutral thật cũng không khớp gì" — không phải vì từ điển nhận diện đúng giọng điệu trung lập; khi thực sự phải phân xử một trường hợp cân bằng, độ chính xác gần như đoán mò.
+- **Phân bố lỗi "chết" theo category**: category `litigious` (thuật ngữ pháp lý/hành chính như "viện kiểm sát nhân dân", "tòa án nhân dân") là category LỚN NHẤT của từ điển (587/1.733 = 33,9%) nhưng lại gần như "trơ" — nhiều term chỉ khớp vài chục lần trên 126.576 bài tin chứng khoán, không phải trọng tâm của loại tin này. Tỷ lệ term không khớp lần nào theo category: `strong_modal` 27,5%, `weak_modal` 18,8%, `constraining` 16,5%, `uncertainty` 9,5%, `negative` 6,7%, `positive` 4,8%, `litigious` 4,4%.
 - **Kiểm tra hợp lý bề mặt (face validity)**: 5 bài có `net_sentiment_score` cao nhất trên toàn corpus đều là tin lợi nhuận/tăng trưởng vượt kế hoạch — khớp trực giác, dấu hiệu công thức tính điểm hoạt động đúng hướng trước khi đối chiếu số liệu định lượng.
 
 ## 2. Traditional ML
@@ -115,7 +120,7 @@ Không cần huấn luyện, nhanh, dễ diễn giải — nhưng độ chính x
 3. **6 model production**, mỗi model có 1 lựa chọn kỹ thuật riêng cần lưu ý:
    - **Logistic Regression**: `C=0,1`, `class_weight="balanced"`, `max_iter=5000`.
    - **Linear SVM**: `LinearSVC(C=0,1, class_weight="balanced")` — `LinearSVC` không có `predict_proba` gốc; "xác suất" ở đây là **softmax tự áp lên `decision_function`** (`MarginSoftmaxSVC`), không phải xác suất đã hiệu chỉnh. Từng thử Platt scaling (`CalibratedClassifierCV`) nhưng bỏ vì mỗi inner-fold hiệu chỉnh chỉ có ~40 dòng, quá ít để tin cậy. Vì vậy SVM bị loại khỏi Ensemble.
-   - **Random Forest**: 300 cây, `class_weight="balanced"`, xác suất qua `CalibratedClassifierCV(method="isotonic", cv=3)` — isotonic cần nhiều dữ liệu hơn Platt nhưng ít bị méo hơn khi đủ dữ liệu, đã đo trực tiếp bằng reliability diagram + Brier score ở cả quy mô 599 và 1.044 dòng trước khi chọn.
+   - **Random Forest**: 300 cây, `class_weight="balanced"`, xác suất qua `CalibratedClassifierCV` (method="isotonic", cv=3) — isotonic cần nhiều dữ liệu hơn Platt nhưng ít bị méo hơn khi đủ dữ liệu, đã đo trực tiếp bằng reliability diagram + Brier score ở cả quy mô 599 và 1.044 dòng trước khi chọn.
    - **Ensemble** = trung bình xác suất Logistic Regression + Multinomial NB + Random Forest (không gồm SVM, lý do trên).
    - Đầu ra mỗi bài: nhãn + xác suất 3 lớp + `sentiment_score_ml = P(positive) − P(negative)`.
 4. **Đánh giá production**: 10 lần lặp × 5-fold stratified CV, chạy **đúng một lần** trên toàn bộ 1.044 dòng; xác suất out-of-fold được lưu lại và **dùng lại** cho mọi kiểm định thống kê phía sau (McNemar, bootstrap, Nadeau-Bengio, calibration) — không train lại nhiều lần cho từng câu hỏi.
@@ -132,12 +137,24 @@ Không cần huấn luyện, nhanh, dễ diễn giải — nhưng độ chính x
 
 Kiểm định thống kê rất kỹ (Nadeau-Bengio corrected variance, permutation leakage test, nested-CV tuning, calibration check): **{Logistic Regression, Random Forest} > {Naive Bayes}** là phát hiện vững; việc thêm đặc trưng lexicon vào Random Forest cải thiện đáng tin (Δ=+0,049 trên Holdout, p=0,003).
 
+**Lợi thế của Random Forest so với Logistic Regression đến từ đâu?** Sau hiệu chỉnh Nadeau-Bengio, **Logistic Regression và Random Forest không lexicon (chỉ TF-IDF) không phân biệt được với nhau** (Δ≈0,000, CI [−0,028, +0,029], p=0,986) — tức bản thân thuật toán Random Forest không mạnh hơn Logistic Regression trên cùng đặc trưng TF-IDF. Khoảng cách 0,708 vs 0,687 trong bảng trên **thực chất đến từ đặc trưng lexicon được thêm riêng cho Random Forest**, không phải từ bản chất thuật toán — cần nói rõ điều này để tránh hiểu lầm "Random Forest tự nó là lựa chọn tốt hơn".
+
+**Confusion matrix — Random Forest (+lexicon, isotonic), trung bình qua 10 lần lặp CV, 1.044 bài:**
+
+| | dự đoán negative | dự đoán neutral | dự đoán positive |
+|---|---:|---:|---:|
+| **thật negative** | 210,3 | 49,3 | 36,4 |
+| **thật neutral** | 45,9 | 418,1 | 48,0 |
+| **thật positive** | 35,6 | 61,3 | 139,1 |
+
+Lớp `positive` (support nhỏ nhất, 236/1.044) là lớp yếu nhất, bị nhầm sang cả 2 phía; đây là pattern lặp lại ở mọi model trong dự án (xem thêm nhánh Transfer Learning bên dưới), không riêng Random Forest.
+
 ### Kiểm định độ chính xác của việc triển khai
 
 - **Permutation/label-shuffle leakage test** (Ojala & Garriga 2010): xáo trộn nhãn (quan hệ text–nhãn = 0 theo thiết kế) rồi chạy đúng harness CV leak-free 30 lần; nếu harness thật sự leak-free, macro-F1 trên nhãn xáo trộn phải rơi về mức ngẫu nhiên. Kết quả: điểm thật (0,670 cho Naive Bayes-TF-IDF, 0,691 cho Random Forest+lexicon) vượt qua **toàn bộ 30/30** lần xáo trộn (cách trung bình shuffle 16-25 độ lệch chuẩn) — kể cả ở khối +lexicon vốn có thêm bước chuẩn hoá z-score trong fold (nguồn rò rỉ tiềm ẩn riêng) cũng không phát hiện rò rỉ.
 - **Đối chiếu độc lập bằng code ngoài dự án**: pipeline `TfidfVectorizer`+`LogisticRegression` thuần của sklearn (`cross_val_predict`, không dùng bất kỳ code nào của dự án) trên cùng 730 dòng Tune cho macro-F1 0,7223 — so với 0,678±0,012 của chính dự án trên cùng tập, lệch +0,044, còn trong ngưỡng ±0,05 dự án tự đặt để coi là "cùng tầm" nhưng khá sát cận trên (đáng theo dõi khi ground truth lớn hơn).
 - **Kiểm định chất lượng hiệu chỉnh xác suất** (calibration check): so 6 biến thể trên cùng 1 cách chia fold — isotonic calibration cải thiện rõ cả Brier (0,4022→0,3860 và 0,3807→0,3682) lẫn ECE (0,0801→0,0304 và 0,0632→0,0236) ở cả nhánh TF-IDF thuần lẫn +lexicon, gần như không đổi macro-F1 — xác nhận bước hiệu chỉnh hoạt động đúng như thiết kế (xác suất đáng tin hơn, không phải chỉ đổi nhãn dự đoán).
-- **Xác nhận đặc trưng lexicon bằng Holdout độc lập**: hiệu ứng +lexicon trên Holdout (Δ=+0,049) **lớn hơn** trên Tune (Δ=+0,024) — không có dấu hiệu overfit vào tập dùng để phát triển đặc trưng.
+- **Xác nhận đặc trưng lexicon bằng Holdout độc lập**: hiệu ứng +lexicon trên Holdout (Δ=+0,049) **lớn hơn** trên Tune (Δ=+0,024) — không có dấu hiệu overfit vào tập dùng để phát triển đặc trưng. **Bối cảnh quan trọng cho độ tin cậy của phát hiện này**: đây là lần thử thứ **3** — 2 lần thử trước đó (ở quy mô ground truth nhỏ hơn) đặc trưng lexicon **không tái lập được** trên Holdout (dữ liệu thô 2 lần đó không còn trên đĩa, chỉ còn ghi chú trong code). Vì vậy con số Δ=+0,049/p=0,003 nên được đọc cùng với lưu ý về multiple-looks — kết quả dương chỉ xuất hiện sau khi ground truth đủ lớn, không phải ngay từ lần thử đầu.
 - **Cơ chế 2 phép kiểm định thống kê chính**:
   - *Bootstrap trên macro-F1*: resample **có hoàn lại** 1.044 dòng, 2.000 lần; mỗi lần resample dùng **chung đúng 1 bộ chỉ số dòng** cho mọi model đang so sánh (paired bootstrap) — để `delta = model_A − model_B` phản ánh đúng chênh lệch trên cùng một mẫu giả lập, không lẫn nhiễu do 2 model được resample khác nhau. p-value = 2×tỷ lệ resample rơi về phía "sai" của 0.
   - *Nadeau & Bengio (2003) corrected variance*: 10 lần lặp × 5 fold không phải 50 quan sát độc lập — mỗi lần lặp dùng lại đúng 1.044 dòng gốc nên các fold-train giữa các lần lặp chồng lấn nhau, khiến sai số chuẩn "ngây thơ" (`std/√n`) bị đánh giá thấp. Công thức hiệu chỉnh, tính trên từng **fold riêng lẻ** (50 điểm số, không phải 10 điểm trung bình):
@@ -150,7 +167,7 @@ Kiểm định thống kê rất kỹ (Nadeau-Bengio corrected variance, permuta
 
 Lộ trình 4 bước, mỗi bước kế thừa trọng số bước trước (trừ E2 chạy song song E3 như baseline đối chứng), dùng chung `vinai/phobert-base-v2` (12 lớp, hidden 768, ~135 triệu tham số):
 
-1. **E1 — Domain-Adaptive Pretraining (DAPT)**: pack câu (không cắt giữa câu, không trộn câu của 2 bài khác nhau) vào các khối ≤256 token, che ngẫu nhiên **15%** token (MLM, `mlm_probability=0,15`), huấn luyện tiếp trên 125.511 bài **đã loại hết** các bài thuộc ground truth — tránh mô hình "đọc trước" nội dung mà E2/E3 sẽ dùng để đánh giá. Siêu tham số: 3 epoch, batch size 32, learning rate 5e-5.
+1. **E1 — Domain-Adaptive Pretraining (DAPT)**: pack câu (không cắt giữa câu, không trộn câu của 2 bài khác nhau) vào các khối ≤256 token, che ngẫu nhiên **15%** token (MLM, `mlm_probability=0,15`), huấn luyện tiếp trên 125.511 bài **đã loại hết** các bài thuộc ground truth — tránh mô hình "đọc trước" nội dung mà E2/E3 sẽ dùng để đánh giá. Siêu tham số: **1 epoch** (log thật `phobert_dapt_eval.csv` xác nhận cả 2 lần chạy đều dùng đúng 1 epoch — 3 epoch chỉ là giá trị mặc định trong script, không phải giá trị thật đã tạo ra kết quả 8,30→3,80 dưới đây), batch size 32, learning rate 5e-5.
 2. **E2 — Frozen feature probe**: đóng băng encoder đã DAPT (`torch.no_grad()`), với bài dài hơn 256 token (~37% số bài) thì **chia thành nhiều cửa sổ ≤256 token theo câu** thay vì cắt cụt — mỗi cửa sổ mean-pool `last_hidden_state` theo attention mask, rồi gộp các cửa sổ bằng trung bình có trọng số theo độ dài, cho ra đúng 1 vector 768 chiều/bài. Chỉ huấn luyện một `LogisticRegression` multinomial nhẹ (2.307 tham số) trên vector này.
    - **Cơ chế chia cửa sổ** (`chunk_sentences_into_windows`, dùng chung cho cả E2/E3/E4): đóng gói (bin-packing) **tham lam theo thứ tự câu** — gộp lần lượt từng câu vào cửa sổ hiện tại cho tới khi câu tiếp theo làm vượt quá 254 token (256 trừ 2 vị trí cho BOS/EOS) thì mở cửa sổ mới; không có overlap giữa 2 cửa sổ liên tiếp. Trường hợp hiếm (~1/80k câu) 1 câu tự nó đã dài hơn cửa sổ thì cắt cứng theo từ (words) làm phương án dự phòng cuối. Trọng số gộp = **số từ** trong cửa sổ đó (cửa sổ dài hơn đại diện cho phần lớn hơn của bài).
 3. **E3 — Fine-tune toàn phần**: khởi tạo từ checkpoint E1, thay MLM head bằng classifier head 3 lớp mới (`ignore_mismatched_sizes=True`), lan truyền ngược qua **toàn bộ mạng** bằng `WeightedLossTrainer` — `CrossEntropyLoss` với trọng số lớp $w_i = N / (K \cdot n_i)$ ($N$=tổng số dòng train của fold, $K$=3 lớp, $n_i$=số dòng lớp $i$) tính riêng trên từng fold-train, dùng lại đúng cơ chế chia cửa sổ + gộp trọng số của E2 (không train trên vector cố định mà train trực tiếp trên từng cửa sổ, gộp xác suất khi dự đoán). Siêu tham số: 5 epoch, batch size 16, learning rate 2e-5, weight decay 0,01, mixed-precision bf16 trên GPU.
@@ -164,7 +181,26 @@ Lộ trình 4 bước, mỗi bước kế thừa trọng số bước trước (
 | E1 (DAPT) | Perplexity 8,30 → 3,80 |
 | E2 (frozen probe) | Macro F1 0,748 (CV 1.044 bài), ổn định qua seed |
 | E3 (fine-tune) | Macro F1 0,769 (CV), 0,7709±0,0024 qua 5 seed |
-| **E4 (distillation, N=20.000 bài chưa nhãn)** | **Macro F1 tới 0,83 (Holdout)** — cải thiện lớn nhất nhánh |
+| **E4 (distillation, N=20.000 bài chưa nhãn)** | **Macro F1 0,8220 (Holdout)** — cải thiện lớn nhất nhánh |
+
+**Per-class F1 qua từng bước** (negative / neutral / positive):
+
+| Bước | Tập | Macro F1 | F1 negative | F1 neutral | F1 positive |
+|---|---|---:|---:|---:|---:|
+| E2 | CV, 1.044 | 0,7482 | 0,7783 | 0,7905 | 0,6757 |
+| E3 | CV, 1.044 | 0,7688 | 0,8000 | 0,7878 | 0,7186 |
+| E3 | Holdout, 314 | 0,7581 | 0,7761 | 0,7675 | 0,7308 |
+| E4 distillation | Holdout, 314 | 0,8220 | 0,8600 | 0,8218 | 0,7843 |
+
+**Confusion matrix — E3 (fine-tune), CV 1.044 bài:**
+
+| | dự đoán negative | dự đoán neutral | dự đoán positive |
+|---|---:|---:|---:|
+| **thật negative** | 256 | 27 | 13 |
+| **thật neutral** | 67 | 373 | 72 |
+| **thật positive** | 21 | 35 | 180 |
+
+Cùng pattern với 2 nhánh còn lại: lớp `positive` (support nhỏ nhất) luôn có F1 thấp nhất ở mọi bước, dù đã cải thiện dần qua distillation (0,676→0,784); lớp `neutral` bị nhầm gần như đối xứng sang cả 2 phía (67 sang negative, 72 sang positive) — không thiên lệch rõ về hướng nào.
 
 Đã sửa 2 vấn đề kỹ thuật quan trọng: **truncation 256 token** (~37% số bài dài hơn, đã sửa bằng chia cửa sổ + gộp trọng số thay vì cắt cụt) và bổ sung **chỉ số đo chất lượng điểm liên tục** (không chỉ macro-F1 argmax) vì bước dựng chỉ số VN-Index dùng điểm số liên tục `prob_positive − prob_negative`:
 
@@ -177,10 +213,12 @@ Lộ trình 4 bước, mỗi bước kế thừa trọng số bước trước (
 
 Mốc "đoán 0 cho mọi bài" có MAE bằng đúng tỷ lệ bài không trung lập (532/1.044). Điểm Lexicon rất nhỏ (|điểm| lớn nhất ≈ 0,06) nên MAE của Lexicon gần bằng mốc này và không phản ánh chất lượng; so sánh Lexicon với 2 phương pháp còn lại nên dựa vào Spearman (không phụ thuộc thang điểm). MAE chỉ có ý nghĩa với Random Forest và PhoBERT, vốn có điểm `prob_positive − prob_negative` nằm trên cùng thang [−1, 1].
 
+**Lưu ý quan trọng về nguồn số liệu PhoBERT ở bảng trên**: 2 số 0,734/0,305 lấy từ dự đoán **out-of-fold của 5-fold CV trên E3** (mỗi bài được model chưa từng thấy bài đó lúc train chấm điểm), **không phải** từ lấy từ file chứa điểm mà PhoBert chấm cho từng bài báo. Model production hiện tại (bản distillation) được fit trên **toàn bộ 1.044 dòng** — nên nếu tính Spearman/MAE so với chính 1.044 nhãn đó, kết quả sẽ **rất lạc quan giả tạo** vì model đã học trực tiếp đúng các nhãn đang dùng để chấm điểm nó — không còn là kiểm định out-of-sample nữa.
+
 ### Kiểm định độ chính xác của việc triển khai
 
 - **Chống rò rỉ ở gốc**: toàn bộ bài thuộc ground truth bị loại khỏi corpus DAPT trước khi train E1 — xác nhận bằng code, không chỉ bằng giả định — để mô hình không "thấy trước" nội dung sẽ dùng đánh giá E2/E3.
-- **Một cơ chế chunk+pool dùng chung cho mọi bước**: hàm chia cửa sổ theo câu (`chunk_sentences_into_windows`) và gộp trọng số theo độ dài (`pool_chunks_by_weight`) được viết **một lần** trong `model/common.py` rồi import y hệt vào E2, E3, E4 và cả script chấm điểm 126k bài corpus — loại bỏ rủi ro nhiều nơi cài đặt cùng một logic nhưng lệch nhau (lỗi rất dễ xảy ra khi copy-paste chunking logic ở nhiều file).
+- **Một cơ chế chunk+pool dùng chung cho mọi bước**: hàm chia cửa sổ theo câu (`chunk_sentences_into_windows`) và gộp trọng số theo độ dài (`pool_chunks_by_weight`) được viết **một lần** rồi import y hệt vào E2, E3, E4 và cả script chấm điểm 126k bài corpus.
 - **Kiểm tra ổn định qua seed như một phép kiểm định triển khai**: train lại E3 5 lần với 5 seed weight-init khác nhau, **giữ cố định seed chia fold** để cô lập đúng một nguồn ngẫu nhiên — độ lệch chuẩn kết quả chỉ 0,0024 (~0,3% giá trị trung bình), cho thấy pipeline train không có hành vi bất định ngoài ý muốn.
 - **Đối chiếu chéo 2 phương pháp tính khoảng tin cậy độc lập**: CI theo bootstrap và CI theo delta method (Wald, tính trên confusion matrix, không liên quan gì tới cách bootstrap resample) cho ra khoảng gần như trùng khít trên trường hợp có cả 2 số liệu (Holdout trước distillation: bootstrap [0,7078, 0,8028] vs delta [0,7100, 0,8062]) — xác nhận cả 2 cách tính CI đều được cài đặt đúng, không phải trùng hợp ngẫu nhiên của riêng một phương pháp.
 
@@ -191,27 +229,66 @@ Mốc "đoán 0 cho mọi bài" có MAE bằng đúng tỷ lệ bài không trun
 | Lexicon (PMI) | 0,6500 | [0,595, 0,707] |
 | Random Forest | 0,7149 | [0,662, 0,765] |
 | PhoBERT E3 (trước distillation) | 0,7581 | [0,708, 0,803] |
-| PhoBERT distillation, N=20.000 (\*) | 0,8344 | — |
+| PhoBERT distillation, N=20.000 (\*) | 0,8220 | [0,779, 0,865] |
 
-(\*) Model train trên Tune (730 bài) + 20.000 bài chưa nhãn, kiểm tra 1 lần trên Holdout. N=20.000 được chọn sau khi đã xem kết quả Holdout của lần thử trước (N=5.000), nên con số này có thể lạc quan hơn thực tế. Lần chạy này chưa lưu dự đoán từng bài, nên chưa có CI bootstrap và chưa có so sánh cặp (paired bootstrap, McNemar) với các nhánh khác.
+(\*) Model train trên Tune (730 bài) + 20.000 bài chưa nhãn, kiểm tra 1 lần trên Holdout. N=20.000 được chọn sau khi đã xem kết quả Holdout của lần thử trước (N=5.000), nên con số này và các so sánh cặp dưới đây nên đọc là "so sánh trung thực giữa các con số đã định chạy này", không phải một kiểm định hoàn toàn độc lập cho câu hỏi "distillation N=20.000 có thực sự tốt hơn RF/Lexicon không".
 
-Paired bootstrap + McNemar: **PhoBERT và Random Forest đều tách biệt đáng tin khỏi Lexicon** (CI loại 0), nhưng **PhoBERT và Random Forest không phân biệt được với nhau** (CI chạm 0) — kết luận đúng: **TL $\gtrsim$ ML > Lexicon**, không phải "TL thắng tuyệt đối". (Phép so sánh cặp này dùng bản PhoBERT E3 trước distillation vì đây là số duy nhất chưa bị ảnh hưởng bởi việc chọn siêu tham số dựa trên chính Holdout.)
+So sánh cặp trên bản distillation N=20.000 (bootstrap paired trên delta macro-F1, B=2.000 lần resample + McNemar trên accuracy, cùng 314 dòng Holdout):
+
+| Cặp | Δ Macro F1 (bootstrap) | 95% CI | McNemar p |
+|---|---:|---|---:|
+| Distillation vs Random Forest | +0,1071 | [+0,054, +0,161] | 0,0024 |
+| Distillation vs Lexicon | +0,1721 | [+0,112, +0,232] | <0,0001 |
+| Random Forest vs Lexicon | +0,0650 | [+0,004, +0,126] | 0,0077 |
+
+Cả 3 cặp đều có CI loại 0 (khác biệt đáng tin, không phải nhiễu chia mẫu) — với bản distillation N=20.000 góp mặt, cả 3 nhánh tách biệt được với nhau, kể cả PhoBERT vs Random Forest (khác với kết luận ở bản E3 thuần-supervised bên dưới). Vì lý do "N=20.000 chọn sau khi đã xem Holdout" nêu trên, khoảng cách +0,107 giữa distillation và Random Forest nên được đọc như xác nhận trung thực cho các con số đã chọn, không phải bằng chứng độc lập mới rằng distillation "chắc chắn" hơn RF.
+
+Paired bootstrap + McNemar (bản PhoBERT **E3, trước distillation** — số duy nhất chưa bị ảnh hưởng bởi việc chọn siêu tham số dựa trên chính Holdout): **PhoBERT và Random Forest đều tách biệt đáng tin khỏi Lexicon** (CI loại 0), nhưng **PhoBERT và Random Forest không phân biệt được với nhau** (CI chạm 0) — kết luận đúng ở mức thuần-supervised: **TL $\gtrsim$ ML > Lexicon**, không phải "TL thắng tuyệt đối".
 
 # Câu hỏi chính: sentiment tin tức có dự báo được VN-Index không?
 
 ## Kết luận: KHÔNG — null vững qua mọi kiểm định
 
-Hồi quy kiểu Tetlock (2007) cấp ngày (Newey-West HAC 5 lag) giữa sentiment và **lợi suất bất thường** (abnormal return) của VN-Index cho kết quả **null** ở **cả 6 biến thể đo sentiment** (Lexicon PMI/Intensity/PCA-PMI/PCA-Intensity, Random Forest, PhoBERT). Vì ban đầu nghi ngờ null này là do **sai số đo lường** (attenuation bias — phương pháp kém chính xác kéo hệ số về 0), đã kiểm chứng bằng nhiều hướng độc lập, **tất cả đều hội tụ về cùng kết luận null là thật**:
+Hồi quy kiểu Tetlock (2007) cấp ngày (Newey-West HAC 5 lag) giữa sentiment và **lợi suất bất thường** (abnormal return) của VN-Index cho kết quả **null** ở **cả 4 biến thể đo sentiment** (Lexicon PMI/Intensity, Random Forest, PhoBERT).
+
+### Xử lý abnormal return
+
+**Vì sao không hồi quy trực tiếp trên `daily_return`**: lợi suất ngày có phần "dự đoán được" từ chính lịch sử của nó (quán tính/mean-reversion ngắn hạn) — nếu không trừ phần này ra trước, hệ số sentiment có thể "ăn ké" vào phần biến động vốn đã giải thích được bởi quá khứ giá, không phải do sentiment thật. `abnormal_return = daily_return − expected_return`, với `expected_return` ước lượng bằng **2 cách độc lập**, cả hai chỉ dùng dữ liệu QUÁ KHỨ (tránh look-ahead bias):
+
+- **Rolling mean 120 ngày giao dịch** (~26 tuần): `expected_return_rolling(t) = mean(daily_return, [t-120, t-1])`, tối thiểu 60 quan sát mới tính.
+- **AR(1) rolling 252 ngày** (~52 tuần): fit hồi quy `return_t = a + b·return_{t-1}` trên 252 ngày liền trước (tối thiểu 120 quan sát), rồi dùng hệ số đó dự báo `expected_return_ar1(t) = â + b̂·return_{t-1}` — nắm được cả quán tính ngắn hạn (autocorrelation lag-1), không chỉ mức trung bình.
+
+Cả 2 biến thể đều được chạy song song cho mọi hồi quy trong báo cáo (`abnormal_return_rolling_1d` và `abnormal_return_ar1_1d`), không chỉ chọn 1 cách. **"Abnormal return" ở đây được tính so với lịch sử của chính VN-Index** — **không phải** so với một benchmark khác (không trừ VN30, không dùng market-model kiểu event-study cổ điển cho cổ phiếu đơn lẻ, vốn trừ đi lợi suất thị trường chung), vì VN-Index chính là đại diện cho toàn thị trường nên không có benchmark "bên ngoài" nào để so.
+
+**Kiểm chứng công thức tính đúng** (2 phép kiểm tra độc lập, không chỉ tin vào code):
+
+- **Identity check**: theo đúng định nghĩa, `expected_return + abnormal_return` phải khớp **tuyệt đối** với `daily_return` gốc — sai lệch tối đa đo được chỉ **3,5×10⁻¹⁸ (rolling)** và **6,9×10⁻¹⁸ (AR1)**, tức bằng 0 trong giới hạn làm tròn số thực, không phải một con số nhỏ mang ý nghĩa thống kê.
+- **Kiểm tra tự tương quan (ACF)**: nếu AR(1) "khử" đúng, phần dư `abnormal_return_ar1` phải gần như hết tự tương quan lag-1 (đã "vắt" hết vào `expected_return`). Đo được: ACF lag-1 của `daily_return` gốc = **0,083**, của `abnormal_return_ar1` sau khi khử = **−0,007** — giảm gần hết, đúng như thiết kế; các lag xa hơn (2-10) dao động ngẫu nhiên quanh 0 ở cả 2 chuỗi, không có mẫu hình còn sót lại.
+
+Vì ban đầu nghi ngờ null này là do **sai số đo lường** (attenuation bias — phương pháp kém chính xác kéo hệ số về 0), đã kiểm chứng bằng nhiều hướng độc lập, **tất cả đều hội tụ về cùng kết luận null là thật**:
 
 | Kiểm định | Kết quả |
 |---|---|
-| **Gradient test** (hệ số có mạnh dần theo độ chính xác classifier không) | **Không** — PhoBERT (đo tốt nhất, Spearman 0,73) cho hệ số **nhỏ nhất**, p-value **lớn nhất** (0,77) trong 6 phương pháp — ngược hẳn dự đoán của attenuation bias |
+| **Gradient test** (hệ số có mạnh dần theo độ chính xác classifier không) | **Không** — PhoBERT (đo tốt nhất, Spearman 0,73) cho hệ số **nhỏ nhất**, p-value **lớn nhất** (0,77) trong 4 phương pháp — ngược hẳn dự đoán của attenuation bias |
 | 2SLS (Lexicon làm công cụ, sửa trực tiếp attenuation bias) | Vẫn null (p=0,95-0,99); artifact "lag4" từng lặp lại ở hầu hết hồi quy OLS **mất ý nghĩa** dưới 2SLS |
 | Hiệu chỉnh xác suất (isotonic calibration) | Cải thiện Brier/Spearman thật, không đổi kết luận |
 | Ổn định theo seed (3-5 seed) | Cực ổn định |
-| Đảo chiều nhân quả (return trễ → sentiment hiện tại, kiểm tra "báo đăng chậm hơn giá") | Null ở lag1 tại cả 6 phương pháp |
-| Tương quan cùng ngày (kiểm tra "thị trường hấp thụ tin trong ngày") | Gần như bằng 0 ở cả 6 phương pháp |
-| **Power / Minimum Detectable Effect** | MDE chỉ chiếm **5–10% độ lệch chuẩn lợi suất 1 ngày** — loại trừ được cả hiệu ứng nhỏ, không phải do thiếu power |
+| Đảo chiều nhân quả (return trễ → sentiment hiện tại, kiểm tra "báo đăng chậm hơn giá") | Null ở lag1 tại cả 4 phương pháp |
+| Tương quan cùng ngày (kiểm tra "thị trường hấp thụ tin trong ngày") | Gần như bằng 0 ở cả 4 phương pháp |
+| **Power / Minimum Detectable Effect** | MDE chỉ chiếm **5–9% độ lệch chuẩn lợi suất 1 ngày** ở cả 4 phương pháp (bảng chi tiết ngay dưới) — loại trừ được cả hiệu ứng nhỏ, không phải do thiếu power |
+| **Đa cộng tuyến (VIF)** | VIF cao nhất trong toàn bộ 17 biến hồi quy (5 lag sentiment + 5 lag target + volume + mùa vụ) chỉ là **1,63** (dummy ngày-trong-tuần) — lag sentiment PhoBERT cao nhất trong 3 nhánh cũng chỉ 1,50-1,55. Không có biến nào vượt ngưỡng cảnh báo (5) hay nghiêm trọng (10) — null **không phải do đa cộng tuyến che khuất hiệu ứng** |
+| **Phân rã R² theo nhóm biến** (mùa vụ → + lịch sử return/volume → + sentiment) | Mô hình chỉ mùa vụ đã giải thích R²≈1,00%; thêm lịch sử return/volume: 1,14% (+0,14pp); thêm 5 lag sentiment (mô hình đầy đủ): Lexicon PMI 1,40% (+0,26pp, F-test p=0,118), Random Forest 1,38% (+0,23pp, p=0,163), **PhoBERT 1,28%** (+0,13pp, **p=0,477 — kém ý nghĩa nhất dù là classifier tốt nhất**) — góc nhìn độc lập, cùng chiều với gradient test |
+
+**Power/MDE — vì sao "p=0,118" một mình không đủ để kết luận null là thật**: một kết quả null (p>0,05) tự nó mơ hồ — có thể quan hệ thật sự không tồn tại, hoặc chỉ vì mẫu/độ nhiễu chưa đủ để phát hiện ra một quan hệ có thật (thiếu power). Để phân biệt 2 khả năng này, cần tính **hiệu ứng nhỏ nhất mà thiết kế hiện tại đủ sức phát hiện ra** (Minimum Detectable Effect): $\text{MDE} \approx (z_{1-\alpha/2}+z_{1-\beta})\times SE \approx 2{,}8\times SE$ (α=0,05 hai phía, power=80%), dùng đúng sai số chuẩn Newey-West đã có từ hồi quy chính, quy đổi sang % độ lệch chuẩn lợi suất bất thường 1 ngày (0,01184, tức 1,184%) để dễ đọc:
+
+| Phương pháp | SE (lag1) | MDE (lag1) | MDE / độ lệch chuẩn ngày | SE (tổng lag2-5) | MDE (đảo chiều) | MDE / độ lệch chuẩn ngày |
+|---|---:|---:|---:|---:|---:|---:|
+| Lexicon PMI | 0,000228 | 0,000639 | 5,4% | 0,000399 | 0,001116 | 9,4% |
+| Lexicon Intensity | 0,000225 | 0,000631 | 5,3% | 0,000389 | 0,001089 | 9,2% |
+| Random Forest | 0,000239 | 0,000669 | 5,7% | 0,000350 | 0,000981 | 8,3% |
+| PhoBERT (distillation) | 0,000245 | 0,000686 | 5,8% | 0,000344 | 0,000963 | 8,1% |
+
+**Phát biểu thành kết quả cụ thể thay vì chỉ dừng ở p-value**: với ~3.350-3.400 ngày quan sát và mức power 80%, thiết kế đủ sức phát hiện một cú sốc sentiment 1 độ lệch chuẩn làm lợi suất bất thường ngày sau thay đổi hơn khoảng **5-6% (lag1) đến 8-9% (tổng đảo chiều lag2-5) của một ngày biến động điển hình**; vì không phát hiện được hiệu ứng ở quy mô này tại bất kỳ phương pháp nào, có thể **loại trừ khả năng tồn tại hiệu ứng lớn hơn mức đó** — không chỉ "không bác bỏ được H0" một cách mơ hồ.
 
 **Đọc kết quả đúng**: đây không phải là "dự án thất bại" — null với đầy đủ kiểm chứng power/robustness **là một kết quả khoa học hợp lệ**: tin tức về một công ty đơn lẻ (bản chất >99% corpus) không có cơ chế rõ ràng để dịch chuyển cả một chỉ số thị trường ~400 mã, trong khung thời gian và độ trễ đã kiểm tra.
 
@@ -219,27 +296,54 @@ Hồi quy kiểu Tetlock (2007) cấp ngày (Newey-West HAC 5 lag) giữa sentim
 
 Trong lúc kiểm định lợi suất null, phát hiện: sentiment (Lexicon PMI/Intensity) có tương quan có ý nghĩa với **khối lượng giao dịch khối NỘI địa** ngày hôm sau, nhưng **không** với khối ngoại — sau khi kiểm soát cả year fixed-effect lẫn số lượng bài/ngày (article_count, để tách "hướng tin" khỏi "lượng tin"/attention). Phát hiện này:
 
+**Vì sao bắt buộc phải có year fixed-effect**: bản hồi quy đầu tiên trên khối lượng giao dịch TỔNG (không tách nội/ngoại, không year FE) cũng cho sentiment "có ý nghĩa" — nhưng phát hiện ra đây là **tương quan giả (spurious)**: `log_vol_total` tương quan rất mạnh với thời gian (corr=0,93 — thị trường VN tăng trưởng volume tự nhiên qua 14 năm), và `sentiment_index_z` cũng trôi nhẹ theo năm (corr=0,34); 5 lag (5 ngày) không đủ hấp thụ xu hướng nhiều năm này, khiến hệ số sentiment "có ý nghĩa" chỉ vì cả 2 cùng tăng theo thời gian, không phải quan hệ thật. Sau khi bắt buộc thêm year dummy vào mọi hồi quy khối lượng, mới tách riêng khối nội/khối ngoại (bảng dưới, đã có year FE ngay từ đầu) và tìm ra bất đối xứng nội/ngoại. Đây là một ví dụ cụ thể về việc tự phát hiện và sửa một nguy cơ tương quan giả kinh điển trước khi báo cáo kết quả.
+
 - Khớp với văn liệu học thuật về **attention của nhà đầu tư cá nhân**: Barber & Odean (2008) — nhà đầu tư cá nhân mua theo cổ phiếu "được chú ý"; Da, Engelberg & Gao (2011) — attention đo bằng Google Search Volume dự báo giá ngắn hạn; và một nghiên cứu xuyên 8 thị trường mới nổi (Debata et al.) kết luận trực tiếp *"domestic investors drive sentiment trades, whereas foreign investors are not biased"*.
 - Vượt qua **permutation test** nghiêm ngặt (1.999 lần xoay vòng ngẫu nhiên chuỗi sentiment): empirical p-value 0,002 (PMI) và 0,0035 (Intensity) — không phải artifact thống kê.
-- Không có bằng chứng nhân quả ngược (sentiment không bị dự báo bởi lợi suất trễ ở Lexicon/Random Forest).
-- **Nhưng KHÔNG nhất quán khi kiểm tra đủ 6 phương pháp**: chỉ 2/6 (Lexicon PMI, Intensity) cho khối nội có ý nghĩa; PhoBERT (phương pháp đo tốt nhất) lại cho pattern **ngược lại** (khối ngoại có ý nghĩa, khối nội không); Random Forest và 2 biến thể PCA đều null cả 2 phía.
+- **Nhưng KHÔNG nhất quán khi kiểm tra đủ 4 phương pháp**: chỉ 2/4 (Lexicon PMI, Intensity) cho khối nội có ý nghĩa; PhoBERT (phương pháp đo tốt nhất) lại cho pattern **ngược lại** (khối ngoại có ý nghĩa, khối nội không); Random Forest cũng null cả 2 phía.
 
-**Kết luận cân bằng**: tín hiệu này *có thật* ở Lexicon (không phải nhiễu ngẫu nhiên, đã kiểm chứng bằng permutation test) và có nền tảng lý thuyết vững, nhưng *chưa nhất quán đủ giữa các phương pháp đo* để khẳng định chắc chắn. Đây là hướng **tiềm năng nhất** nếu dự án muốn phát triển thành một bài báo (mentor coi là "trục chính" thay vì dự báo VN-Index).
+### (a) Kiểm soát số bài/ngày (article_count) — attention và sentiment dễ lẫn nhau
 
-### Vì sao PhoBERT và Lexicon cho kết quả khác nhau — đã điều tra trực tiếp trên dữ liệu
+Trước khi tin phát hiện trên, cần loại trừ khả năng nó chỉ phản ánh **lượng tin** (ngày nào nhiều bài thì volume cũng cao, không liên quan gì tới **hướng** tin) chứ không phải sentiment thật. Đã thêm `log_article_count_lag1` (số bài ngày hôm trước, log hoá) vào **đúng cùng hồi quy** đang dùng để báo cáo phát hiện này (không phải một hồi quy phụ riêng), cho cả 4 phương pháp, cùng target `log_domestic_vol_total`:
 
-So sánh điểm `net_sentiment_score` cấp bài giữa Lexicon PMI và PhoBERT (bản distillation — cùng file điểm dùng cho hồi quy VN-Index) trên toàn bộ 126.576 bài (cùng thứ tự dòng, đã xác minh khớp `title` 100%):
+| Phương pháp | Hệ số sentiment (lag1) | p (sentiment) | Hệ số article_count (lag1) | p (article_count) |
+|---|---:|---:|---:|---:|
+| **Lexicon PMI** | +0,01395 | **0,00076** | −0,00711 | 0,281 |
+| **Lexicon Intensity** | +0,01248 | **0,00238** | −0,00703 | 0,284 |
+| Random Forest | +0,00460 | 0,265 | −0,00790 | 0,242 |
+| PhoBERT (distillation) | +0,00738 | 0,101 | −0,00725 | 0,283 |
 
-- **Tương quan chỉ ở mức trung bình**: Pearson r=0,394, Spearman ρ=0,458 — 2 phương pháp thật sự đo 2 tín hiệu khác nhau đáng kể, không phải cùng 1 tín hiệu có nhiễu khác nhau.
-- **37% số bài Lexicon chấm "không khớp từ nào" (`positive_score=negative_score=0`)** — nhưng trong nhóm này, PhoBERT vẫn đưa ra quan điểm rõ ràng ở 25% số bài (14,8% positive + 10,2% negative); tính trên cả nhóm, điểm liên tục trung bình `|net_sentiment_score|` của PhoBERT là 0,24 (so với 0,48 toàn corpus), còn riêng các bài PhoBERT gọi neutral thì chỉ 0,08 — PhoBERT đọc được sentiment từ nhiều bài mà Lexicon hoàn toàn không có tín hiệu.
+**Đọc kết quả**: ở cả 4 phương pháp, `article_count` **không có ý nghĩa thống kê** (p 0,24–0,44, dấu hệ số còn âm nhẹ — ngày nhiều bài hơn không hề đi kèm volume khối nội cao hơn một cách hệ thống). Trong khi đó, hệ số **sentiment** ở Lexicon PMI/Intensity vẫn giữ nguyên ý nghĩa (p<0,01) **sau khi đã kiểm soát** article_count trong cùng phương trình — tín hiệu domestic-volume không phải là artifact của "ngày nào nhiều tin thì giao dịch nhiều", mà thực sự gắn với **hướng** (tích cực/tiêu cực) của tin.
+
+### (b) Kiểm nhân quả ngược — tin có đang dẫn dắt thị trường hay chỉ phản ánh nó?
+
+Hồi quy `sentiment_index_z(t)` theo `daily_return` trễ 1-5 ngày (+ tự hồi quy sentiment trễ, biến kiểm soát ngày trong tuần, gần Tết, biến động) — nếu lợi suất quá khứ dự báo được sentiment hiện tại, đó là bằng chứng báo chí "đăng chậm hơn giá" (phản ánh) thay vì tin dẫn dắt giao dịch. Chạy cho đủ **cả 4 phương pháp**:
+
+| Phương pháp | Hệ số `daily_return_lag1` | p (lag1) | Hệ số tổng `lag2-5` | p (tổng lag2-5) |
+|---|---:|---:|---:|---:|
+| Lexicon PMI | −1,047 | 0,459 | −0,464 | 0,845 |
+| Lexicon Intensity | −1,448 | 0,296 | +0,517 | 0,824 |
+| Random Forest | +0,056 | 0,965 | +2,012 | 0,325 |
+| PhoBERT (distillation) | −0,246 | 0,841 | **+4,447** | **0,028** |
+
+**Đọc kết quả**: ở **lag1** (return hôm trước → sentiment hôm nay, phép kiểm định trực tiếp cho giả thuyết "báo đăng chậm hơn giá"), null ở **cả 4/4 phương pháp** (p 0,30–0,97) — không có bằng chứng nhân quả ngược tức thời. Có 1 ngoại lệ đáng ghi nhận: tổng hệ số **lag2-5** của PhoBERT có ý nghĩa ở mức 5% (p=0,028) — gợi ý sentiment đo bằng PhoBERT có thể phản ánh lợi suất của vài ngày trước đó (2-5 ngày), không phải chỉ ngày liền trước. Đây là 1/4 kiểm định trong số nhiều kiểm định đã chạy nên có thể là dương tính giả do kiểm định nhiều lần; không đổi kết luận chính (null ở lag1, phép kiểm định trực tiếp nhất cho câu hỏi "báo đăng chậm hơn giá") nhưng đáng theo dõi nếu mở rộng dữ liệu.
+
+**Kết luận cân bằng**: tín hiệu này *có thật* ở Lexicon (không phải nhiễu ngẫu nhiên, đã kiểm chứng bằng permutation test), **không phải artifact của attention/lượng tin** (kiểm định (a)), và **không phải do báo phản ánh giá cũ** (kiểm định (b), ít nhất ở lag1) — có nền tảng lý thuyết vững, nhưng *chưa nhất quán đủ giữa các phương pháp đo* để khẳng định chắc chắn.
+
+### Vì sao PhoBERT và Lexicon cho kết quả khác nhau
+
+So sánh điểm `net_sentiment_score` cấp bài giữa Lexicon PMI và PhoBERT (file điểm hiện tại dùng cho hồi quy VN-Index) trên toàn bộ 126.576 bài (cùng thứ tự dòng, đã xác minh khớp `title` 100%; số liệu dưới đây tính lại trực tiếp từ 2 file điểm số đang có trên đĩa hiện tại, kiểm tra ngày 2026-09-29):
+
+- **Tương quan chỉ ở mức trung bình**: Pearson r=0,406, Spearman ρ=0,454 — 2 phương pháp thật sự đo 2 tín hiệu khác nhau đáng kể, không phải cùng 1 tín hiệu có nhiễu khác nhau.
+- **37,0% số bài Lexicon chấm "không khớp từ nào" (`positive_score=negative_score=0`)** — nhưng trong nhóm này, PhoBERT vẫn đưa ra quan điểm rõ ràng ở 23,9% số bài (15,1% positive + 8,9% negative); tính trên cả nhóm, điểm liên tục trung bình `|net_sentiment_score|` của PhoBERT là 0,23 (so với 0,45 toàn corpus), còn riêng các bài PhoBERT gọi neutral thì chỉ 0,05 — PhoBERT đọc được sentiment từ nhiều bài mà Lexicon hoàn toàn không có tín hiệu.
 - **Nguyên nhân cụ thể, truy được tận gốc dictionary**: xem các bài có 2 điểm số **trái dấu mạnh nhất**, ví dụ Lexicon rất tích cực (+) nhưng PhoBERT rất tiêu cực (-):
 
   | Tiêu đề | Lexicon | PhoBERT |
   |---|---:|---:|
-  | "VNG: Quý 2 lỗ 867 triệu đồng" | +0,055 | −0,845 |
-  | "SD7: Lãi trước thuế công ty mẹ giảm 4,3 tỷ..." | +0,048 | −0,885 |
-  | "TDH: Sau soát xét, bất ngờ chuyển từ lãi sang lỗ hơn 7 tỷ đồng" | +0,041 | −0,884 |
-  | "IJC: Quý 1 thực hiện 7% kế hoạch lợi nhuận" | +0,040 | −0,829 |
+  | "VNG: Quý 2 lỗ 867 triệu đồng" | +0,055 | −0,947 |
+  | "SD7: Lãi trước thuế công ty mẹ giảm 4,3 tỷ..." | +0,048 | −0,948 |
+  | "Cổ phiếu TXM bị cắt margin" | +0,054 | −0,939 |
+  | "Mua TCM không thông báo, Chứng khoán Thành Công bị phạt 70 triệu đồng" | +0,053 | −0,941 |
 
   Cả 4 tiêu đề đều rõ ràng là tin **xấu** (lỗ, lãi giảm, chuyển từ lãi sang lỗ, chỉ đạt 7% kế hoạch) mà PhoBERT nhận diện đúng, nhưng Lexicon lại chấm dương. Tra lại `weighted_dictionary.csv` cho thấy nguyên nhân là **giới hạn cấu trúc của cách khớp cụm từ cố định**: từ điển không có từ `"tăng"`/`"giảm"` trần trụi (chỉ có các cụm cố định như `"lợi_nhuận sụt_giảm"`, `"giảm mạnh"` được gán `negative`), nên khi câu viết theo cách khác — "lãi ... giảm 4,3 tỷ" hay "lãi ... chuyển sang lỗ" (từ không nằm liền kề đúng như cụm đã định nghĩa) — không cụm âm nào khớp được, trong khi từ dương (`lãi`, `lợi_nhuận`, `kế_hoạch`...) vẫn xuất hiện và kéo điểm lên dương. Ở chiều ngược lại (Lexicon rất tiêu cực nhưng PhoBERT rất tích cực), ví dụ rõ nhất: *"DVN tăng gần 50% lãi ròng quý 3 **nhờ tiết giảm chi phí**"* (tin tốt — cắt giảm chi phí giúp tăng lãi) bị Lexicon chấm âm (−0,037) vì `"tiết_giảm"` được gán cứng vào nhóm `negative` trong từ điển — không phân biệt được "giảm cái gì": giảm **chi phí** (tốt) hoàn toàn khác giảm **lợi nhuận** (xấu), nhưng từ điển chỉ nhìn thấy "giảm" và luôn chấm âm.
 - **Cơ chế gốc rễ**: Lexicon là mô hình "túi cụm từ" (đếm khớp cụm cố định, cộng dồn theo trọng số, chuẩn hoá theo độ dài bài) — không có khả năng hiểu **quan hệ giữa từ chỉ hướng biến động (tăng/giảm) và đối tượng của nó** (lợi nhuận, doanh thu, chi phí, giá vốn — mỗi đối tượng đảo ngược ý nghĩa của "tăng"/"giảm"), và một bài dài có thể bị các cụm dương/âm rải rác ở các đoạn khác nhau "pha loãng" lẫn nhau. PhoBERT, học end-to-end từ 1.044 nhãn người (qua distillation lan ra 126k bài), nắm được quan hệ ngữ cảnh này mà không cần liệt kê từng trường hợp.
@@ -248,7 +352,7 @@ So sánh điểm `net_sentiment_score` cấp bài giữa Lexicon PMI và PhoBERT
 
 # Kết luận chung toàn dự án
 
-1. **PhoBERT (Transfer Learning) là phương pháp phân loại sentiment tốt nhất** trong 3 nhánh, cả về macro-F1 (0,77–0,83 sau distillation) lẫn chất lượng điểm số liên tục (Spearman 0,73) — nhưng khoảng cách với Random Forest chưa tách biệt đáng tin ở cỡ mẫu Holdout hiện có.
+1. **PhoBERT (Transfer Learning) là phương pháp phân loại sentiment tốt nhất** trong 3 nhánh, cả về macro-F1 (0,77 thuần-supervised, 0,82 sau distillation) lẫn chất lượng điểm số liên tục (Spearman 0,73). Ở mức thuần-supervised (E3), khoảng cách với Random Forest chưa tách biệt đáng tin (CI chạm 0); sau distillation N=20.000, khoảng cách này tách biệt đáng tin (CI loại 0) — nhưng vì N=20.000 được chọn sau khi đã xem Holdout, nên đọc kết quả này như một xác nhận cho lựa chọn đã có, không phải bằng chứng độc lập hoàn toàn.
 2. **Distillation trên 126k bài chưa nhãn** là cải thiện kỹ thuật hiệu quả nhất được thử trong toàn dự án — vượt xa mọi nỗ lực tối ưu kiến trúc/hyperparameter riêng lẻ.
 3. **Sentiment tin tức cổ phiếu đơn lẻ không dự báo được lợi suất VN-Index** — kết luận null này đã được kiểm chứng nghiêm ngặt (gradient test, 2SLS, power/MDE, nhiều kiểm định độc lập khác) và giữ vững qua mọi phiên bản pipeline và mọi phương pháp đo lường, kể cả phương pháp tốt nhất.
 4. **Tín hiệu ở khối lượng giao dịch khối nội** là phát hiện đáng chú ý nhất, có nền tảng lý thuyết và vượt qua permutation test, nhưng chưa đủ nhất quán giữa các phương pháp đo để công bố chắc chắn — hướng nghiên cứu tiếp theo hứa hẹn nhất của dự án.

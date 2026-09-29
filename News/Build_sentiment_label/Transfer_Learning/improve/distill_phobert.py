@@ -423,6 +423,22 @@ def main() -> None:
     metrics_df.to_csv(DATA_DIR / "distill_holdout_metrics.csv", index=False, encoding="utf-8-sig")
     confusion_df.to_csv(DATA_DIR / "distill_holdout_confusion_matrix.csv", index=False, encoding="utf-8-sig")
 
+    # Per-article predictions (id/source_row_id/title/ground_truth_label/
+    # predicted_label/prob_*/sentiment_score_ml/is_correct) - same schema as
+    # improve/data/finetune_holdout_predictions.csv (E3) - so this file can
+    # feed the same bootstrap/McNemar comparison utilities Traditional_ML's
+    # compare_branches_holdout.py uses, instead of only reporting the
+    # aggregate macro-F1 with no CI / no paired comparison against the other
+    # branches.
+    prediction_df = holdout_df[["id", "source_row_id", "title", "ground_truth_label"]].copy()
+    prediction_df["predicted_label"] = [VALID_LABELS[i] for i in holdout_pred]
+    for label_id, label in enumerate(VALID_LABELS):
+        prediction_df[f"prob_{label}"] = holdout_proba[:, label_id]
+    prediction_df["sentiment_score_ml"] = prediction_df["prob_positive"] - prediction_df["prob_negative"]
+    prediction_df["is_correct"] = prediction_df["ground_truth_label"].eq(prediction_df["predicted_label"])
+    prediction_df.to_csv(DATA_DIR / "distill_holdout_predictions.csv", index=False, encoding="utf-8-sig")
+    print(f"Da luu du doan tung bai: {DATA_DIR / 'distill_holdout_predictions.csv'}")
+
     overall = metrics_df.loc[metrics_df["metric_scope"].eq("overall")].iloc[0]
     print(f"\n=== Holdout ({len(holdout_df)} rows) - distillation (N_unlabeled={args.n_unlabeled}) ===")
     print(metrics_df.to_string(index=False))

@@ -12,8 +12,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ABNORMAL_INPUT_PATHS_BY_METHOD = {
     "Cach1_PMI": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_pmi.parquet",
     "Cach2_Intensity": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_intensity.parquet",
-    "PCA_PMI": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_pca_pmi.parquet",
-    "PCA_Intensity": PROJECT_ROOT / "data_News" / "vnindex_weekly_sentiment_abnormal_return_pca_intensity.parquet",
 }
 OUTPUT_DIR = PROJECT_ROOT / "data_News"
 

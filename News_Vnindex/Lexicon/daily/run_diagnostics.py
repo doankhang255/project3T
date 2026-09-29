@@ -1,4 +1,4 @@
-"""Chẩn đoán + kiểm định bổ sung VN-Index - Lexicon (PMI / Intensity / PCA_PMI / PCA_Intensity).
+"""Chẩn đoán + kiểm định bổ sung VN-Index - Lexicon (PMI / Intensity).
 Chạy SAU 3 bước chính (merge -> abnormal return -> vnindex_daily_predictive_regression.py).
 Logic ở News_Vnindex/Common/ (dùng chung cho mọi nhánh); file này chỉ gọi
 chúng với method + hậu tố output của nhánh này (lấy từ

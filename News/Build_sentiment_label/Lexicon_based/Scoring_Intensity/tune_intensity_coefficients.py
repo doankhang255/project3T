@@ -3,11 +3,11 @@ TUNE/HOLDOUT
 
 Quy trình:
     1. Đọc split cố định từ Lexicon_based/data/ground_truth_tune_holdout_split.csv
-       (419 bài Tune / 180 bài Holdout, stratified theo sentiment,
-       random_state=42 - xem tune_negation_window.py).
+       (730 bài Tune / 314 bài Holdout, split 1.044-dòng dùng chung toàn dự
+       án - xem tune_negation_window.py).
     2. Dò 125 tổ hợp (5 base_config x 5 marker_delta x 5 intensifier_scale)
-       CHỈ trên 419 bài Tune, chọn tổ hợp accuracy/macro-F1 cao nhất.
-    3. Chấm lại 180 bài Holdout ĐÚNG 1 LẦN với tổ hợp đã chọn, so sánh với
+       CHỈ trên 730 bài Tune, chọn tổ hợp accuracy/macro-F1 cao nhất.
+    3. Chấm lại 314 bài Holdout ĐÚNG 1 LẦN với tổ hợp đã chọn, so sánh với
        cấu hình hiện tại (A_current, marker_delta=1.0, intensifier_scale=1.0)
        cũng đo trên Holdout - đây là phép so sánh công bằng, khách quan.
 

@@ -1,9 +1,9 @@
-"""Bước 1/3 VN-Index - Lexicon (PMI / Intensity / PCA_PMI / PCA_Intensity): merge chỉ số sentiment cấp ngày
+"""Bước 1/3 VN-Index - Lexicon (PMI / Intensity): merge chỉ số sentiment cấp ngày
 (News/Build_sentiment_index/data/market_sentiment_index_daily_*.parquet) với
 VN-Index cấp ngày. Logic ở News_Vnindex/Common/merge_vnindex_daily_with_sentiment.py;
 file này chỉ khai báo input của method này.
 
-Output: data_News/vnindex_daily_sentiment_merged_{pmi, intensity, pca_pmi, pca_intensity}.{parquet,csv}
+Output: data_News/vnindex_daily_sentiment_merged_{pmi, intensity}.{parquet,csv}
 """
 
 from __future__ import annotations
@@ -23,8 +23,6 @@ from News_Vnindex.Common.merge_vnindex_daily_with_sentiment import (  # noqa: E4
 SENTIMENT_DAILY_PATHS_BY_METHOD = {
     "pmi": SENTIMENT_INDEX_DIR / "market_sentiment_index_daily_pmi.parquet",
     "intensity": SENTIMENT_INDEX_DIR / "market_sentiment_index_daily_intensity.parquet",
-    "pca_pmi": SENTIMENT_INDEX_DIR / "market_sentiment_index_daily_pca_pmi.parquet",
-    "pca_intensity": SENTIMENT_INDEX_DIR / "market_sentiment_index_daily_pca_intensity.parquet",
 }
 
 

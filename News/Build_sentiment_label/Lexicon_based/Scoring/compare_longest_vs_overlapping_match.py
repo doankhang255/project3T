@@ -15,7 +15,7 @@ bài (thay vì 152), dùng đúng quy trình Tune/Holdout.
       hơn "chứa" nó. VD vừa đếm "hoạt_động" (n=1) vừa đếm "tạm_ngừng
       hoạt_động" (n=2) trong cùng câu.
 
-Quy trình: chấm cả Tune (419 bài) VÀ Holdout (180 bài) bằng CẢ 2 cách khớp,
+Quy trình: chấm cả Tune (730 bài) VÀ Holdout (314 bài) bằng CẢ 2 cách khớp,
 báo cáo cả 2 tập (chỉ 1 phép so sánh nhị phân, không phải grid-search nhiều
 lựa chọn, nên rủi ro overfit thấp hơn - nhưng vẫn theo đúng tinh thần không
 chỉ tin số trên Tune).

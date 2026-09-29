@@ -1,4 +1,4 @@
-"""Bước 3/3 VN-Index - Lexicon (PMI / Intensity / PCA_PMI / PCA_Intensity): hồi quy dự báo kiểu Tetlock (2007)
+"""Bước 3/3 VN-Index - Lexicon (PMI / Intensity): hồi quy dự báo kiểu Tetlock (2007)
 cấp ngày trên abnormal return, Newey-West HAC 5 lag, kiểm định tổng lag 2-5.
 Đặc tả + logic ở News_Vnindex/Common/vnindex_daily_predictive_regression.py
 (dùng chung cho mọi method); file này chỉ khai báo input của method này.
@@ -24,8 +24,6 @@ from News_Vnindex.Common.vnindex_daily_predictive_regression import (  # noqa: E
 MERGED_DATA_PATHS_BY_METHOD = {
     "Cach1_PMI": OUTPUT_DIR / "vnindex_daily_sentiment_abnormal_return_pmi.parquet",
     "Cach2_Intensity": OUTPUT_DIR / "vnindex_daily_sentiment_abnormal_return_intensity.parquet",
-    "PCA_PMI": OUTPUT_DIR / "vnindex_daily_sentiment_abnormal_return_pca_pmi.parquet",
-    "PCA_Intensity": OUTPUT_DIR / "vnindex_daily_sentiment_abnormal_return_pca_intensity.parquet",
 }
 
 # Hậu tố tên file output của nhánh này - dùng chung với run_diagnostics.py.
